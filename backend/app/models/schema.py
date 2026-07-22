@@ -1,0 +1,327 @@
+"""Canonical design schema and versioned models per ADR-001 and ADR-005."""
+
+from datetime import datetime, timezone
+from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+def current_iso_timestamp() -> str:
+    """Generate ISO-8601 UTC timestamp string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+class WorkflowState(str, Enum):
+    """Validated workflow state enumeration per S3 specification."""
+
+    NEW = "new"
+    INTERFACE_A_UPLOADED = "interface_a_uploaded"
+    INTERFACE_A_REVIEW_REQUIRED = "interface_a_review_required"
+    INTERFACE_A_APPROVED = "interface_a_approved"
+    INTERFACE_B_UPLOADED = "interface_b_uploaded"
+    INTERFACE_B_REVIEW_REQUIRED = "interface_b_review_required"
+    INTERFACES_APPROVED = "interfaces_approved"
+    CONNECTION_CONFIGURED = "connection_configured"
+    GENERATION_IN_PROGRESS = "generation_in_progress"
+    GENERATION_FAILED = "generation_failed"
+    MODEL_CURRENT = "model_current"
+    MODEL_STALE = "model_stale"
+    REVISION_DRAFT = "revision_draft"
+    EXPORT_IN_PROGRESS = "export_in_progress"
+    EXPORT_READY = "export_ready"
+
+
+class ProfileType(str, Enum):
+    """Supported interface profile geometries per ADR-012."""
+
+    CIRCLE = "circle"
+    RECTANGLE = "rectangle"
+    ROUNDED_RECTANGLE = "rounded_rectangle"
+    TRACED_CLOSED = "traced_closed"
+
+
+class DimensionProvenance(str, Enum):
+    """Provenance tracking for dimension values."""
+
+    USER_ENTERED = "user_entered"
+    IMAGE_EXTRACTED = "image_extracted"
+    SYSTEM_INFERRED = "system_inferred"
+    UNRESOLVED = "unresolved"
+
+
+class ConnectionMode(str, Enum):
+    """Supported connection relationship modes per ADR-012."""
+
+    COAXIAL = "coaxial"
+    OFFSET = "offset"
+    ANGLED = "angled"
+
+
+class ManufacturingProcess(str, Enum):
+    """Supported manufacturing processes."""
+
+    FDM = "fdm"
+    SLA = "sla"
+    CNC = "cnc"
+
+
+class ModelRevisionStatus(str, Enum):
+    """Status lifecycle for model revisions."""
+
+    DRAFT = "draft"
+    GENERATING = "generating"
+    CURRENT = "current"
+    STALE = "stale"
+    FAILED = "failed"
+    SUPERSEDED = "superseded"
+
+
+class Point2D(BaseModel):
+    """2D coordinate representation."""
+
+    x: float = 0.0
+    y: float = 0.0
+
+
+class Dimension(BaseModel):
+    """Dimension parameter definition with provenance metadata."""
+
+    id: str
+    label: str
+    value: float
+    unit: str = "mm"
+    provenance: DimensionProvenance = DimensionProvenance.USER_ENTERED
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    critical: bool = True
+
+
+class ProfileValidation(BaseModel):
+    """Geometry closure and self-intersection validation state."""
+
+    is_closed: bool = True
+    self_intersects: bool = False
+    warnings: List[str] = Field(default_factory=list)
+
+
+def default_circle_dimensions() -> List[Dimension]:
+    """Default fallback dimensions for initial interface creation."""
+    return [
+        Dimension(
+            id="outer_diameter",
+            label="Outer Diameter",
+            value=50.0,
+            unit="mm",
+            provenance=DimensionProvenance.SYSTEM_INFERRED,
+            confidence=1.0,
+            critical=True,
+        ),
+        Dimension(
+            id="wall_thickness",
+            label="Wall Thickness",
+            value=5.0,
+            unit="mm",
+            provenance=DimensionProvenance.SYSTEM_INFERRED,
+            confidence=1.0,
+            critical=False,
+        ),
+    ]
+
+
+class Interface(BaseModel):
+    """Canonical representation of an adapter interface definition."""
+
+    id: str  # 'interface_a' or 'interface_b'
+    source_image_ref: Optional[str] = None
+    profile_type: ProfileType = ProfileType.CIRCLE
+    profile_points: List[Point2D] = Field(default_factory=list)
+    center: Point2D = Field(default_factory=Point2D)
+    dimensions: List[Dimension] = Field(default_factory=default_circle_dimensions)
+    validation: ProfileValidation = Field(default_factory=ProfileValidation)
+    approved: bool = False
+    approved_at: Optional[str] = None
+
+
+class Connection(BaseModel):
+    """Connection relationship definition."""
+
+    mode: ConnectionMode = ConnectionMode.COAXIAL
+    length_mm: float = 0.0
+    offset_x_mm: float = 0.0
+    offset_y_mm: float = 0.0
+    angle_deg: float = 0.0
+
+
+class Manufacturing(BaseModel):
+    """Manufacturing process and material parameters."""
+
+    process: ManufacturingProcess = ManufacturingProcess.FDM
+    material: str = "PETG"
+    wall_thickness_mm: float = 2.4
+    clearance_a_mm: float = 0.3
+    clearance_b_mm: float = 0.1
+
+
+class ExportReferences(BaseModel):
+    """References to export artifacts."""
+
+    stl: Optional[str] = None
+    step: Optional[str] = None
+
+
+class ModelRevision(BaseModel):
+    """Model revision metadata per ADR-005."""
+
+    model_revision: int
+    schema_revision: int
+    status: ModelRevisionStatus = ModelRevisionStatus.DRAFT
+    kcl_artifact_ref: Optional[str] = None
+    preview_artifact_ref: Optional[str] = None
+    exports: ExportReferences = Field(default_factory=ExportReferences)
+    volume_cm3: Optional[float] = None
+    warnings: List[str] = Field(default_factory=list)
+    generated_at: str = Field(default_factory=current_iso_timestamp)
+
+
+class Project(BaseModel):
+    """Canonical project model and workflow state container (ADR-001, ADR-005)."""
+
+    project_id: str
+    project_token: str
+    schema_version: str = "0.1"
+    state: WorkflowState = WorkflowState.NEW
+    created_at: str = Field(default_factory=current_iso_timestamp)
+    updated_at: str = Field(default_factory=current_iso_timestamp)
+    current_schema_revision: int = 1
+    current_model_revision: Optional[int] = None
+    last_known_good_model_revision: Optional[int] = None
+    interface_a: Interface = Field(default_factory=lambda: Interface(id="interface_a"))
+    interface_b: Interface = Field(default_factory=lambda: Interface(id="interface_b"))
+    connection: Connection = Field(default_factory=Connection)
+    manufacturing: Manufacturing = Field(default_factory=Manufacturing)
+    model_revisions: List[ModelRevision] = Field(default_factory=list)
+
+
+# --- DTOs / Request & Response Payloads ---
+
+
+class ProjectCreateResponse(BaseModel):
+    """Response payload returned when a project is created."""
+
+    project_id: str
+    project_token: str
+    schema_version: str
+    state: WorkflowState
+
+
+class ProjectPatchRequest(BaseModel):
+    """Structured patch request for updating a project."""
+
+    state: Optional[WorkflowState] = None
+    connection: Optional[Connection] = None
+    manufacturing: Optional[Manufacturing] = None
+
+
+class InterfacePatchRequest(BaseModel):
+    """Structured patch request for updating an interface."""
+
+    source_image_ref: Optional[str] = None
+    profile_type: Optional[ProfileType] = None
+    profile_points: Optional[List[Point2D]] = None
+    center: Optional[Point2D] = None
+    dimensions: Optional[List[Dimension]] = None
+    validation: Optional[ProfileValidation] = None
+
+
+class ConnectionUpdateRequest(BaseModel):
+    """Request payload for updating connection parameters."""
+
+    mode: ConnectionMode
+    length_mm: float
+    offset_x_mm: float = 0.0
+    offset_y_mm: float = 0.0
+    angle_deg: float = 0.0
+
+
+class ManufacturingUpdateRequest(BaseModel):
+    """Request payload for updating manufacturing parameters."""
+
+    process: ManufacturingProcess
+    material: str
+    wall_thickness_mm: float
+    clearance_a_mm: float
+    clearance_b_mm: float
+
+
+class ModelSucceedRequest(BaseModel):
+    """Payload for completing model generation successfully."""
+
+    model_revision: int
+    kcl_artifact_ref: Optional[str] = None
+    preview_artifact_ref: Optional[str] = None
+    volume_cm3: Optional[float] = None
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ModelFailRequest(BaseModel):
+    """Payload for registering a model generation failure."""
+
+    model_revision: int
+    error_message: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ExportCompleteRequest(BaseModel):
+    """Payload for completing export generation."""
+
+    stl_artifact_ref: Optional[str] = None
+    step_artifact_ref: Optional[str] = None
+
+
+class UploadResponseData(BaseModel):
+    """Metadata response after image file upload."""
+
+    artifact_ref: str
+    original_filename: str
+    stored_filename: str
+    content_type: str
+    size_bytes: int
+    uploaded_at: str
+
+
+class AnalysisResult(BaseModel):
+    """Structured profile extraction result from analysis provider."""
+
+    profile_type: ProfileType
+    candidate_points: List[Point2D] = Field(default_factory=list)
+    candidate_dimensions: List[Dimension] = Field(default_factory=list)
+    provenance: DimensionProvenance = DimensionProvenance.IMAGE_EXTRACTED
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    warnings: List[str] = Field(default_factory=list)
+    rejection_reasons: List[str] = Field(default_factory=list)
+    success: bool = True
+
+
+class ValidationIssue(BaseModel):
+    """Structured validation error or warning details with stable error ID."""
+
+    id: str
+    message: str
+    field: Optional[str] = None
+    recovery_steps: List[str] = Field(default_factory=list)
+
+
+class ConnectionValidationResult(BaseModel):
+    """Validation output for connection geometry and manufacturing rules."""
+
+    is_valid: bool
+    blocking_errors: List[ValidationIssue] = Field(default_factory=list)
+    warnings: List[ValidationIssue] = Field(default_factory=list)
+    recommended_values: dict[str, float] = Field(default_factory=dict)
+
+
+class ConnectionConfigRequest(BaseModel):
+    """Combined request payload for updating connection and manufacturing parameters."""
+
+    connection: ConnectionUpdateRequest
+    manufacturing: ManufacturingUpdateRequest
