@@ -1,41 +1,91 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
+import { Project } from '../types/schema';
 
-interface Step {
+interface StepNavigationProps {
+  project?: Project | null;
+}
+
+interface StepItem {
   id: number;
   path: string;
-  shortName: string;
+  analysisPath?: string;
   fullName: string;
+  isCompleted: boolean;
   isLocked: boolean;
 }
 
-export const StepNavigation: React.FC = () => {
+export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
   const location = useLocation();
 
-  const steps: Step[] = [
-    { id: 1, path: '/step1', shortName: '1 Interface A', fullName: 'Interface A Capture', isLocked: false },
-    { id: 2, path: '/step2', shortName: '2 Interface B', fullName: 'Interface B Capture', isLocked: false },
-    { id: 3, path: '/step3', shortName: '3 Connection', fullName: 'Configure Connection', isLocked: false },
-    { id: 4, path: '/step4', shortName: '4 Generate', fullName: 'Generate Model', isLocked: true },
-    { id: 5, path: '/step5', shortName: '5 Review & Export', fullName: 'Review & Export', isLocked: true },
+  const interfaceAApproved = project?.interface_a?.approved ?? false;
+  const interfaceBApproved = project?.interface_b?.approved ?? false;
+  const connectionConfigured = (project?.connection?.length_mm ?? 0) > 0;
+  const modelGenerated =
+    (project?.current_model_revision !== null && project?.current_model_revision !== undefined) ||
+    (project?.last_known_good_model_revision !== null && project?.last_known_good_model_revision !== undefined) ||
+    ((project?.model_revisions?.length ?? 0) > 0);
+
+  const steps: StepItem[] = [
+    {
+      id: 1,
+      path: '/step1',
+      analysisPath: '/step1/analysis',
+      fullName: 'Interface A Capture',
+      isCompleted: interfaceAApproved,
+      isLocked: false,
+    },
+    {
+      id: 2,
+      path: '/step2',
+      analysisPath: '/step2/analysis',
+      fullName: 'Interface B Capture',
+      isCompleted: interfaceBApproved,
+      isLocked: !interfaceAApproved,
+    },
+    {
+      id: 3,
+      path: '/step3',
+      fullName: 'Configure Connection',
+      isCompleted: connectionConfigured,
+      isLocked: !interfaceAApproved || !interfaceBApproved,
+    },
+    {
+      id: 4,
+      path: '/step4',
+      fullName: 'Generate Model',
+      isCompleted: modelGenerated,
+      isLocked: !interfaceAApproved || !interfaceBApproved || !connectionConfigured,
+    },
+    {
+      id: 5,
+      path: '/step5',
+      fullName: 'Review & Export',
+      isCompleted: project?.state === 'export_ready',
+      isLocked: !modelGenerated,
+    },
   ];
 
   return (
     <nav className="step-navigation" aria-label="Workflow progress navigation">
       <div className="step-container">
         {steps.map((step) => {
-          const isActive = location.pathname === step.path;
+          const isActive =
+            location.pathname === step.path ||
+            (step.analysisPath && location.pathname === step.analysisPath);
+
+          let className = 'step-item';
+          if (isActive) className += ' active';
+          if (step.isCompleted) className += ' completed';
+          if (step.isLocked) className += ' locked';
 
           return (
-            <div
-              key={step.id}
-              className={`step-item ${isActive ? 'active' : ''} ${step.isLocked ? 'locked' : ''}`}
-            >
+            <div key={step.id} className={className}>
               {step.isLocked ? (
                 <span
                   className="step-link disabled"
                   aria-disabled="true"
-                  title={`${step.fullName} (Implementation in progress - locked in Stage S2)`}
+                  title={`${step.fullName} (Locked - complete prior prerequisite steps first)`}
                 >
                   <span className="step-number">{step.id}</span>
                   <span className="step-text">{step.fullName}</span>
@@ -47,7 +97,9 @@ export const StepNavigation: React.FC = () => {
                   className="step-link"
                   aria-current={isActive ? 'step' : undefined}
                 >
-                  <span className="step-number">{step.id}</span>
+                  <span className="step-number">
+                    {step.isCompleted ? '✓' : step.id}
+                  </span>
                   <span className="step-text">{step.fullName}</span>
                 </Link>
               )}
@@ -58,3 +110,5 @@ export const StepNavigation: React.FC = () => {
     </nav>
   );
 };
+
+export default StepNavigation;

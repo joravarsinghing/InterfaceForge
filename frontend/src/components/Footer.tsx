@@ -1,5 +1,6 @@
 import React from 'react';
 import { HealthResponse } from '../services/api';
+import { Wordmark } from './Wordmark';
 
 interface FooterProps {
   healthState: {
@@ -21,7 +22,7 @@ export const Footer: React.FC<FooterProps> = ({ healthState }) => {
       <div className="footer-container">
         <div className="footer-info">
           <p className="privacy-note">
-            <strong>Privacy Note:</strong> Uploaded images and parameter calculations remain local to your session. No user tracking or persistent data stored.
+            <strong>Privacy &amp; Data Storage:</strong> Project state is stored locally by the development backend. Uploaded images are stored temporarily for profile extraction. No user accounts or tracking systems exist, and external AI/Zoo services are inactive in mock mode.
           </p>
         </div>
 
@@ -37,7 +38,7 @@ export const Footer: React.FC<FooterProps> = ({ healthState }) => {
             GitHub Repository
           </a>
           <span className="footer-separator" aria-hidden="true">|</span>
-          <span className="footer-link-item">Zoo API Makeathon 2026 Submission</span>
+          <span className="footer-link-item"><Wordmark /> — Zoo API Makeathon 2026 Submission</span>
         </div>
       </div>
     </footer>

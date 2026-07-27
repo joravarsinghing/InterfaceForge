@@ -5,8 +5,11 @@ export const ImageGuidance: React.FC = () => {
     <aside className="image-guidance-panel" aria-label="Image capture guidance">
       <h2 className="guidance-title">Image Guidance</h2>
       <div className="guidance-columns">
-        <div className="guidance-block good">
-          <h3>GOOD</h3>
+        <div className="guidance-card guidance-good">
+          <h3>
+            <span aria-hidden="true" style={{ marginRight: '6px' }}>✓</span>
+            GOOD CAPTURE
+          </h3>
           <ul>
             <li>Camera directly facing interface</li>
             <li>Full outline visible and uncropped</li>
@@ -14,8 +17,11 @@ export const ImageGuidance: React.FC = () => {
             <li>Minimal glare and reflections</li>
           </ul>
         </div>
-        <div className="guidance-block bad">
-          <h3>BAD</h3>
+        <div className="guidance-card guidance-bad">
+          <h3>
+            <span aria-hidden="true" style={{ marginRight: '6px' }}>✗</span>
+            BAD CAPTURE
+          </h3>
           <ul>
             <li>Angled or perspective shot</li>
             <li>Cropped edge or cut-off boundary</li>

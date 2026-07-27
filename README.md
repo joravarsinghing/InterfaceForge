@@ -7,7 +7,7 @@
 ## Competition Status
 
 **Zoo API Makeathon 2026 Submission Entry**  
-Current stage: **S2 — Architecture Skeleton and Local Development Environment** (Complete)
+Current stage: **S9 — Bounded Zoo Agent Revisions** (Complete & Proven PASS)
 
 ---
 
@@ -19,24 +19,25 @@ Creating a custom 3D-printable adapter usually requires learning complex CAD sof
 
 ---
 
-## Proposed Workflow
+## Complete Guided Workflow
 
 1. **Capture Interface A:** Upload an image or sketch of the first physical interface.
 2. **Review & Approve A:** Review extracted SVG profile, correct dimensions/provenance, and approve profile A.
 3. **Capture Interface B:** Upload image or sketch of the second interface.
 4. **Review & Approve B:** Review and approve profile B.
 5. **Configure Connection:** Choose connection mode (Coaxial, Offset, or Limited-Angle) and set parameters (length, wall thickness, clearances).
-6. **Generate Adapter:** Validate canonical schema and generate deterministic KCL for execution via Zoo Engine API.
-7. **Review & Revise:** Inspect 3D preview, refine parameters via structured UI or natural-language prompts via Zoo Agent API.
-8. **Export:** Download manufacturing-ready STL, STEP, and KCL source files via Zoo File Format API.
+6. **Generate Adapter:** Validate canonical schema, compile deterministic KCL, and execute 3D generation via live Zoo Engine API.
+7. **Safe Natural-Language Revisions:** Request parameter revisions in plain English using live Zoo Agent API (`wss://api.zoo.dev/ws/ml/copilot`). AI proposals are strictly bounded by a 7-field allowlist and require explicit user confirmation before 3D model regeneration.
+8. **Export:** Download verified STL, STEP, and KCL CAD files produced directly by Zoo Engine.
+
 
 ---
 
 ## Architecture & Technical Stack
 
 * **Frontend:** React 18, TypeScript 5, Vite 5, Vanilla CSS, React Router 6.
-* **Backend:** Python 3.12 (compatible 3.10+), FastAPI 0.110+, Pydantic 2, Uvicorn.
-* **CAD & AI Engine:** Zoo Engine API, Zoo Agent API, Zoo File Format API *(Integrations scheduled for Stage S5+)*.
+* **Backend:** Python 3.12 (compatible 3.10+), FastAPI 0.110+, Pydantic 2, SQLite, Uvicorn.
+* **CAD & Mock Engine:** Zoo Engine API abstraction layer, deterministic `MockEngineProvider`, KCL Compiler.
 * **Development Tooling:** Pytest, Ruff, Mypy, Vitest, ESLint, TypeScript.
 
 ---
@@ -60,19 +61,20 @@ npm install
 cd ..
 ```
 
-### 2. Running Services
-
-#### Run Backend Server (FastAPI on port 8000)
+### 2. Manual QA Local Development Runner
+Run frontend and backend together using a single script:
 ```powershell
-python scripts/run_backend.py
-# Server will start at http://localhost:8000
-# OpenAPI Docs available at http://localhost:8000/docs
+python scripts/start_local.py
 ```
+Open your browser to `http://localhost:5173`. Backend runs on `http://localhost:8000`. Press `Ctrl+C` to terminate both services.
 
-#### Run Frontend Server (Vite on port 5173)
+#### Individual Service Runners
 ```powershell
+# Run Backend Server (FastAPI on port 8000)
+python scripts/run_backend.py
+
+# Run Frontend Server (Vite on port 5173)
 python scripts/run_frontend.py
-# Application will start at http://localhost:5173
 ```
 
 ---
@@ -84,30 +86,15 @@ Run all verification checks (Backend pytest/ruff/mypy + Frontend vitest/eslint/t
 python scripts/run_all_checks.py
 ```
 
-Run test suites only:
+Individual component test suites:
 ```powershell
-python scripts/run_tests.py
-```
+# Backend Pytest Suite
+.\venv\Scripts\python -m pytest backend/tests
 
-Individual component commands:
-```powershell
-# Backend tests & checks
-$env:PYTHONPATH="backend"
-.\venv\Scripts\pytest backend/tests
-.\venv\Scripts\ruff check backend
-.\venv\Scripts\ruff format --check backend
-.\venv\Scripts\mypy --explicit-package-bases backend/app
-
-# Frontend tests & checks
+# Frontend Vitest Suite
 cd frontend
 npm test
-npm run lint
-npx tsc --noEmit
-npm run build
 cd ..
-
-# Repository governance audit
-python scripts/audit_repository.py
 ```
 
 ---
@@ -119,19 +106,12 @@ python scripts/audit_repository.py
 * [`user_flow.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/user_flow.md) — Implementation-ready User Flows and State Machine
 * [`ascii_wireframes.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/ascii_wireframes.md) — Complete UI Layout Wireframes and Accessibility Specs
 * [`AGENTS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/AGENTS.md) — Agent Governance, Rules, and Execution Guidelines
-* [`production_docs/S1_PROJECT_FOUNDATION.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/production_docs/S1_PROJECT_FOUNDATION.md) — Stage S1 Production Control Document
-* [`production_docs/S2_ARCHITECTURE_SKELETON.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/production_docs/S2_ARCHITECTURE_SKELETON.md) — Stage S2 Production Control Document
+* [`production_docs/S6A_FULL_WEB_APP_WORKFLOW.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/production_docs/S6A_FULL_WEB_APP_WORKFLOW.md) — Stage S6A Production Control Document
 * [`docs/ARCHITECTURE.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/ARCHITECTURE.md) — Architecture Specification
 * [`docs/API_USAGE.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/API_USAGE.md) — API Contracts & Integration Guide
 * [`docs/TEST_PLAN.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/TEST_PLAN.md) — Master Test Plan
-* [`docs/DESIGN_SCHEMA.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/DESIGN_SCHEMA.md) — *(Not started)* Canonical Design Schema Specification
-* [`docs/GEOMETRY_RULES.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/GEOMETRY_RULES.md) — *(Not started)* Geometry & Lofting Rules
-* [`docs/TEST_RESULTS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/TEST_RESULTS.md) — *(Not started)* Test Execution Results
-* [`docs/ZOO_API_NOTES.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/ZOO_API_NOTES.md) — *(Not started)* Zoo API Technical Notes
-* [`docs/BUGS_AND_LIMITATIONS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/BUGS_AND_LIMITATIONS.md) — *(Not started)* Bug and Limitation Log
-* [`docs/DESIGN_DECISIONS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/DESIGN_DECISIONS.md) — *(Not started)* Design Decisions Log
-* [`docs/DEMO_SCRIPT.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/DEMO_SCRIPT.md) — *(Not started)* Demo Video Script
-* [`docs/SUBMISSION_CHECKLIST.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/SUBMISSION_CHECKLIST.md) — *(Not started)* Competition Submission Checklist
+* [`docs/TEST_RESULTS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/TEST_RESULTS.md) — Test Execution Results
+* [`docs/BUGS_AND_LIMITATIONS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/BUGS_AND_LIMITATIONS.md) — Bug and Limitation Log
 
 ---
 

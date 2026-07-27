@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import { Wordmark } from './Wordmark';
 
 interface Props {
   children: ReactNode;
@@ -29,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="error-boundary-fallback" role="alert">
           <div className="error-card">
             <h2>Something went wrong</h2>
-            <p>An unhandled error occurred in the InterfaceForge application UI.</p>
+            <p>An unhandled error occurred in the <Wordmark /> application UI.</p>
             {this.state.error && (
               <pre className="error-details">{this.state.error.message}</pre>
             )}

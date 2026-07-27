@@ -19,7 +19,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 
   const isInterfaceB = interfaceId === 'interface_b';
   const interfaceName = isInterfaceB ? 'Interface B' : 'Interface A';
-  const isPrerequisiteMet = !isInterfaceB || (project?.interface_a.approved ?? false);
+  const isPrerequisiteMet = !isInterfaceB || (project?.interface_a?.approved ?? false);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -38,6 +38,13 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       handleFileSelect(e.target.files[0]);
+    }
+  };
+
+  const handleKeyDownInputTrigger = (e: React.KeyboardEvent<HTMLLabelElement>, inputId: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      document.getElementById(inputId)?.click();
     }
   };
 
@@ -68,7 +75,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
     setError(null);
   };
 
-  const handleUploadAndAnalyze = async () => {
+  const handleUploadAndAnalyze = async (providerOverride?: string) => {
     if (!selectedFile || !project) {
       setError('Please select an image file to upload.');
       return;
@@ -88,12 +95,23 @@ export const UploadPage: React.FC<UploadPageProps> = ({
       );
 
       // 2. Run analysis
-      setLoadingText('Analyzing interface contours...');
-      const result = await analyzeInterfaceImage(
-        project.project_id,
-        interfaceId,
-        project.project_token
+      setLoadingText(
+        providerOverride === 'mock'
+          ? 'Running mock interface profile analysis...'
+          : 'Analyzing interface contours using AI vision model...'
       );
+      const result = providerOverride
+        ? await analyzeInterfaceImage(
+            project.project_id,
+            interfaceId,
+            project.project_token,
+            providerOverride
+          )
+        : await analyzeInterfaceImage(
+            project.project_id,
+            interfaceId,
+            project.project_token
+          );
 
       setAnalysisResult(result);
       setLoading(false);
@@ -135,16 +153,32 @@ export const UploadPage: React.FC<UploadPageProps> = ({
       </p>
 
       {error && (
-        <div className="error-banner" role="alert">
+        <div className="error-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
           <h3>Upload / Analysis Error</h3>
-          <p>{error}</p>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setError(null)}
-          >
-            Dismiss
-          </button>
+          <p style={{ margin: '0.5rem 0 1rem 0' }}>{error}</p>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => handleUploadAndAnalyze()}
+            >
+              🔄 Retry Analysis
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleUploadAndAnalyze('mock')}
+            >
+              ⚙️ Switch to Demo / Mock Profile
+            </button>
+            <button
+              type="button"
+              className="btn btn-tertiary btn-sm"
+              onClick={() => setError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
@@ -164,9 +198,15 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                 onDrop={handleDrop}
               >
                 <div className="dropzone-content">
-                  <p className="dropzone-text">Drag & drop your interface image here</p>
+                  <div className="dropzone-icon" aria-hidden="true">📷</div>
+                  <p className="dropzone-text">Drag &amp; drop your interface image here</p>
                   <p className="dropzone-or">or</p>
-                  <label htmlFor="file-input" className="btn btn-primary">
+                  <label
+                    htmlFor="file-input"
+                    className="btn btn-primary"
+                    tabIndex={0}
+                    onKeyDown={(e) => handleKeyDownInputTrigger(e, 'file-input')}
+                  >
                     Choose Image File
                   </label>
                   <input
@@ -193,13 +233,27 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                     />
                   )}
                 </div>
-                <div className="file-meta">
-                  <p><strong>Filename:</strong> {selectedFile.name}</p>
-                  <p><strong>Size:</strong> {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                  <p><strong>Type:</strong> {selectedFile.type || 'image/png'}</p>
+                <div className="file-meta-panel">
+                  <div className="meta-item">
+                    <span className="meta-label">Filename</span>
+                    <span className="meta-val">{selectedFile.name}</span>
+                  </div>
+                  <div className="meta-item">
+                    <span className="meta-label">Size</span>
+                    <span className="meta-val">{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                  </div>
+                  <div className="meta-item">
+                    <span className="meta-label">Format</span>
+                    <span className="meta-val">{selectedFile.type || 'image/png'}</span>
+                  </div>
                 </div>
                 <div className="preview-actions">
-                  <label htmlFor="replace-file-input" className="btn btn-secondary">
+                  <label
+                    htmlFor="replace-file-input"
+                    className="btn btn-secondary"
+                    tabIndex={0}
+                    onKeyDown={(e) => handleKeyDownInputTrigger(e, 'replace-file-input')}
+                  >
                     Replace Image
                   </label>
                   <input
@@ -222,7 +276,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                   <button
                     type="button"
                     className="btn btn-primary btn-large"
-                    onClick={handleUploadAndAnalyze}
+                    onClick={() => handleUploadAndAnalyze()}
                   >
                     Use This Image and Analyze
                   </button>
@@ -236,10 +290,21 @@ export const UploadPage: React.FC<UploadPageProps> = ({
       )}
 
       {analysisResult && (
-        <div className="analysis-summary-card">
+        <div className="analysis-summary-card" style={{ marginTop: '1.5rem', padding: '1rem', background: '#161b22', border: '1px solid #30363d', borderRadius: '8px' }}>
           <h3>Latest Analysis Result</h3>
           <p>Profile Type: <strong>{analysisResult.profile_type}</strong></p>
-          <p>Confidence: <strong>{(analysisResult.confidence * 100).toFixed(0)}%</strong></p>
+          <p>
+            Confidence:{' '}
+            <strong style={{ color: analysisResult.confidence < 0.6 ? '#f85149' : '#3fb950' }}>
+              {(analysisResult.confidence * 100).toFixed(0)}%
+            </strong>
+          </p>
+          <p>
+            Mode:{' '}
+            <span className="badge" style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: analysisResult.provenance === 'image_extracted' ? '#1f6feb' : '#8b949e', color: '#fff' }}>
+              {analysisResult.provenance === 'image_extracted' ? '🤖 AI Vision Extracted' : '⚙️ Demo / Mock Profile'}
+            </span>
+          </p>
         </div>
       )}
     </div>

@@ -167,6 +167,7 @@ class ExportReferences(BaseModel):
 
     stl: Optional[str] = None
     step: Optional[str] = None
+    kcl: Optional[str] = None
 
 
 class ModelRevision(BaseModel):
@@ -179,6 +180,8 @@ class ModelRevision(BaseModel):
     preview_artifact_ref: Optional[str] = None
     exports: ExportReferences = Field(default_factory=ExportReferences)
     volume_cm3: Optional[float] = None
+    zoo_model_id: Optional[str] = None
+    kcl_hash: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
     generated_at: str = Field(default_factory=current_iso_timestamp)
 
@@ -260,6 +263,8 @@ class ModelSucceedRequest(BaseModel):
     kcl_artifact_ref: Optional[str] = None
     preview_artifact_ref: Optional[str] = None
     volume_cm3: Optional[float] = None
+    zoo_model_id: Optional[str] = None
+    kcl_hash: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
 
 
@@ -276,6 +281,50 @@ class ExportCompleteRequest(BaseModel):
 
     stl_artifact_ref: Optional[str] = None
     step_artifact_ref: Optional[str] = None
+    kcl_artifact_ref: Optional[str] = None
+
+
+class ExportFormatStatus(str, Enum):
+    """Status lifecycle for individual export formats per S8."""
+
+    NOT_STARTED = "not_started"
+    PREPARING = "preparing"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class FormatExportDetail(BaseModel):
+    """Detail container for individual export format status."""
+
+    format: str
+    status: ExportFormatStatus = ExportFormatStatus.NOT_STARTED
+    artifact_ref: Optional[str] = None
+    filename: Optional[str] = None
+    size_bytes: Optional[int] = None
+    zoo_model_id: Optional[str] = None
+    kcl_hash: Optional[str] = None
+    error_id: Optional[str] = None
+    error_message: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ExportGenerateRequest(BaseModel):
+    """Request payload for triggering format export generation."""
+
+    formats: List[str] = Field(default_factory=lambda: ["stl", "step", "kcl"])
+    mock_scenario: Optional[str] = None
+
+
+class ExportStatusResponse(BaseModel):
+    """Response payload for export status query."""
+
+    project_id: str
+    model_revision: int
+    schema_revision: int
+    units: str = "mm"
+    model_status: str
+    volume_cm3: Optional[float] = None
+    formats: dict[str, FormatExportDetail] = Field(default_factory=dict)
 
 
 class UploadResponseData(BaseModel):
@@ -300,6 +349,10 @@ class AnalysisResult(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     rejection_reasons: List[str] = Field(default_factory=list)
     success: bool = True
+    model_used: Optional[str] = None
+    latency_seconds: Optional[float] = None
+    fallback_triggered: bool = False
+    usage_metadata: Optional[dict] = None
 
 
 class ValidationIssue(BaseModel):
@@ -325,3 +378,38 @@ class ConnectionConfigRequest(BaseModel):
 
     connection: ConnectionUpdateRequest
     manufacturing: ManufacturingUpdateRequest
+
+
+class ParameterChange(BaseModel):
+    """Single parameter change proposal per Stage S9."""
+
+    field: str
+    current_value: float
+    proposed_value: float
+    unit: str = "mm"
+    reason: str = ""
+
+
+class RevisionProposeRequest(BaseModel):
+    """Request payload for proposing natural language model revisions."""
+
+    prompt: str
+    provider: Optional[str] = None
+
+
+class AgentProposalResult(BaseModel):
+    """Structured proposal result returned by Zoo Agent API / AgentService."""
+
+    changes: List[ParameterChange] = Field(default_factory=list)
+    summary: str = ""
+    is_valid: bool = True
+    validation_errors: List[ValidationIssue] = Field(default_factory=list)
+    validation_warnings: List[ValidationIssue] = Field(default_factory=list)
+    raw_response: Optional[str] = None
+    provider_used: Optional[str] = None
+
+
+class RevisionConfirmRequest(BaseModel):
+    """Request payload for confirming parameter changes."""
+
+    changes: List[ParameterChange]

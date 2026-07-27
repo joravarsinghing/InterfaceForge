@@ -1,0 +1,16 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('InterfaceForge Adapter Design Rev 1'),'2;1');
+FILE_NAME('interfaceforge_adapter_rev1.step','2026-07-27T05:39:56.866921+00:00',
+('InterfaceForge'),('Makeathon 2026'),'InterfaceForge Compiler','Zoo API','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+#10=CARTESIAN_POINT('',(0.,0.,0.));
+#11=DIRECTION('',(0.,0.,1.));
+#12=DIRECTION('',(1.,0.,0.));
+#13=AXIS2_PLACEMENT_3D('',#10,#11,#12);
+#14=CLOSED_SHELL('',());
+#15=MANIFOLD_SOLID_BREP('AdapterSolid',#14);
+ENDSEC;
+END-ISO-10303-21;

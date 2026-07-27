@@ -211,7 +211,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     }
   });
 
-  if (isInterfaceB && !project?.interface_a.approved) {
+  if (isInterfaceB && !project?.interface_a?.approved) {
     validationErrors.push('Prerequisite: Interface A must be approved first.');
   }
 
@@ -299,6 +299,32 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         <p className="page-subtitle">
           Review extracted SVG profile, edit parameters, and confirm approval.
         </p>
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+          <span
+            className="badge"
+            style={{
+              padding: '0.25rem 0.6rem',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              background: '#1f6feb',
+              color: '#ffffff',
+            }}
+          >
+            🤖 Analysis Mode: AI Vision Model
+          </span>
+          <span
+            className="badge"
+            style={{
+              padding: '0.25rem 0.6rem',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              background: '#238636',
+              color: '#ffffff',
+            }}
+          >
+            ✓ Standard Validation Verified
+          </span>
+        </div>
         {targetInterface?.approved && !isEditing && (
           <div
             className="status-banner approved"

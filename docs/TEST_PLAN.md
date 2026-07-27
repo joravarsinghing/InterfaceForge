@@ -68,11 +68,42 @@
 - `test_repeated_identical_compilation_is_deterministic`: Repeated compilation of identical schema produces byte-for-byte identical KCL output and hash.
 - `test_project_service_kcl_compilation_does_not_mark_current`: KCL compilation creates a draft model revision but does not set status to `current` and executes zero Zoo API calls.
 
-### 2.6 Frontend UI & Component Tests (`frontend/src/test/`)
-- TypeScript schema contract parsing and type checking (`schema.test.ts`).
-- App shell navigation and health status rendering (`App.test.tsx`).
-- UploadPage dropzone, file selection, preview, guidance panel, and cancel actions (`UploadPage.test.tsx`).
-- ProfileReviewPage side-by-side view, profile selector, provenance text/icons, validation summary, and approval flow (`ProfileReviewPage.test.tsx`).
-- ConnectionConfigPage mode selection cards (coaxial, offset, angled), mode switching, numeric input form controls, live 2D SVG schematic rendering, field-level validation errors, warning summary, blocking error summary, and save/proceed navigation (`ConnectionConfigPage.test.tsx`).
-- ModelGenerationPage pre-flight readiness check, compile trigger button, metadata panel (compiler version, revision, SHA-256 hash, artifact path), execution status badge, read-only source preview snippet, and navigation routing (`ModelGenerationPage.test.tsx`).
+### 2.6 Backend 3D Generation & Mock Engine Suite (`backend/tests/test_generation.py`)
+- `test_successful_mock_execution`: Verifies full success generation lifecycle and status promotion to `model_current`.
+- `test_duplicate_job_rejection`: Verifies duplicate active job rejection (`IF-JOB-409`).
+- `test_engine_validation_failure`: Verifies `IF-ENG-001` engine validation failure.
+- `test_timeout_scenario`: Verifies `IF-ENG-002` engine execution timeout.
+- `test_malformed_response_scenario`: Verifies `IF-ENG-003` malformed engine response payload.
+- `test_preview_failure_scenario`: Verifies `IF-ENG-004` preview rendering failure.
+- `test_cancellation_and_retry`: Verifies job cancellation and subsequent retry.
+- `test_last_known_good_model_preservation`: Verifies last-known-good model (Rev 1) is preserved when a subsequent generation attempt (Rev 2) fails.
+- `test_preview_metadata_endpoint`: Verifies GET /preview metadata endpoint response.
+
+### 2.7 Full Workflow Integration Suite (`backend/tests/test_full_workflow_integration.py` & `frontend/src/test/WorkflowIntegration.test.tsx`)
+- Scenario 1: Complete happy path workflow.
+- Scenario 2: Interface B cannot be reached before Interface A approval.
+- Scenario 3: Invalid direct route access redirects to earliest incomplete step.
+- Scenario 4: Poor image rejection and retry.
+- Scenario 5: Connection validation failure handling.
+- Scenario 6: Mock generation failure scenario and retry trigger.
+- Scenario 7: Job cancellation handling.
+- Scenario 8: Parameter revision and model status STALE setting.
+- Scenario 9: Failed revision preserving last-known-good model (ADR-005).
+- Scenario 10: Editing Interface A setting model STALE and clearing approval.
+- Scenario 11: Backend restart / page reload session hydration from `sessionStorage`.
+- Scenario 12: Exit / restart confirmation modal and session reset.
+- Scenario 13: Keyboard-only primary flow navigation accessibility.
+
+### 2.8 Backend Gemini Vision Provider Suite (`backend/tests/test_gemini_vision_provider.py`)
+- `test_gemini_provider_valid_response`: Parsing valid JSON profile payload from Gemini vision model.
+- `test_gemini_provider_malformed_json`: Malformed JSON structure raises `MalformedProviderResponseError`.
+- `test_gemini_provider_unsupported_profile_type`: Unrecognized shape string raises `MalformedProviderResponseError`.
+- `test_gemini_provider_invalid_confidence`: Confidence out of bounds `[0.0, 1.0]` raises `MalformedProviderResponseError`.
+- `test_gemini_provider_non_finite_values`: `NaN` or `Inf` coordinates/values raise `MalformedProviderResponseError`.
+- `test_gemini_provider_timeout`: Request timeout raises `MalformedProviderResponseError`.
+- `test_gemini_provider_auth_failure`: 401 unauthenticated response raises error with redacted API key.
+- `test_gemini_provider_prompt_injection_defense`: Prompt injection text in image is safely ignored.
+- `test_gemini_provider_low_confidence_rejection`: Confidence `< 0.60` raises honest `AnalysisRejectedError`.
+- `test_mock_fallback_selection`: Missing key or `ANALYSIS_PROVIDER=mock` falls back to `MockAnalysisProvider`.
+- `test_secret_redaction_utility`: `sanitize_error_message` scrubs API key patterns.
 

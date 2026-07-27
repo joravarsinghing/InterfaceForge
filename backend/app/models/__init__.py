@@ -1,11 +1,24 @@
 """Canonical design schema and data models package."""
 
+from app.models.generation import (
+    BoundingBox,
+    GenerationJob,
+    GenerationJobRequest,
+    GenerationStage,
+    JobStatus,
+    MockScenario,
+    PreviewMetadata,
+)
 from app.models.schema import (
     Connection,
     ConnectionMode,
     Dimension,
     DimensionProvenance,
+    ExportFormatStatus,
+    ExportGenerateRequest,
     ExportReferences,
+    ExportStatusResponse,
+    FormatExportDetail,
     Interface,
     Manufacturing,
     ManufacturingProcess,
@@ -34,4 +47,15 @@ __all__ = [
     "ExportReferences",
     "ModelRevision",
     "Project",
+    "JobStatus",
+    "GenerationStage",
+    "MockScenario",
+    "BoundingBox",
+    "PreviewMetadata",
+    "GenerationJobRequest",
+    "GenerationJob",
+    "ExportFormatStatus",
+    "FormatExportDetail",
+    "ExportGenerateRequest",
+    "ExportStatusResponse",
 ]

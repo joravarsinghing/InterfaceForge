@@ -8,7 +8,9 @@ from typing import Optional
 
 from PIL import Image
 
+from app.core.config import settings
 from app.core.exceptions import (
+    ExportArtifactNotFoundError,
     InvalidConnectionConfigError,
     InvalidFileUploadError,
     InvalidInterfaceApprovalError,
@@ -17,6 +19,7 @@ from app.core.exceptions import (
     ProjectNotFoundError,
     SchemaVersionMismatchError,
     StaleModelOperationError,
+    UnsupportedExportFormatError,
 )
 from app.models.schema import (
     AnalysisResult,
@@ -24,6 +27,9 @@ from app.models.schema import (
     ConnectionUpdateRequest,
     ConnectionValidationResult,
     ExportCompleteRequest,
+    ExportFormatStatus,
+    ExportStatusResponse,
+    FormatExportDetail,
     Interface,
     InterfacePatchRequest,
     Manufacturing,
@@ -40,8 +46,16 @@ from app.models.schema import (
     current_iso_timestamp,
 )
 from app.repositories.sqlite_project_repository import SQLiteProjectRepository
-from app.services.analysis_provider import AnalysisProvider, MockAnalysisProvider
+from app.services.analysis_provider import (
+    AnalysisProvider,
+    get_analysis_provider,
+)
 from app.services.connection_validation import validate_connection_and_manufacturing
+from app.services.export_provider import (
+    ExportProvider,
+    get_export_provider,
+    validate_artifact_content,
+)
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
 from app.services.profile_validation import validate_interface_profile
 
@@ -284,6 +298,12 @@ class ProjectService:
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
 
+        if interface_id == "interface_b" and not project.interface_a.approved:
+            raise MissingPrerequisiteError(
+                "Interface A must be approved before Interface B can be analyzed.",
+                recovery_steps=["Approve Interface A first."],
+            )
+
         if not target_interface.source_image_ref:
             raise MissingPrerequisiteError(
                 f"No image uploaded for {interface_id}. Upload an image before starting analysis."
@@ -295,7 +315,7 @@ class ProjectService:
             with open(target_interface.source_image_ref, "rb") as f:
                 image_bytes = f.read()
 
-        active_provider = provider or MockAnalysisProvider()
+        active_provider = provider or get_analysis_provider()
         result = active_provider.analyze(image_bytes, filename)
 
         target_interface.profile_type = result.profile_type
@@ -342,6 +362,12 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
+
+        if interface_id == "interface_b" and not project.interface_a.approved:
+            raise MissingPrerequisiteError(
+                "Interface A must be approved before Interface B can be modified.",
+                recovery_steps=["Approve Interface A first."],
+            )
 
         if patch.source_image_ref is not None:
             target_interface.source_image_ref = patch.source_image_ref
@@ -637,6 +663,8 @@ class ProjectService:
         target_rev.kcl_artifact_ref = req.kcl_artifact_ref
         target_rev.preview_artifact_ref = req.preview_artifact_ref
         target_rev.volume_cm3 = req.volume_cm3
+        target_rev.zoo_model_id = req.zoo_model_id
+        target_rev.kcl_hash = req.kcl_hash
         target_rev.warnings = req.warnings
 
         # Set current and last known good model revision
@@ -702,10 +730,270 @@ class ProjectService:
                         rev.exports.stl = req.stl_artifact_ref
                     if req.step_artifact_ref:
                         rev.exports.step = req.step_artifact_ref
+                    if req.kcl_artifact_ref:
+                        rev.exports.kcl = req.kcl_artifact_ref
 
         project.state = WorkflowState.EXPORT_READY
         project.updated_at = current_iso_timestamp()
         return self.repository.save(project)
+
+    async def generate_exports(
+        self,
+        project_id: str,
+        formats: Optional[list[str]] = None,
+        project_token: Optional[str] = None,
+        mock_scenario: Optional[str] = None,
+        provider: Optional[ExportProvider] = None,
+    ) -> ExportStatusResponse:
+        """Generate CAD format exports (STL, STEP, KCL) for current valid model per S8."""
+        project = self._verify_project_and_token(project_id, project_token)
+
+        if project.current_model_revision is None:
+            raise StaleModelOperationError(
+                "Cannot export because current model revision is missing."
+            )
+
+        current_rev = None
+        for rev in project.model_revisions:
+            if rev.model_revision == project.current_model_revision:
+                current_rev = rev
+                break
+
+        if (
+            not current_rev
+            or current_rev.status != ModelRevisionStatus.CURRENT
+            or project.state == WorkflowState.MODEL_STALE
+        ):
+            raise StaleModelOperationError(
+                "Cannot start export for a model that is stale, failed, or not current."
+            )
+
+        requested_formats = [f.lower() for f in (formats or ["stl", "step", "kcl"])]
+
+        # Extract KCL code for export compilation
+        kcl_code = ""
+        if current_rev.kcl_artifact_ref and os.path.exists(current_rev.kcl_artifact_ref):
+            with open(current_rev.kcl_artifact_ref, "r", encoding="utf-8") as f:
+                kcl_code = f.read()
+        else:
+            compile_res = compile_project_to_kcl(project)
+            kcl_code = compile_res.kcl_code or ""
+
+        import hashlib
+
+        computed_kcl_hash = (
+            hashlib.sha256(kcl_code.encode("utf-8")).hexdigest() if kcl_code else "kcl_empty"
+        )
+        effective_kcl_hash = current_rev.kcl_hash or computed_kcl_hash
+        current_rev.kcl_hash = effective_kcl_hash
+
+        export_prov = provider or get_export_provider()
+        zoo_model_id_val = current_rev.zoo_model_id
+        if (
+            not zoo_model_id_val
+            and isinstance(export_prov, get_export_provider().__class__)
+            and settings.get_effective_export_provider() == "mock"
+        ):
+            zoo_model_id_val = f"mock_model_{project.project_id[:8]}"
+
+        project.state = WorkflowState.EXPORT_IN_PROGRESS
+        self.repository.save(project)
+
+        format_details: dict[str, FormatExportDetail] = {}
+
+        # Pre-populate existing ready exports
+        for fmt in ("stl", "step", "kcl"):
+            ref = getattr(current_rev.exports, fmt, None)
+            if fmt == "kcl" and not ref:
+                ref = current_rev.kcl_artifact_ref
+            if ref and os.path.exists(ref) and os.path.getsize(ref) > 0:
+                format_details[fmt] = FormatExportDetail(
+                    format=fmt,
+                    status=ExportFormatStatus.READY,
+                    artifact_ref=ref,
+                    filename=f"interfaceforge_adapter_rev{project.current_model_revision}.{fmt}",
+                    size_bytes=os.path.getsize(ref),
+                    zoo_model_id=zoo_model_id_val,
+                    kcl_hash=effective_kcl_hash,
+                    updated_at=current_iso_timestamp(),
+                )
+
+        any_success = False
+        for fmt in requested_formats:
+            if fmt not in ("stl", "step", "kcl"):
+                format_details[fmt] = FormatExportDetail(
+                    format=fmt,
+                    status=ExportFormatStatus.FAILED,
+                    error_id="IF-EXPORT-002",
+                    error_message=f"Unsupported export format '{fmt}'. Supported: stl, step, kcl.",
+                    updated_at=current_iso_timestamp(),
+                )
+                continue
+
+            res = await export_prov.export_format(
+                project_id=project.project_id,
+                model_revision=project.current_model_revision,
+                format_name=fmt,
+                kcl_code=kcl_code,
+                kcl_artifact_ref=current_rev.kcl_artifact_ref,
+                mock_scenario=mock_scenario,
+                project=project,
+                zoo_model_id=zoo_model_id_val,
+                kcl_hash=effective_kcl_hash,
+            )
+
+            if res.success and res.artifact_ref:
+                any_success = True
+                setattr(current_rev.exports, fmt, res.artifact_ref)
+                format_details[fmt] = FormatExportDetail(
+                    format=fmt,
+                    status=ExportFormatStatus.READY,
+                    artifact_ref=res.artifact_ref,
+                    filename=res.filename,
+                    size_bytes=res.size_bytes,
+                    zoo_model_id=res.zoo_model_id or zoo_model_id_val,
+                    kcl_hash=res.kcl_hash or effective_kcl_hash,
+                    updated_at=res.generated_at,
+                )
+            else:
+                format_details[fmt] = FormatExportDetail(
+                    format=fmt,
+                    status=ExportFormatStatus.FAILED,
+                    error_id=res.error_id or "IF-EXPORT-001",
+                    error_message=res.error_message or f"Export generation failed for '{fmt}'.",
+                    updated_at=current_iso_timestamp(),
+                )
+
+        if any_success or any(
+            d.status == ExportFormatStatus.READY for d in format_details.values()
+        ):
+            project.state = WorkflowState.EXPORT_READY
+        else:
+            project.state = WorkflowState.MODEL_CURRENT
+
+        project.updated_at = current_iso_timestamp()
+        self.repository.save(project)
+
+        return ExportStatusResponse(
+            project_id=project.project_id,
+            model_revision=project.current_model_revision,
+            schema_revision=project.current_schema_revision,
+            units="mm",
+            model_status=current_rev.status.value,
+            volume_cm3=current_rev.volume_cm3,
+            formats=format_details,
+        )
+
+    def get_export_status(
+        self, project_id: str, project_token: Optional[str] = None
+    ) -> ExportStatusResponse:
+        """Get export status for all formats for current model revision."""
+        project = self._verify_project_and_token(project_id, project_token)
+
+        if project.current_model_revision is None:
+            raise StaleModelOperationError("Current model revision is missing.")
+
+        current_rev = None
+        for rev in project.model_revisions:
+            if rev.model_revision == project.current_model_revision:
+                current_rev = rev
+                break
+
+        if not current_rev or current_rev.status != ModelRevisionStatus.CURRENT:
+            raise StaleModelOperationError("Cannot query export status for stale or missing model.")
+
+        format_details: dict[str, FormatExportDetail] = {}
+        for fmt in ("stl", "step", "kcl"):
+            ref = getattr(current_rev.exports, fmt, None)
+            if fmt == "kcl" and not ref:
+                ref = current_rev.kcl_artifact_ref
+            if ref and os.path.exists(ref) and os.path.getsize(ref) > 0:
+                format_details[fmt] = FormatExportDetail(
+                    format=fmt,
+                    status=ExportFormatStatus.READY,
+                    artifact_ref=ref,
+                    filename=f"interfaceforge_adapter_rev{project.current_model_revision}.{fmt}",
+                    size_bytes=os.path.getsize(ref),
+                    zoo_model_id=current_rev.zoo_model_id,
+                    kcl_hash=current_rev.kcl_hash,
+                    updated_at=current_iso_timestamp(),
+                )
+            else:
+                format_details[fmt] = FormatExportDetail(
+                    format=fmt,
+                    status=ExportFormatStatus.NOT_STARTED,
+                    updated_at=current_iso_timestamp(),
+                )
+
+        return ExportStatusResponse(
+            project_id=project.project_id,
+            model_revision=project.current_model_revision,
+            schema_revision=project.current_schema_revision,
+            units="mm",
+            model_status=current_rev.status.value,
+            volume_cm3=current_rev.volume_cm3,
+            formats=format_details,
+        )
+
+    def download_export_artifact(
+        self, project_id: str, format_name: str, project_token: Optional[str] = None
+    ) -> tuple[str, str, str]:
+        """Validate ownership and format signature, returning safe download path and filename."""
+        project = self._verify_project_and_token(project_id, project_token)
+        fmt = format_name.lower()
+
+        if fmt not in ("stl", "step", "kcl"):
+            raise UnsupportedExportFormatError(fmt)
+
+        if project.current_model_revision is None:
+            raise StaleModelOperationError("Cannot download export for missing model revision.")
+
+        current_rev = None
+        for rev in project.model_revisions:
+            if rev.model_revision == project.current_model_revision:
+                current_rev = rev
+                break
+
+        if (
+            not current_rev
+            or current_rev.status != ModelRevisionStatus.CURRENT
+            or project.state == WorkflowState.MODEL_STALE
+        ):
+            raise StaleModelOperationError(
+                "Cannot download export for a model that is stale, failed, or not current."
+            )
+
+        ref = getattr(current_rev.exports, fmt, None)
+        if fmt == "kcl" and not ref:
+            ref = current_rev.kcl_artifact_ref
+
+        if not ref or not os.path.exists(ref) or os.path.getsize(ref) == 0:
+            raise ExportArtifactNotFoundError(
+                f"Export artifact for '{fmt}' was not found or is empty. Generate export first."
+            )
+
+        with open(ref, "rb") as f:
+            content = f.read()
+
+        if not validate_artifact_content(fmt, content):
+            raise ExportArtifactNotFoundError(
+                f"Export artifact for '{fmt}' failed non-zero or format signature validation."
+            )
+
+        # Path traversal check
+        abs_artifacts_dir = os.path.abspath("artifacts")
+        abs_ref = os.path.abspath(ref)
+        if not abs_ref.startswith(abs_artifacts_dir):
+            raise InvalidProjectTokenError()
+
+        mime_types = {
+            "stl": "application/sla",
+            "step": "model/step",
+            "kcl": "text/plain;charset=utf-8",
+        }
+
+        download_name = f"interfaceforge_adapter_rev{project.current_model_revision}.{fmt}"
+        return ref, download_name, mime_types.get(fmt, "application/octet-stream")
 
     def validate_kcl_readiness(
         self, project_id: str, project_token: Optional[str] = None
@@ -716,9 +1004,7 @@ class ProjectService:
             project.interface_a, project.interface_b, project.connection, project.manufacturing
         )
 
-    def compile_kcl(
-        self, project_id: str, project_token: Optional[str] = None
-    ) -> KCLCompileResult:
+    def compile_kcl(self, project_id: str, project_token: Optional[str] = None) -> KCLCompileResult:
         """Compiles canonical project schema into deterministic KCL without calling Zoo.
 
         Enforces ADR-001, ADR-002, and saves artifact.
@@ -743,4 +1029,3 @@ class ProjectService:
             self.repository.save(project)
 
         return result
-

@@ -32,7 +32,9 @@ Multipart image upload for Interface A or B.
 - **Enforces:** Interface B upload requires Interface A to be approved (`IF-PREREQ-400`).
 
 ### 1.4 `POST /api/projects/{project_id}/interfaces/{interface_id}/analyze`
-Triggers profile extraction using configured `AnalysisProvider` interface (defaults to `MockAnalysisProvider`).
+Triggers profile extraction using configured `AnalysisProvider` interface (`GeminiAnalysisProvider` or `MockAnalysisProvider`). Accepts optional query parameter `provider=gemini` or `provider=mock` to override default provider selection.
+- **Model Optimization & Fallback (S7.1/S7.3):** Uses `gemini-3.5-flash-lite` by default (`GEMINI_VISION_MODEL`) to optimize latency and token cost. If primary analysis returns low confidence (< 0.60) without explicit rejection reasons, malformed JSON, or a retryable provider error, automatically executes a single fallback request using `gemini-3.6-flash` (`GEMINI_VISION_FALLBACK_MODEL`). Explicit poor-image rejections with valid explanations do not trigger fallback. Verified against live Google Vision API endpoints.
+- **Errors:** Returns `IF-ANALYSIS-400` on low-confidence image quality rejection or malformed provider output.
 
 ### 1.5 `PATCH /api/projects/{project_id}/interfaces/{interface_id}`
 Edits interface profile type, dimensions, or candidate points.
@@ -66,6 +68,53 @@ Compiles canonical design schema into deterministic KCL code.
 - **Invariants:** Appends a new model revision in status `draft` (does NOT mark status `current` because Zoo has not executed it).
 - **Response (200 OK):** Returns `KCLCompileResult` (`success`, `kcl_code`, `artifact_ref`, `compiler_version`, `schema_revision`, `kcl_hash`, `preview_snippet`, `errors`, `warnings`).
 
+### 1.14 `POST /api/projects/{project_id}/generation/start`
+Starts a 3D model generation job using the active `EngineProvider` (defaults to `MockEngineProvider`).
+- **Body:** Optional `{ "mock_scenario": "success" }` (supports `success`, `engine_validation_failure`, `timeout`, `malformed_response`, `cancellation`, `preview_failure`).
+- **Response (201 Created):** Returns `GenerationJob` object with job ID, status (`queued`/`running`/`succeeded`/`failed`), current stage (`validating`/`compiling`/`executing`/`rendering`/`finalizing`), and progress percentage.
+- **Invariants:** Rejects duplicate active job if a job is already in progress (`IF-JOB-409`).
+
+### 1.15 `GET /api/projects/{project_id}/generation/{job_id}`
+Polls status and staged progress for a generation job.
+
+### 1.16 `POST /api/projects/{project_id}/generation/{job_id}/cancel`
+Requests cancellation of an active generation job. Reverts model state and preserves last known good.
+
+### 1.17 `POST /api/projects/{project_id}/generation/{job_id}/retry`
+Retries a failed or cancelled generation job.
+
+### 1.18 `GET /api/projects/{project_id}/generation/{job_id}/preview`
+Retrieves preview metadata (render SVG, volume cm³, bounding box mm, facet count).
+
+### 1.19 `POST /api/projects/{project_id}/exports/generate`
+Triggers CAD format export generation for requested format(s) (`stl`, `step`, `kcl`).
+- **Body:** `{ "formats": ["stl", "step", "kcl"], "mock_scenario": "success" }`
+- **Response (200 OK):** Returns `ExportStatusResponse` object containing per-format status, artifact references, file sizes, and revision numbers.
+- **Invariants:** Requires project state to be `model_current` and model revision to be `CURRENT`. Rejects stale models (`IF-STALE-400`). Handles partial failure without invalidating successful formats.
+
+### 1.20 `GET /api/projects/{project_id}/exports/status`
+Queries per-format export status and artifact metadata.
+- **Response (200 OK):** Returns `ExportStatusResponse`.
+
+### 1.21 `POST /api/projects/{project_id}/exports/{format_name}/retry`
+Retries export generation for a single failed format.
+
+### 1.22 `GET /api/projects/{project_id}/exports/{format_name}/download`
+Downloads verified export artifact file (`.stl`, `.step`, `.kcl`).
+- **Headers:** Requires `X-Project-Token`.
+- **Validations:** Token ownership, non-zero file size, binary/text format signature, and path traversal sanitization. Returns `FileResponse` with safe filename and content-type header.
+
+### 1.23 `POST /api/projects/{project_id}/revision/propose`
+Proposes structured parameter changes from natural language prompt using Zoo Agent API per S9.
+- **Body:** `{ "prompt": "Make it 20 mm longer.", "provider": "zoo" }`
+- **Enforces:** Allowlist gate (7 fields ONLY), numeric finiteness, unit normalization, geometric range validation. Does NOT mutate project state.
+- **Response (200 OK):** Returns `AgentProposalResult`.
+
+### 1.24 `POST /api/projects/{project_id}/revision/confirm`
+Confirms approved parameter changes, updates canonical schema, recompiles KCL, and triggers 3D model generation.
+- **Body:** `{ "changes": [...] }`
+- **Invariants:** Confirmation gate required. Preserves last-known-good model revision if 3D generation fails (ADR-005).
+
 ---
 
 ## 2. Stable Error Codes
@@ -74,30 +123,31 @@ Compiles canonical design schema into deterministic KCL code.
 | :--- | :--- | :--- | :--- |
 | **`IF-PROJ-404`** | 404 | Project ID not found | Verify project ID or create a new project |
 | **`IF-AUTH-401`** | 401 | Invalid or missing project token | Provide valid `X-Project-Token` header |
+| **`IF-ZOO-401`** | 401 | Missing or invalid Zoo API token | Configure `ZOO_API_TOKEN` in `backend/.env` |
 | **`IF-STATE-400`** | 400 | Invalid state transition | Complete prerequisite workflow steps |
 | **`IF-PREREQ-400`** | 400 | Missing prerequisite data/step | Fulfill required prerequisite state |
 | **`IF-APPROVAL-400`** | 400 | Invalid interface approval sequence | Approve Interface A before Interface B |
 | **`IF-CONN-400`** | 400 | Invalid connection or manufacturing config | Adjust parameters to satisfy geometric limits |
-| **`IF-CONN-001`** | 400 | Prerequisites unapproved | Approve Interface A and Interface B first |
-| **`IF-CONN-002`** | 400 | Unsupported connection mode | Choose coaxial, offset, or angled mode |
-| **`IF-CONN-003`** | 400 | Non-positive or non-finite transition length | Set transition length > 0 mm |
-| **`IF-CONN-004`** | 400 | Connection angle exceeds 45° limit | Reduce angle to 45° or less |
-| **`IF-CONN-005`** | 400 | Non-zero angle in coaxial or offset mode | Set angle to 0° or select angled mode |
-| **`IF-CONN-006`** | 400 | Offset-to-length ratio exceeds 1.5 | Increase length or decrease X/Y offset |
-| **`IF-CONN-007`** | 400 | Non-zero offsets in coaxial mode | Set X/Y offsets to 0 mm or select offset mode |
-| **`IF-CONN-008`** | 400 | Unsupported profile type for connection | Edit profile to circle/rectangle/rounded |
-| **`IF-CONN-009`** | 400 | Self-intersection risk detected | Reduce angle/offset or increase length |
-| **`IF-MFG-001`** | 400 | Non-positive or non-finite wall thickness | Set wall thickness > 0 mm |
-| **`IF-MFG-002`** | 400 | Wall thickness below 0.4 mm minimum | Set wall thickness >= 0.8 mm |
-| **`IF-MFG-003`** | 400 | Clearance outside 0.0 - 5.0 mm bounds | Set clearance between 0.0 and 5.0 mm |
-| **`IF-MFG-004`** | 400 | Internal passage collapsed by wall thickness | Reduce wall thickness relative to interface size |
+| **`IF-AGENT-400`** | 400 | Agent revision validation or allowlist error | Provide parameter adjustment within allowed 7 fields |
+| **`IF-AGENT-500`** | 500 | Agent API connection or timeout error | Retry revision proposal or check network connectivity |
+| **`IF-JOB-409`** | 409 | Active generation job already in progress | Wait for active job or cancel it before starting new job |
+
+| **`IF-ENG-001`** | 400 | Zoo Engine validation failure | Adjust adapter thickness or connection mode |
+| **`IF-ENG-002`** | 400 | Zoo Engine execution timeout | Retry generation or simplify geometry |
+| **`IF-ENG-003`** | 400 | Zoo Engine malformed response | Retry request or check API payload structure |
+| **`IF-ENG-004`** | 400 | Zoo Engine preview rendering failure | Retry model generation and check mesh topology |
+| **`IF-JOB-002`** | 400 | Generation job cancelled by user | Start new generation job when ready |
 | **`IF-KCL-001`** | 400 | Unsupported profile type for KCL compilation | Edit profile to circle, rectangle, or rounded rectangle |
 | **`IF-KCL-002`** | 400 | Non-finite parameter value in compilation | Provide valid finite numeric parameters |
 | **`IF-KCL-003`** | 400 | Unapproved interface prerequisites for KCL | Approve Interface A and Interface B before compilation |
 | **`IF-KCL-004`** | 400 | Connection validation failure prior to KCL | Resolve blocking connection/mfg errors first |
 | **`IF-KCL-006`** | 400 | Schema revision mismatch during KCL emit | Re-synchronize canonical schema parameters |
+| **`IF-EXPORT-001`** | 400 | Export generation failed | Retry format export or check provider status |
+| **`IF-EXPORT-002`** | 400 | Unsupported export format requested | Select a supported format (stl, step, kcl) |
+| **`IF-EXPORT-004`** | 404 | Export artifact missing or zero-byte | Re-trigger export generation for format |
 | **`IF-FILE-400`** | 400 | Invalid file upload | Upload valid PNG/JPEG/WEBP under 10MB |
 | **`IF-ANALYSIS-400`** | 400 | Image quality rejected | Upload clearer image facing interface directly |
 | **`IF-STALE-400`** | 400 | Operation attempted on stale model | Re-generate 3D model with updated params |
 | **`IF-SCHEMA-400`** | 400 | Schema version mismatch | Use supported schema version `0.1` |
+
 

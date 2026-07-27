@@ -12,7 +12,8 @@ InterfaceForge uses a modular monolith design containing a FastAPI backend and a
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ React / TypeScript Frontend                                              │
-│ - Global App Shell & Step Navigation                                     │
+│ - Global App Shell & Step Navigation (`src/components/StepNavigation`)    │
+│ - Session Hydration & Route Guards (`src/components/ProtectedRoute`)    │
 │ - Typed API Client (`src/services/api.ts`) & Schema Contracts (`types`)  │
 └────────────────────────────────────┬─────────────────────────────────────┘
                                      │ HTTP REST (JSON Envelopes)
@@ -20,7 +21,7 @@ InterfaceForge uses a modular monolith design containing a FastAPI backend and a
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ FastAPI Backend (`backend/app`)                                          │
 │                                                                          │
-│  [API Layer]           `app/api/routes/projects.py`                      │
+│  [API Layer]           `app/api/routes/projects.py`, `generation.py`    │
 │                               │                                          │
 │  [Service Layer]       `app/services/project_service.py`                 │
 │                        - Invariant enforcement & workflow state machine  │
@@ -56,10 +57,11 @@ Stage S4A introduces the decoupled `AnalysisProvider` abstraction:
                                      │
          ┌───────────────────────────┴───────────────────────────┐
          ▼                                                       ▼
-MockAnalysisProvider (S4A Active)                        GeminiAnalysisProvider (Future S4B+)
-- Deterministic profile extraction                       - Real multimodal LLM contour extraction
-- Returns circle, rect, rounded rect                      - Structured JSON schema enforcement
-- Rejection on poor image quality                        - Fallback to mock on network failure
+GeminiAnalysisProvider (Active in S7)                     MockAnalysisProvider (Fallback)
+- Real multimodal Gemini 2.5 Flash vision extraction     - Deterministic candidate profile generation
+- Versioned prompt template (v1.0)                       - Configurable offline/demo provider
+- Strict JSON schema & finite value validation           - Safe fallback when key is unconfigured
+- Honest low-confidence quality rejection (< 0.60)       - Selected via ANALYSIS_PROVIDER=mock
 ```
 
 ### Upload Pipeline & Security Controls
@@ -68,8 +70,6 @@ MockAnalysisProvider (S4A Active)                        GeminiAnalysisProvider 
 2. **Path Traversal Protection:** Base name sanitization (`os.path.basename`) and `target_path.startswith(abs_upload_dir)` validation.
 3. **Image Corruption Prevention:** Dual-pass Pillow decoding (`Image.open().verify()` and `load()`) to prevent image bomb attacks.
 4. **State Transition Enforcement:** `interface_a_uploaded` and `interface_b_uploaded` state progression; Interface B upload requires approved Interface A (`IF-PREREQ-400`).
-
----
 
 ---
 
@@ -105,4 +105,76 @@ Per **ADR-001** and **ADR-002**, Stage S5A introduces a dedicated, deterministic
 - **Visual Theme:** Restrained dark theme with high-contrast neon-green accent tokens (`--accent-neon-green: #00e676`).
 - **Logo System:** Full SVG logo (`InterfaceForge_logo.svg`) for landing page and wide desktop header; compact logo mark (`InterfaceForge_logo_in.svg`) for narrow screens, loading states, and app favicon.
 - **Accessibility Baseline:** Non-color-only status indicators (`✓ [VALID]`, `⚠️ [WARNING]`, `⛔ [ERROR]`), visible focus ring (`:focus-visible`), and standard GFM contrast thresholds per **ADR-014**.
+
+---
+
+## 7. Zoo Engine Provider Abstraction & Generation Pipeline (Stage S6)
+
+Per **ADR-005**, **ADR-006**, and **ADR-009**, Stage S6 implements live 3D execution via `ZooEngineProvider` behind the `EngineProvider` abstract contract.
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│ GenerationJobService (`app/services/generation_job_service.py`)         │
+│ - Enforces single active job per project (IF-JOB-409 duplicate rejection) │
+│ - Preserves last-known-good model revision (ADR-005)                    │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+         ┌───────────────────────────┴───────────────────────────┐
+         ▼                                                       ▼
+ZooEngineProvider (Active in S6)                        MockEngineProvider (Fallback)
+- Live WebSocket modeling API                             - Deterministic staged progress
+- Endpoint: wss://api.zoo.dev/ws/modeling/commands        - 6 test scenarios (success, timeout, etc.)
+- Bearer auth from backend/.env                           - Offline development mode
+- Secret redaction (redact_secrets)                       - Configurable via ENGINE_PROVIDER=mock
+```
+
+---
+
+## 8. Full Web App Workflow & Route Integration Architecture (Stage S6A)
+
+Stage S6A connects all individual page components into one end-to-end web application workflow:
+
+1. **Session Hydration:** Active `project_id` & `project_token` stored in `sessionStorage`. Asynchronous hydration on mount via `fetchProject`.
+2. **Server-Side & Client-Side Route Guards (`ProtectedRoute.tsx`):** Computes `getEarliestIncompleteStep(project)`. Redirects invalid direct URL access automatically.
+3. **Stale Model Handling:** Upstream edits to approved interfaces or connection parameters set model state to `STALE` and trigger warning notices on Step 4 and Step 5.
+4. **Preservation of Last-Known-Good Model:** Failed generation attempts preserve `last_known_good_model_revision` without overwriting active model state.
+5. **Honest Export Placeholder (`ResultPage.tsx`):** Explicitly states that real STL/STEP binary exports will run via live Zoo Engine in Stage S6 while making deterministic KCL code artifacts available for download and copying.
+
+---
+
+## 9. Bounded Zoo Agent API Revision Architecture (Stage S9)
+
+Stage S9 integrates natural language model revisions via `ZooAgentProvider` behind the `AgentProvider` abstraction:
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│ User Natural Language Input (ResultPage.tsx Revision Panel)               │
+│ - "Make it 20 mm longer", "Move outlet 10 mm right and 5 mm up"           │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │ POST /api/projects/{id}/revision/propose
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ AgentService (`app/services/agent_service.py`)                           │
+│  - Fetches active project schema & trusted parameter values               │
+│  - Queries `AgentProvider` (`ZooAgentProvider` or `MockAgentProvider`)   │
+│  - Server-side allowlist check (7 allowed connection/mfg fields ONLY)    │
+│  - Parametric range & engineering validation (`connection_validation`)    │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │ Returns AgentProposalResult (Unapplied)
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ User Confirmation Gate (`ResultPage.tsx`)                                │
+│ - Displays summary, before/after value table, and validation warnings     │
+│ - Requires explicit user click on "Confirm Revision"                      │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │ POST /api/projects/{id}/revision/confirm
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Schema Patch, KCL Compilation & 3D Generation Pipeline                   │
+│ - Updates canonical project schema & increments current_schema_revision  │
+│ - Compiles deterministic KCL (`kcl_compiler.py`)                         │
+│ - Initiates 3D generation job (`GenerationJobService`)                   │
+│ - Preserves last-known-good model revision if 3D generation fails        │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 

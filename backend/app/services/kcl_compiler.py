@@ -8,6 +8,7 @@ import hashlib
 import math
 import os
 from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 from app.models.schema import (
@@ -74,15 +75,22 @@ def _validate_finite_numbers(project: Project) -> List[ValidationIssue]:
             )
 
     # Check interface dimensions
-    for iface_name, iface in [("Interface A", project.interface_a), ("Interface B", project.interface_b)]:
+    for iface_name, iface in [
+        ("Interface A", project.interface_a),
+        ("Interface B", project.interface_b),
+    ]:
         for d in iface.dimensions:
             if not math.isfinite(d.value):
                 issues.append(
                     ValidationIssue(
                         id="IF-KCL-002",
-                        message=f"{iface_name} dimension '{d.id}' must be a finite numerical value.",
+                        message=(
+                            f"{iface_name} dimension '{d.id}' must be a finite numerical value."
+                        ),
                         field=f"{iface_name.lower().replace(' ', '_')}.{d.id}",
-                        recovery_steps=["Ensure all interface dimensions have finite numeric values."],
+                        recovery_steps=[
+                            "Ensure all interface dimensions have finite numeric values."
+                        ],
                     )
                 )
 
@@ -99,38 +107,66 @@ def _generate_sketch_kcl(
     clearance: float,
     wall_thickness: float,
 ) -> str:
-    """Generates KCL code string for a single profile sketch (circle, rectangle, rounded rectangle)."""
+    """Generates KCL code string for a single profile sketch."""
     p_type = iface.profile_type
     lines: List[str] = []
 
     if p_type == ProfileType.CIRCLE:
         outer_dia = _get_dim_val(iface, "outer_diameter", 50.0)
         if prefix.startswith("a"):
-            eff_dia = outer_dia + (2.0 * clearance) if is_outer else outer_dia + (2.0 * clearance) - (2.0 * wall_thickness)
+            eff_dia = (
+                outer_dia + (2.0 * clearance)
+                if is_outer
+                else outer_dia + (2.0 * clearance) - (2.0 * wall_thickness)
+            )
         else:
-            eff_dia = outer_dia - (2.0 * clearance) if is_outer else outer_dia - (2.0 * clearance) - (2.0 * wall_thickness)
+            eff_dia = (
+                outer_dia - (2.0 * clearance)
+                if is_outer
+                else outer_dia - (2.0 * clearance) - (2.0 * wall_thickness)
+            )
 
         radius = eff_dia / 2.0
         lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
-        lines.append(f"  |> circle(center = [{offset_x:.3f}, {offset_y:.3f}], radius = {radius:.3f})")
+        lines.append(
+            f"  |> circle(center = [{offset_x:.3f}, {offset_y:.3f}], radius = {radius:.3f})"
+        )
 
     elif p_type in (ProfileType.RECTANGLE, ProfileType.ROUNDED_RECTANGLE):
         w = _get_dim_val(iface, "width", 50.0)
         h = _get_dim_val(iface, "height", 50.0)
 
         if prefix.startswith("a"):
-            eff_w = w + (2.0 * clearance) if is_outer else w + (2.0 * clearance) - (2.0 * wall_thickness)
-            eff_h = h + (2.0 * clearance) if is_outer else h + (2.0 * clearance) - (2.0 * wall_thickness)
+            eff_w = (
+                w + (2.0 * clearance)
+                if is_outer
+                else w + (2.0 * clearance) - (2.0 * wall_thickness)
+            )
+            eff_h = (
+                h + (2.0 * clearance)
+                if is_outer
+                else h + (2.0 * clearance) - (2.0 * wall_thickness)
+            )
         else:
-            eff_w = w - (2.0 * clearance) if is_outer else w - (2.0 * clearance) - (2.0 * wall_thickness)
-            eff_h = h - (2.0 * clearance) if is_outer else h - (2.0 * clearance) - (2.0 * wall_thickness)
+            eff_w = (
+                w - (2.0 * clearance)
+                if is_outer
+                else w - (2.0 * clearance) - (2.0 * wall_thickness)
+            )
+            eff_h = (
+                h - (2.0 * clearance)
+                if is_outer
+                else h - (2.0 * clearance) - (2.0 * wall_thickness)
+            )
 
         half_w = eff_w / 2.0
         half_h = eff_h / 2.0
 
         if p_type == ProfileType.RECTANGLE:
             lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
-            lines.append(f"  |> startProfileAt([{offset_x - half_w:.3f}, {offset_y - half_h:.3f}], %)")
+            lines.append(
+                f"  |> startProfileAt([{offset_x - half_w:.3f}, {offset_y - half_h:.3f}], %)"
+            )
             lines.append(f"  |> lineTo([{offset_x + half_w:.3f}, {offset_y - half_h:.3f}], %)")
             lines.append(f"  |> lineTo([{offset_x + half_w:.3f}, {offset_y + half_h:.3f}], %)")
             lines.append(f"  |> lineTo([{offset_x - half_w:.3f}, {offset_y + half_h:.3f}], %)")
@@ -140,15 +176,25 @@ def _generate_sketch_kcl(
             r = _get_dim_val(iface, "corner_radius", 5.0)
             r = min(r, half_w * 0.8, half_h * 0.8)  # prevent over-filleting
             lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
-            lines.append(f"  |> startProfileAt([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)")
+            lines.append(
+                f"  |> startProfileAt([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)"
+            )
             lines.append(f"  |> lineTo([{offset_x + half_w - r:.3f}, {offset_y - half_h:.3f}], %)")
-            lines.append(f"  |> tangentialArcTo([{offset_x + half_w:.3f}, {offset_y - half_h + r:.3f}], %)")
+            lines.append(
+                f"  |> tangentialArcTo([{offset_x + half_w:.3f}, {offset_y - half_h + r:.3f}], %)"
+            )
             lines.append(f"  |> lineTo([{offset_x + half_w:.3f}, {offset_y + half_h - r:.3f}], %)")
-            lines.append(f"  |> tangentialArcTo([{offset_x + half_w - r:.3f}, {offset_y + half_h:.3f}], %)")
+            lines.append(
+                f"  |> tangentialArcTo([{offset_x + half_w - r:.3f}, {offset_y + half_h:.3f}], %)"
+            )
             lines.append(f"  |> lineTo([{offset_x - half_w + r:.3f}, {offset_y + half_h:.3f}], %)")
-            lines.append(f"  |> tangentialArcTo([{offset_x - half_w:.3f}, {offset_y + half_h - r:.3f}], %)")
+            lines.append(
+                f"  |> tangentialArcTo([{offset_x - half_w:.3f}, {offset_y + half_h - r:.3f}], %)"
+            )
             lines.append(f"  |> lineTo([{offset_x - half_w:.3f}, {offset_y - half_h + r:.3f}], %)")
-            lines.append(f"  |> tangentialArcTo([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)")
+            lines.append(
+                f"  |> tangentialArcTo([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)"
+            )
             lines.append("  |> close(%)")
 
     return "\n".join(lines)
@@ -194,7 +240,10 @@ def compile_project_to_kcl(
         )
 
     # 2. Unsupported profile type check (traced_closed)
-    for iface_name, iface in [("Interface A", project.interface_a), ("Interface B", project.interface_b)]:
+    for iface_name, iface in [
+        ("Interface A", project.interface_a),
+        ("Interface B", project.interface_b),
+    ]:
         if iface.profile_type == ProfileType.TRACED_CLOSED:
             return KCLCompileResult(
                 success=False,
@@ -203,9 +252,14 @@ def compile_project_to_kcl(
                 errors=[
                     ValidationIssue(
                         id="IF-KCL-001",
-                        message=f"{iface_name} profile type 'traced_closed' is not supported by KCL compiler.",
+                        message=(
+                            f"{iface_name} profile type 'traced_closed' "
+                            "is not supported by KCL compiler."
+                        ),
                         field=iface_name.lower().replace(" ", "_"),
-                        recovery_steps=["Re-edit profile to circle, rectangle, or rounded rectangle."],
+                        recovery_steps=[
+                            "Re-edit profile to circle, rectangle, or rounded rectangle."
+                        ],
                     )
                 ],
             )
@@ -311,9 +365,11 @@ def compile_project_to_kcl(
         rad = math.radians(conn.angle_deg)
         cos_a = math.cos(rad)
         sin_a = math.sin(rad)
-        kcl_lines.append(
-            f"const top_plane = plane(origin = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}, {conn.length_mm:.3f}], xAxis = [1.0, 0.0, 0.0], yAxis = [0.0, {cos_a:.5f}, {sin_a:.5f}])"
+        top_orig = (
+            f"origin = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}, {conn.length_mm:.3f}]"
         )
+        top_axes = f"xAxis = [1.0, 0.0, 0.0], yAxis = [0.0, {cos_a:.5f}, {sin_a:.5f}]"
+        kcl_lines.append(f"const top_plane = plane({top_orig}, {top_axes})")
         top_plane_var = "top_plane"
         top_offset_x = 0.0
         top_offset_y = 0.0
@@ -325,15 +381,45 @@ def compile_project_to_kcl(
 
     kcl_lines.append("")
     kcl_lines.append("// Outer Profiles")
-    kcl_lines.append(_generate_sketch_kcl(if_a, "outer_a", base_plane, 0.0, 0.0, True, mfg.clearance_a_mm, mfg.wall_thickness_mm))
-    kcl_lines.append(_generate_sketch_kcl(if_b, "outer_b", top_plane_var, top_offset_x, top_offset_y, True, mfg.clearance_b_mm, mfg.wall_thickness_mm))
+    kcl_lines.append(
+        _generate_sketch_kcl(
+            if_a, "outer_a", base_plane, 0.0, 0.0, True, mfg.clearance_a_mm, mfg.wall_thickness_mm
+        )
+    )
+    kcl_lines.append(
+        _generate_sketch_kcl(
+            if_b,
+            "outer_b",
+            top_plane_var,
+            top_offset_x,
+            top_offset_y,
+            True,
+            mfg.clearance_b_mm,
+            mfg.wall_thickness_mm,
+        )
+    )
     kcl_lines.append("")
     kcl_lines.append("const outer_solid = loft([sketch_outer_a, sketch_outer_b])")
 
     kcl_lines.append("")
     kcl_lines.append("// Inner Profiles")
-    kcl_lines.append(_generate_sketch_kcl(if_a, "inner_a", base_plane, 0.0, 0.0, False, mfg.clearance_a_mm, mfg.wall_thickness_mm))
-    kcl_lines.append(_generate_sketch_kcl(if_b, "inner_b", top_plane_var, top_offset_x, top_offset_y, False, mfg.clearance_b_mm, mfg.wall_thickness_mm))
+    kcl_lines.append(
+        _generate_sketch_kcl(
+            if_a, "inner_a", base_plane, 0.0, 0.0, False, mfg.clearance_a_mm, mfg.wall_thickness_mm
+        )
+    )
+    kcl_lines.append(
+        _generate_sketch_kcl(
+            if_b,
+            "inner_b",
+            top_plane_var,
+            top_offset_x,
+            top_offset_y,
+            False,
+            mfg.clearance_b_mm,
+            mfg.wall_thickness_mm,
+        )
+    )
     kcl_lines.append("")
     kcl_lines.append("const inner_void = loft([sketch_inner_a, sketch_inner_b])")
     kcl_lines.append("")
@@ -351,7 +437,9 @@ def compile_project_to_kcl(
         artifacts_dir = os.path.join(os.getcwd(), "artifacts")
 
     os.makedirs(artifacts_dir, exist_ok=True)
-    filename = f"kcl_{project.project_id[:8]}_rev{project.current_schema_revision}_{kcl_hash[:8]}.kcl"
+    filename = (
+        f"kcl_{project.project_id[:8]}_rev{project.current_schema_revision}_{kcl_hash[:8]}.kcl"
+    )
     filepath = os.path.join(artifacts_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:

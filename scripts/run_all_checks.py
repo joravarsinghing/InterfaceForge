@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
 def get_venv_python() -> str:
     scripts_dir = REPO_ROOT / "venv" / ("Scripts" if os.name == "nt" else "bin")
     python_exe = scripts_dir / ("python.exe" if os.name == "nt" else "python")
@@ -20,9 +21,9 @@ def get_venv_python() -> str:
 
 
 def run_step(name: str, cmd: list[str], cwd: Path, env: dict = None) -> None:
-    print(f"\n==========================================")
+    print("\n==========================================")
     print(f"Executing: {name}")
-    print(f"==========================================")
+    print("==========================================")
     res = subprocess.run(cmd, cwd=cwd, env=env)
     if res.returncode != 0:
         print(f"[FAIL] FAILED step: {name}")
@@ -42,13 +43,35 @@ if __name__ == "__main__":
     backend_env["PYTHONPATH"] = str(backend_dir)
 
     # 1. Repository Audit
-    run_step("Repository Governance Audit", [python_cmd, "scripts/audit_repository.py"], REPO_ROOT)
+    run_step(
+        "Repository Governance Audit",
+        [python_cmd, "scripts/audit_repository.py"],
+        REPO_ROOT,
+    )
 
     # 2. Backend Checks
-    run_step("Backend Ruff Lint Check", [python_cmd, "-m", "ruff", "check", "app", "tests"], backend_dir)
-    run_step("Backend Ruff Format Check", [python_cmd, "-m", "ruff", "format", "--check", "app", "tests"], backend_dir)
-    run_step("Backend Mypy Type Check", [python_cmd, "-m", "mypy", "--explicit-package-bases", "app"], backend_dir, env=backend_env)
-    run_step("Backend Pytest Suite", [python_cmd, "-m", "pytest", "tests"], backend_dir, env=backend_env)
+    run_step(
+        "Backend Ruff Lint Check",
+        [python_cmd, "-m", "ruff", "check", "app", "tests"],
+        backend_dir,
+    )
+    run_step(
+        "Backend Ruff Format Check",
+        [python_cmd, "-m", "ruff", "format", "--check", "app", "tests"],
+        backend_dir,
+    )
+    run_step(
+        "Backend Mypy Type Check",
+        [python_cmd, "-m", "mypy", "--explicit-package-bases", "app"],
+        backend_dir,
+        env=backend_env,
+    )
+    run_step(
+        "Backend Pytest Suite",
+        [python_cmd, "-m", "pytest", "tests"],
+        backend_dir,
+        env=backend_env,
+    )
 
     # 3. Frontend Checks
     run_step("Frontend Vitest Suite", [npm_cmd, "test"], frontend_dir)

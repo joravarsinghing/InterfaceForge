@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
 def get_venv_python() -> str:
     scripts_dir = REPO_ROOT / "venv" / ("Scripts" if os.name == "nt" else "bin")
     python_exe = scripts_dir / ("python.exe" if os.name == "nt" else "python")
@@ -17,6 +18,7 @@ def get_venv_python() -> str:
     if python_alt.exists():
         return str(python_alt)
     return sys.executable
+
 
 if __name__ == "__main__":
     python_cmd = get_venv_python()

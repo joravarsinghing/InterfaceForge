@@ -2,20 +2,26 @@
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, File, Header, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.models.schema import (
     ConnectionConfigRequest,
     ConnectionUpdateRequest,
     ExportCompleteRequest,
+    ExportGenerateRequest,
     InterfacePatchRequest,
     ManufacturingUpdateRequest,
     ModelFailRequest,
     ModelSucceedRequest,
     ProjectCreateResponse,
     ProjectPatchRequest,
+    RevisionConfirmRequest,
+    RevisionProposeRequest,
 )
+from app.services.agent_service import get_agent_service
+from app.services.analysis_provider import get_analysis_provider
 from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -127,13 +133,18 @@ async def upload_interface_image(
 def analyze_interface_image(
     project_id: str,
     interface_id: str,
+    provider: Optional[str] = Query(
+        None, description="Optional provider override ('mock' or 'gemini')"
+    ),
     x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
 ) -> Dict[str, Any]:
     """Run mock or AI analysis on uploaded interface image to extract profile candidates."""
     service = get_service()
+    active_provider = get_analysis_provider(provider) if provider else None
     result = service.analyze_interface_image(
         project_id=project_id,
         interface_id=interface_id,
+        provider=active_provider,
         project_token=x_project_token,
     )
     return {"success": True, "data": result.model_dump()}
@@ -344,6 +355,75 @@ def complete_export(
     return {"success": True, "data": project.model_dump()}
 
 
+@router.post("/{project_id}/exports/generate", response_model=StandardResponse)
+async def generate_exports(
+    project_id: str,
+    req: Optional[ExportGenerateRequest] = None,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Generate requested format exports (STL, STEP, KCL) per S8."""
+    service = get_service()
+    formats = req.formats if req and req.formats else ["stl", "step", "kcl"]
+    mock_scenario = req.mock_scenario if req else None
+    result = await service.generate_exports(
+        project_id=project_id,
+        formats=formats,
+        project_token=x_project_token,
+        mock_scenario=mock_scenario,
+    )
+    return {"success": True, "data": result.model_dump()}
+
+
+@router.get("/{project_id}/exports/status", response_model=StandardResponse)
+def get_export_status(
+    project_id: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Get per-format export status and metadata per S8."""
+    service = get_service()
+    result = service.get_export_status(
+        project_id=project_id,
+        project_token=x_project_token,
+    )
+    return {"success": True, "data": result.model_dump()}
+
+
+@router.post("/{project_id}/exports/{format_name}/retry", response_model=StandardResponse)
+async def retry_format_export(
+    project_id: str,
+    format_name: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Retry export generation for a single failed format per S8."""
+    service = get_service()
+    result = await service.generate_exports(
+        project_id=project_id,
+        formats=[format_name],
+        project_token=x_project_token,
+    )
+    return {"success": True, "data": result.model_dump()}
+
+
+@router.get("/{project_id}/exports/{format_name}/download")
+def download_export_artifact(
+    project_id: str,
+    format_name: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> FileResponse:
+    """Download verified export artifact file per S8."""
+    service = get_service()
+    file_path, filename, media_type = service.download_export_artifact(
+        project_id=project_id,
+        format_name=format_name,
+        project_token=x_project_token,
+    )
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type=media_type,
+    )
+
+
 @router.get("/{project_id}/kcl/readiness", response_model=StandardResponse)
 def validate_kcl_readiness(
     project_id: str,
@@ -371,3 +451,45 @@ def compile_kcl(
     )
     return {"success": result.success, "data": result.model_dump()}
 
+
+@router.post("/{project_id}/revision/propose", response_model=StandardResponse)
+async def propose_revision(
+    project_id: str,
+    req: RevisionProposeRequest,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Propose structured natural language parameter revisions per Stage S9."""
+    service = get_service()
+    service.get_project(project_id, project_token=x_project_token)
+    agent_svc = get_agent_service()
+    proposal = await agent_svc.propose_revision(
+        project_id=project_id,
+        prompt=req.prompt,
+        provider_name=req.provider,
+    )
+    return {"success": True, "data": proposal.model_dump()}
+
+
+@router.post("/{project_id}/revision/confirm", response_model=StandardResponse)
+async def confirm_revision(
+    project_id: str,
+    req: RevisionConfirmRequest,
+    mock_scenario: Optional[str] = Query("success"),
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Confirm parameter changes, patch schema, recompile KCL, and start 3D generation per S9."""
+    service = get_service()
+    service.get_project(project_id, project_token=x_project_token)
+    agent_svc = get_agent_service()
+    project, job = await agent_svc.confirm_revision(
+        project_id=project_id,
+        changes=req.changes,
+        mock_scenario=mock_scenario or "success",
+    )
+    return {
+        "success": True,
+        "data": {
+            "project": project.model_dump(),
+            "job": job,
+        },
+    }

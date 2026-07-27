@@ -1,0 +1,46 @@
+// InterfaceForge — Deterministic KCL Adapter Model
+// Compiler Version: 1.0.0
+// Schema Version: 0.1
+// Schema Revision: 1
+// Units: Millimeters (mm)
+
+@settings(defaultLengthUnit = mm)
+
+// --- Interface A Parameters ---
+const interface_a_type = "circle"
+const interface_a_outer_diameter_mm = 60.000
+const interface_a_clearance_mm = 0.000
+
+// --- Interface B Parameters ---
+const interface_b_type = "circle"
+const interface_b_outer_diameter_mm = 40.000
+const interface_b_clearance_mm = 0.000
+
+// --- Connection & Manufacturing Parameters ---
+const connection_mode = "angled"
+const transition_length_mm = 90.000
+const wall_thickness_mm = 2.400
+const offset_x_mm = 0.000
+const offset_y_mm = 0.000
+const angle_deg = 25.000
+
+// --- 3D Geometry Construction ---
+const top_plane = plane(origin = [0.000, 0.000, 90.000], xAxis = [1.0, 0.0, 0.0], yAxis = [0.0, 0.90631, 0.42262])
+
+// Outer Profiles
+const sketch_outer_a = startSketchOn('XY')
+  |> circle(center = [0.000, 0.000], radius = 30.000)
+const sketch_outer_b = startSketchOn(top_plane)
+  |> circle(center = [0.000, 0.000], radius = 20.000)
+
+const outer_solid = loft([sketch_outer_a, sketch_outer_b])
+
+// Inner Profiles
+const sketch_inner_a = startSketchOn('XY')
+  |> circle(center = [0.000, 0.000], radius = 27.600)
+const sketch_inner_b = startSketchOn(top_plane)
+  |> circle(center = [0.000, 0.000], radius = 17.600)
+
+const inner_void = loft([sketch_inner_a, sketch_inner_b])
+
+const adapter_model = subtract(outer_solid, tools = [inner_void])

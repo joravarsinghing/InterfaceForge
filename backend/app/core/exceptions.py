@@ -146,6 +146,48 @@ class StaleModelOperationError(APIError):
         )
 
 
+class ExportFailedError(APIError):
+    """Raised when CAD format export generation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        error_id: str = "IF-EXPORT-001",
+        recovery_steps: Optional[List[str]] = None,
+    ) -> None:
+        super().__init__(
+            error_id=error_id,
+            message=message,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            recovery_steps=recovery_steps
+            or ["Retry export for the failed format or check geometry parameters."],
+        )
+
+
+class UnsupportedExportFormatError(APIError):
+    """Raised when an unsupported export format is requested."""
+
+    def __init__(self, fmt: str) -> None:
+        super().__init__(
+            error_id="IF-EXPORT-002",
+            message=f"Unsupported export format '{fmt}'. Supported formats are: stl, step, kcl.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            recovery_steps=["Select a supported export format (stl, step, kcl)."],
+        )
+
+
+class ExportArtifactNotFoundError(APIError):
+    """Raised when a requested export artifact file is missing or corrupted."""
+
+    def __init__(self, message: str = "Export artifact not found or corrupted.") -> None:
+        super().__init__(
+            error_id="IF-EXPORT-004",
+            message=message,
+            status_code=status.HTTP_404_NOT_FOUND,
+            recovery_steps=["Re-trigger export generation for this format."],
+        )
+
+
 class SchemaVersionMismatchError(APIError):
     """Raised when an unsupported schema version is supplied."""
 

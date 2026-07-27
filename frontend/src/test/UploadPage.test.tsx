@@ -76,10 +76,23 @@ describe('UploadPage Component', () => {
     );
 
     expect(screen.getByText('Interface A — Upload Image or Sketch')).toBeInTheDocument();
-    expect(screen.getByText('Drag & drop your interface image here')).toBeInTheDocument();
+    expect(screen.getByText(/Drag & drop your interface image here/i)).toBeInTheDocument();
     expect(screen.getByText('Image Guidance')).toBeInTheDocument();
-    expect(screen.getByText('GOOD')).toBeInTheDocument();
-    expect(screen.getByText('BAD')).toBeInTheDocument();
+    expect(screen.getByText(/GOOD CAPTURE/i)).toBeInTheDocument();
+    expect(screen.getByText(/BAD CAPTURE/i)).toBeInTheDocument();
+  });
+
+  it('supports keyboard navigation and activation on Choose Image label', () => {
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const chooseLabel = screen.getByText('Choose Image File');
+    expect(chooseLabel).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(chooseLabel, { key: 'Enter', code: 'Enter' });
+    fireEvent.keyDown(chooseLabel, { key: ' ', code: 'Space' });
   });
 
   it('shows prerequisite warning when Interface B is opened before Interface A is approved', () => {

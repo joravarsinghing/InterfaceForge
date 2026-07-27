@@ -40,17 +40,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   return (
     <div className="landing-page">
-      {/* Implementation Notice Alert */}
-      <div className="notice-banner" role="status">
-        <div className="notice-content">
-          <span className="notice-badge">STAGE S4A IMAGE UPLOAD & MOCK ANALYSIS</span>
-          <p>
-            <strong>Image Upload & Mock Analysis Active:</strong> Upload images for Interface A and B, 
-            receive deterministic profile analysis results, and review extracted parameters.
-          </p>
-        </div>
-      </div>
-
       {/* Hero Section */}
       <section className="hero-section" aria-labelledby="hero-heading">
         <div className="hero-container">
@@ -71,63 +60,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {starting ? 'Initializing Project...' : 'Start New Project'}
             </button>
           </div>
-        </div>
-      </section>
-
-
-      {/* Backend Status Card */}
-      <section className="status-section" aria-labelledby="status-heading">
-        <h2 id="status-heading" className="section-title">Backend Architecture Connection</h2>
-        <div className="status-card">
-          {healthState.loading && (
-            <div className="status-state loading" aria-live="polite">
-              <div className="spinner"></div>
-              <p>Connecting to FastAPI backend endpoint at <code>/health</code>...</p>
-            </div>
-          )}
-
-          {healthState.error && (
-            <div className="status-state offline" aria-live="polite">
-              <div className="status-icon">⚠️</div>
-              <div className="status-details">
-                <h3>Backend Service Unavailable</h3>
-                <p>Could not reach the local FastAPI server at <code>http://localhost:8000/health</code>.</p>
-                <p className="error-message">Error details: {healthState.error}</p>
-                <div className="status-actions">
-                  <button className="btn btn-secondary" onClick={onRetryHealth}>
-                    Retry Connection
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {healthState.data && (
-            <div className="status-state online" aria-live="polite">
-              <div className="status-icon">✅</div>
-              <div className="status-details">
-                <h3>Backend Service Connected & Healthy</h3>
-                <div className="health-grid">
-                  <div className="health-item">
-                    <span className="health-label">Service Name</span>
-                    <span className="health-value">{healthState.data.service_name}</span>
-                  </div>
-                  <div className="health-item">
-                    <span className="health-label">Status</span>
-                    <span className="health-value status-ok">{healthState.data.status}</span>
-                  </div>
-                  <div className="health-item">
-                    <span className="health-label">Environment</span>
-                    <span className="health-value">{healthState.data.environment}</span>
-                  </div>
-                  <div className="health-item">
-                    <span className="health-label">API Version</span>
-                    <span className="health-value">{healthState.data.version}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </section>
 
@@ -165,7 +97,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Sample Examples Preview */}
       <section className="examples-section" aria-labelledby="examples-heading">
-        <h2 id="examples-heading" className="section-title">Example Applications (Planned)</h2>
+        <h2 id="examples-heading" className="section-title">Example Applications</h2>
         <div className="examples-grid">
           <div className="example-card">
             <h3>Vacuum Hose Adapter</h3>
@@ -179,6 +111,67 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Low-Emphasis Collapsible Backend & Developer Status */}
+      <details className="dev-status-details">
+        <summary className="dev-status-summary">
+          <span>⚙️ System Architecture &amp; Backend Status</span>
+          <span className="dev-status-indicator">
+            {healthState.data ? '● Service Connected' : healthState.loading ? '○ Checking...' : '⚠️ Service Offline'}
+          </span>
+        </summary>
+        <div className="status-card" style={{ marginTop: '16px' }}>
+          {healthState.loading && (
+            <div className="status-state loading" aria-live="polite">
+              <div className="spinner"></div>
+              <p>Connecting to FastAPI backend endpoint at <code>/health</code>...</p>
+            </div>
+          )}
+
+          {healthState.error && (
+            <div className="status-state offline" aria-live="polite">
+              <div className="status-icon">⚠️</div>
+              <div className="status-details">
+                <h3>Backend Service Unavailable</h3>
+                <p>Could not reach local FastAPI server at <code>http://localhost:8000/health</code>.</p>
+                <p className="error-message">Error details: {healthState.error}</p>
+                <div className="status-actions">
+                  <button type="button" className="btn btn-secondary" onClick={onRetryHealth}>
+                    Retry Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthState.data && (
+            <div className="status-state online" aria-live="polite">
+              <div className="status-icon">✅</div>
+              <div className="status-details">
+                <h3>Backend Service Connected &amp; Healthy</h3>
+                <div className="health-grid">
+                  <div className="health-item">
+                    <span className="health-label">Service Name</span>
+                    <span className="health-value">{healthState.data.service_name}</span>
+                  </div>
+                  <div className="health-item">
+                    <span className="health-label">Status</span>
+                    <span className="health-value status-ok">{healthState.data.status}</span>
+                  </div>
+                  <div className="health-item">
+                    <span className="health-label">Environment</span>
+                    <span className="health-value">{healthState.data.environment}</span>
+                  </div>
+                  <div className="health-item">
+                    <span className="health-label">API Version</span>
+                    <span className="health-value">{healthState.data.version}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   );
 };

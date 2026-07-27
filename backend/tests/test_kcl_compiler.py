@@ -1,8 +1,5 @@
 """Tests for deterministic KCL Compiler service layer (Stage S5A)."""
 
-import os
-import math
-import pytest
 from app.models.schema import (
     Connection,
     ConnectionMode,
@@ -31,33 +28,89 @@ def create_base_approved_project(
     """Helper fixture creating a project with approved interfaces and valid connection settings."""
     if p_type_a == ProfileType.CIRCLE:
         dims_a = [
-            Dimension(id="outer_diameter", label="Outer Diameter", value=50.0, provenance=DimensionProvenance.USER_ENTERED)
+            Dimension(
+                id="outer_diameter",
+                label="Outer Diameter",
+                value=50.0,
+                provenance=DimensionProvenance.USER_ENTERED,
+            )
         ]
     else:
         dims_a = [
-            Dimension(id="width", label="Width", value=60.0, provenance=DimensionProvenance.USER_ENTERED),
-            Dimension(id="height", label="Height", value=40.0, provenance=DimensionProvenance.USER_ENTERED),
+            Dimension(
+                id="width", label="Width", value=60.0, provenance=DimensionProvenance.USER_ENTERED
+            ),
+            Dimension(
+                id="height", label="Height", value=40.0, provenance=DimensionProvenance.USER_ENTERED
+            ),
         ]
         if p_type_a == ProfileType.ROUNDED_RECTANGLE:
-            dims_a.append(Dimension(id="corner_radius", label="Corner Radius", value=5.0, provenance=DimensionProvenance.USER_ENTERED))
+            dims_a.append(
+                Dimension(
+                    id="corner_radius",
+                    label="Corner Radius",
+                    value=5.0,
+                    provenance=DimensionProvenance.USER_ENTERED,
+                )
+            )
 
     if p_type_b == ProfileType.CIRCLE:
         dims_b = [
-            Dimension(id="outer_diameter", label="Outer Diameter", value=34.5, provenance=DimensionProvenance.USER_ENTERED)
+            Dimension(
+                id="outer_diameter",
+                label="Outer Diameter",
+                value=34.5,
+                provenance=DimensionProvenance.USER_ENTERED,
+            )
         ]
     else:
         dims_b = [
-            Dimension(id="width", label="Width", value=50.0, provenance=DimensionProvenance.USER_ENTERED),
-            Dimension(id="height", label="Height", value=30.0, provenance=DimensionProvenance.USER_ENTERED),
+            Dimension(
+                id="width", label="Width", value=50.0, provenance=DimensionProvenance.USER_ENTERED
+            ),
+            Dimension(
+                id="height", label="Height", value=30.0, provenance=DimensionProvenance.USER_ENTERED
+            ),
         ]
         if p_type_b == ProfileType.ROUNDED_RECTANGLE:
-            dims_b.append(Dimension(id="corner_radius", label="Corner Radius", value=4.0, provenance=DimensionProvenance.USER_ENTERED))
+            dims_b.append(
+                Dimension(
+                    id="corner_radius",
+                    label="Corner Radius",
+                    value=4.0,
+                    provenance=DimensionProvenance.USER_ENTERED,
+                )
+            )
 
-    iface_a = Interface(id="interface_a", profile_type=p_type_a, dimensions=dims_a, approved=True, approved_at="2026-07-23T00:00:00Z")
-    iface_b = Interface(id="interface_b", profile_type=p_type_b, dimensions=dims_b, approved=True, approved_at="2026-07-23T00:00:00Z")
+    iface_a = Interface(
+        id="interface_a",
+        profile_type=p_type_a,
+        dimensions=dims_a,
+        approved=True,
+        approved_at="2026-07-23T00:00:00Z",
+    )
+    iface_b = Interface(
+        id="interface_b",
+        profile_type=p_type_b,
+        dimensions=dims_b,
+        approved=True,
+        approved_at="2026-07-23T00:00:00Z",
+    )
 
-    conn = Connection(mode=mode, length_mm=length_mm, offset_x_mm=offset_x, offset_y_mm=offset_y, angle_deg=angle_deg)
-    mfg = Manufacturing(process=ManufacturingProcess.FDM, material="PETG", wall_thickness_mm=2.4, clearance_a_mm=0.3, clearance_b_mm=0.1)
+    conn = Connection(
+        mode=mode,
+        length_mm=length_mm,
+        offset_x_mm=offset_x,
+        offset_y_mm=offset_y,
+        angle_deg=angle_deg,
+    )
+    mfg = Manufacturing(
+        process=ManufacturingProcess.FDM,
+        material="PETG",
+        wall_thickness_mm=2.4,
+        clearance_a_mm=0.3,
+        clearance_b_mm=0.1,
+    )
 
     return Project(
         project_id="test-proj-1234",
@@ -194,20 +247,28 @@ def test_project_service_kcl_compilation_does_not_mark_current():
     proj.interface_b.approved = True
     service.repository.save(proj)
 
-    conn_req = type("Req", (), {
-        "mode": ConnectionMode.COAXIAL,
-        "length_mm": 40.0,
-        "offset_x_mm": 0.0,
-        "offset_y_mm": 0.0,
-        "angle_deg": 0.0,
-    })()
-    mfg_req = type("MfgReq", (), {
-        "process": ManufacturingProcess.FDM,
-        "material": "PETG",
-        "wall_thickness_mm": 2.4,
-        "clearance_a_mm": 0.3,
-        "clearance_b_mm": 0.1,
-    })()
+    conn_req = type(
+        "Req",
+        (),
+        {
+            "mode": ConnectionMode.COAXIAL,
+            "length_mm": 40.0,
+            "offset_x_mm": 0.0,
+            "offset_y_mm": 0.0,
+            "angle_deg": 0.0,
+        },
+    )()
+    mfg_req = type(
+        "MfgReq",
+        (),
+        {
+            "process": ManufacturingProcess.FDM,
+            "material": "PETG",
+            "wall_thickness_mm": 2.4,
+            "clearance_a_mm": 0.3,
+            "clearance_b_mm": 0.1,
+        },
+    )()
     updated_proj = service.update_connection_and_manufacturing(proj.project_id, conn_req, mfg_req)
 
     # Perform KCL compilation

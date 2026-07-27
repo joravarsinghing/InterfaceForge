@@ -163,7 +163,8 @@ export async function uploadInterfaceImage(
 export async function analyzeInterfaceImage(
   projectId: string,
   interfaceId: 'interface_a' | 'interface_b',
-  projectToken?: string
+  projectToken?: string,
+  provider?: string
 ): Promise<AnalysisResult> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -172,8 +173,9 @@ export async function analyzeInterfaceImage(
     headers['X-Project-Token'] = projectToken;
   }
 
+  const query = provider ? `?provider=${encodeURIComponent(provider)}` : '';
   const response = await fetch(
-    `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/analyze`,
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/analyze${query}`,
     {
       method: 'POST',
       headers,
@@ -350,8 +352,310 @@ export async function compileKcl(
 
   const json: APIEnvelope<import('../types/schema').KCLCompileResult> =
     await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
   return json.data;
 }
+
+/**
+ * 3D Model Generation API Client Functions per ADR-006 & S5.5
+ */
+export async function startGeneration(
+  projectId: string,
+  projectToken?: string,
+  mockScenario: import('../types/schema').MockScenario = 'success'
+): Promise<import('../types/schema').GenerationJob> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/generation/start`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ mock_scenario: mockScenario }),
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').GenerationJob> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function fetchGenerationStatus(
+  projectId: string,
+  jobId: string,
+  projectToken?: string
+): Promise<import('../types/schema').GenerationJob> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/generation/${jobId}`,
+    {
+      headers,
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').GenerationJob> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function cancelGeneration(
+  projectId: string,
+  jobId: string,
+  projectToken?: string
+): Promise<import('../types/schema').GenerationJob> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/generation/${jobId}/cancel`,
+    {
+      method: 'POST',
+      headers,
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').GenerationJob> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function retryGeneration(
+  projectId: string,
+  jobId: string,
+  projectToken?: string,
+  mockScenario: import('../types/schema').MockScenario = 'success'
+): Promise<import('../types/schema').GenerationJob> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/generation/${jobId}/retry`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ mock_scenario: mockScenario }),
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').GenerationJob> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function fetchPreviewMetadata(
+  projectId: string,
+  jobId: string,
+  projectToken?: string
+): Promise<import('../types/schema').PreviewMetadata> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/generation/${jobId}/preview`,
+    {
+      headers,
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').PreviewMetadata> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+/**
+ * File Format Export API Functions per S8
+ */
+export async function generateExports(
+  projectId: string,
+  formats: string[] = ['stl', 'step', 'kcl'],
+  projectToken?: string,
+  mockScenario?: string
+): Promise<import('../types/schema').ExportStatusResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/exports/generate`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ formats, mock_scenario: mockScenario }),
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').ExportStatusResponse> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function fetchExportStatus(
+  projectId: string,
+  projectToken?: string
+): Promise<import('../types/schema').ExportStatusResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/exports/status`,
+    {
+      headers,
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').ExportStatusResponse> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function retryFormatExport(
+  projectId: string,
+  formatName: string,
+  projectToken?: string
+): Promise<import('../types/schema').ExportStatusResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/exports/${formatName}/retry`,
+    {
+      method: 'POST',
+      headers,
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').ExportStatusResponse> =
+    await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export function getExportDownloadUrl(
+  projectId: string,
+  formatName: string,
+  projectToken?: string
+): string {
+  const tokenQuery = projectToken ? `?token=${encodeURIComponent(projectToken)}` : '';
+  return `${BACKEND_BASE_URL}/api/projects/${projectId}/exports/${formatName}/download${tokenQuery}`;
+}
+
+export async function proposeRevision(
+  projectId: string,
+  prompt: string,
+  projectToken?: string,
+  provider?: string
+): Promise<import('../types/schema').AgentProposalResult> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/revision/propose`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt, provider }),
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').AgentProposalResult> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function confirmRevision(
+  projectId: string,
+  changes: import('../types/schema').ParameterChange[],
+  projectToken?: string,
+  mockScenario: string = 'success'
+): Promise<import('../types/schema').RevisionConfirmResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (projectToken) {
+    headers['X-Project-Token'] = projectToken;
+  }
+
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/revision/confirm?mock_scenario=${encodeURIComponent(mockScenario)}`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ changes }),
+    }
+  );
+
+  const json: APIEnvelope<import('../types/schema').RevisionConfirmResponse> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
 
 
 

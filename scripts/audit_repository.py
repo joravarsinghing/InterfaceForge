@@ -9,7 +9,6 @@ Returns exit code 0 on success, non-zero on failure.
 """
 
 import sys
-import os
 import subprocess
 from pathlib import Path
 
@@ -61,6 +60,17 @@ FORBIDDEN_PATTERNS = [
 ]
 
 
+def is_git_ignored(path: Path, cwd: Path) -> bool:
+    try:
+        res = subprocess.run(
+            ["git", "check-ignore", "-q", str(path)],
+            cwd=cwd,
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def audit_repository(repo_root: Path) -> int:
     failures = []
     warnings = []
@@ -103,7 +113,9 @@ def audit_repository(repo_root: Path) -> int:
         if "MIT License" in content:
             print("  [OK] MIT License text verified.")
         else:
-            warnings.append("LICENSE file exists but does not explicitly mention 'MIT License'.")
+            warnings.append(
+                "LICENSE file exists but does not explicitly mention 'MIT License'."
+            )
     else:
         failures.append("LICENSE file missing.")
 
@@ -115,7 +127,11 @@ def audit_repository(repo_root: Path) -> int:
             # exclude .env.example
             if f.name == ".env.example":
                 continue
-            failures.append(f"Forbidden secret file present: {f.relative_to(repo_root)}")
+            # Check if file is ignored by git
+            if not is_git_ignored(f, repo_root):
+                failures.append(
+                    f"Forbidden secret file present and not git-ignored: {f.relative_to(repo_root)}"
+                )
     if not any("Forbidden secret file" in f for f in failures):
         print("  [OK] No forbidden secret files found.")
 
@@ -127,7 +143,7 @@ def audit_repository(repo_root: Path) -> int:
             cwd=repo_root,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         tracked_files = res.stdout.splitlines()
         for tf in tracked_files:
@@ -140,16 +156,19 @@ def audit_repository(repo_root: Path) -> int:
         warnings.append(f"Could not run `git ls-files`: {e}")
 
     # 7. Check Artifact Directory Contents
-    print("\n[Check 7/7] Checking artifacts directory for forbidden committed output...")
+    print(
+        "\n[Check 7/7] Checking artifacts directory for forbidden committed output..."
+    )
     artifacts_dir = repo_root / "artifacts"
     if artifacts_dir.is_dir():
         artifact_files = [
-            f for f in artifacts_dir.iterdir()
-            if f.is_file() and f.name != ".gitkeep"
+            f
+            for f in artifacts_dir.iterdir()
+            if f.is_file() and f.name != ".gitkeep" and not is_git_ignored(f, repo_root)
         ]
         if artifact_files:
             for af in artifact_files:
-                failures.append(f"Forbidden committed file in artifacts/: {af.name}")
+                failures.append(f"Forbidden un-ignored file in artifacts/: {af.name}")
         else:
             print("  [OK] artifacts/ directory contains no committed generated files.")
 

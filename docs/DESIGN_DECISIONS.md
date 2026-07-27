@@ -32,15 +32,66 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 
 ---
 
-## 4. ADR Summary Index
+## 4. Stage S5.5 Decision: EngineProvider Abstraction & Mock Execution Pipeline
+
+### Decision
+1. **EngineProvider Abstraction:** Implement an abstract base class `EngineProvider` and deterministic implementation `MockEngineProvider` in `backend/app/services/engine_provider.py` (ADR-006, ADR-009).
+2. **Staged Execution Progress:** Model generation progresses through discrete stages (`validating`, `compiling`, `executing`, `rendering`, `finalizing`).
+3. **Last-Known-Good Preservation:** If generation fails or is cancelled, `last_known_good_model_revision` is preserved as active `current` model (ADR-005).
+4. **Duplicate Active-Job Prevention:** Enforce single active generation job per project (`IF-JOB-409`).
+5. **Safe Configuration Fallback:** If `ENGINE_PROVIDER=zoo` is configured without `ZOO_API_TOKEN`, the backend safely falls back to `mock` mode.
+
+### Rationale
+- Decouples geometry execution from live credentials, allowing comprehensive offline development and testing.
+- Guarantees seamless transition to live Zoo Engine API in Stage S6 without breaking frontend API contracts.
+
+---
+
+## 6. Stage S7 Decision: Real Vision Integration via Gemini Multimodal Vision API
+
+### Decision
+1. **Multimodal Vision Integration:** Implement `GeminiAnalysisProvider` behind existing `AnalysisProvider` abstraction using Google Gemini 2.5 Flash model (ADR-003, ADR-009).
+2. **Backend-Only Secret Credentials:** Store API key (`GEMINI_API_KEY`) strictly in `backend/.env` with automatic secret redaction (`sanitize_error_message`) on all exception tracebacks and logs.
+3. **Versioned Prompt & Untrusted Model Output Validation:** Enforce prompt version `1.0` and multi-pass output validation (JSON structure, profile enums, finite numbers via `math.isfinite`, and confidence range `[0.0, 1.0]`).
+4. **Honest Rejection & Recovery:** Rejections (< 0.60 confidence) raise `AnalysisRejectedError` (`IF-ANALYSIS-400`) with clear recovery steps without altering project schema.
+5. **Configurable Mock Fallback:** Safe automatic fallback to `MockAnalysisProvider` when `ANALYSIS_PROVIDER=mock` or when API keys are unconfigured.
+
+### Rationale
+- Treats AI vision predictions as unapproved candidate proposals requiring explicit user approval per ADR-003 and ADR-004.
+- Protects API keys from leaking to client frontend or log files per ADR-009.
+- Prevents invalid or malformed LLM outputs from corrupting canonical project memory.
+
+---
+
+## 7. Stage S9 Decision: Bounded Zoo Agent API Revisions & Confirmation Gate
+
+### Decision
+1. **Agent as Intent Interpreter Only:** Integrate Zoo’s Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`) via `ZooAgentProvider` behind `AgentProvider` abstraction. The Agent interprets user intent but is strictly forbidden from writing KCL or generating CAD geometry directly (ADR-001, ADR-002, ADR-007).
+2. **Server-Side 7-Field Allowlist:** Proposals are restricted to 7 explicit connection/manufacturing fields (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `connection.angle_deg`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Out-of-allowlist requests (profile type changes, process, material, KCL code generation) are rejected server-side (`IF-AGENT-400`).
+3. **Explicit User Confirmation Gate:** Proposals are returned as unapplied suggestions. Schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation (`POST /api/projects/{id}/revision/confirm`).
+4. **Preservation of Last-Known-Good Model (ADR-005):** If 3D generation fails after confirmation, `last_known_good_model_revision` remains preserved as active current model without corrupting project state.
+
+### Rationale
+- Prevents AI hallucinations, unintended topology changes, or malicious prompt injection from corrupting 3D geometry.
+- Enforces user ownership and full transparency over design parameter revisions before 3D execution.
+
+---
+
+## 8. ADR Summary Index
 
 - **ADR-001:** Canonical design schema is source of truth.
 - **ADR-002:** Final KCL generation is deterministic.
+- **ADR-003:** AI outputs are untrusted proposals requiring validation.
+- **ADR-004:** Interface approval is mandatory gate before 3D generation.
 - **ADR-005:** Preserve last-known-good model after failed revisions.
 - **ADR-006:** Zoo Engine API is core geometry executor.
+- **ADR-007:** Agent API is limited to structured revisions and explanations.
 - **ADR-008:** Purpose-built UX replaces manual Zoo Design Studio editing.
+- **ADR-009:** Backend owns all privileged external API calls and credentials.
 - **ADR-010:** MVP modular monolith structure.
 - **ADR-012:** Geometry scope is strictly constrained to supported families and modes.
 - **ADR-013:** Standardized error envelopes with stable error IDs.
 - **ADR-014:** Accessibility baseline is enforced before visual polish.
+
+
 

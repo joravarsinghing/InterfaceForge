@@ -93,3 +93,16 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 2. **Angled Plane Sketch Alignment:** Constructing an inclined top plane via `plane(origin = [...], xAxis = [...], yAxis = [...])` requires Zoo Engine execution to confirm plane normal direction and winding.
 3. **Void Subtraction Robustness:** Subtracting an inner lofted void solid from an outer lofted solid via `subtract(outer_solid, tools = [inner_void])` requires Zoo Engine execution to verify manifold solid output without non-manifold geometry edge errors.
 
+---
+
+## 6. Geometry Fidelity Verification & Tolerance Standards (Stage S8.4)
+
+Per **ADR-001** and **ADR-003**, exported CAD models must be verified for geometric fidelity against requested canonical parameters:
+
+1. **Linear Dimension Tolerance:** Measured STL/STEP bounding box and profile dimensions must match requested schema values within **±0.2 mm**.
+2. **Angle Inclination Tolerance:** Measured top plane orientation must match requested inclination angle within **±0.5°**.
+3. **Lateral Offset Tolerance:** Measured bounding box span must reflect requested `offset_x` and `offset_y` translation within **±0.2 mm**.
+4. **Hollow Passage Verification:** Every exported adapter solid must contain a hollow passage created via inner void subtraction (`boolean_subtract`), producing non-box facet topologies (> 12 facets for STL).
+5. **Non-Box Topology Requirement:** Uniform 12-facet / 684-byte solid boxes are rejected as unproven fallback geometry.
+
+

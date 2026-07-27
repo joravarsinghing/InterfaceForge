@@ -95,6 +95,30 @@ export interface Manufacturing {
 export interface ExportReferences {
   stl?: string | null;
   step?: string | null;
+  kcl?: string | null;
+}
+
+export type ExportFormatStatus = 'not_started' | 'preparing' | 'ready' | 'failed';
+
+export interface FormatExportDetail {
+  format: string;
+  status: ExportFormatStatus;
+  artifact_ref?: string | null;
+  filename?: string | null;
+  size_bytes?: number | null;
+  error_id?: string | null;
+  error_message?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ExportStatusResponse {
+  project_id: string;
+  model_revision: number;
+  schema_revision: number;
+  units: string;
+  model_status: string;
+  volume_cm3?: number | null;
+  formats: Record<string, FormatExportDetail>;
 }
 
 export interface ModelRevision {
@@ -173,6 +197,62 @@ export interface KCLCompileResult {
   warnings: ValidationIssue[];
 }
 
+export type JobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancel_requested'
+  | 'cancelled';
+
+export type GenerationStage =
+  | 'validating'
+  | 'compiling'
+  | 'executing'
+  | 'rendering'
+  | 'finalizing';
+
+export type MockScenario =
+  | 'success'
+  | 'engine_validation_failure'
+  | 'timeout'
+  | 'malformed_response'
+  | 'cancellation'
+  | 'preview_failure';
+
+export interface BoundingBox {
+  x_mm: number;
+  y_mm: number;
+  z_mm: number;
+}
+
+export interface PreviewMetadata {
+  preview_svg: string;
+  bounding_box: BoundingBox;
+  volume_cm3: number;
+  facet_count: number;
+  render_timestamp: string;
+  is_mock: boolean;
+}
+
+export interface GenerationJob {
+  job_id: string;
+  project_id: string;
+  model_revision: number;
+  status: JobStatus;
+  current_stage: GenerationStage;
+  progress_percent: number;
+  mock_scenario: MockScenario;
+  error_id?: string | null;
+  error_message?: string | null;
+  recovery_steps: string[];
+  preview_metadata?: PreviewMetadata | null;
+  kcl_code_snippet?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+}
+
 
 
 // --- API Envelopes ---
@@ -195,4 +275,28 @@ export interface APIErrorEnvelope {
 }
 
 export type APIEnvelope<T> = APISuccessEnvelope<T> | APIErrorEnvelope;
+
+export interface ParameterChange {
+  field: string;
+  current_value: number;
+  proposed_value: number;
+  unit: string;
+  reason: string;
+}
+
+export interface AgentProposalResult {
+  changes: ParameterChange[];
+  summary: string;
+  is_valid: boolean;
+  validation_errors: ValidationIssue[];
+  validation_warnings: ValidationIssue[];
+  raw_response?: string | null;
+  provider_used?: string | null;
+}
+
+export interface RevisionConfirmResponse {
+  project: Project;
+  job: GenerationJob;
+}
+
 
