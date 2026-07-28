@@ -12,8 +12,10 @@ import { ProfileReviewPage } from './pages/ProfileReviewPage';
 import { ConnectionConfigPage } from './pages/ConnectionConfigPage';
 import { ModelGenerationPage } from './pages/ModelGenerationPage';
 import { ResultPage } from './pages/ResultPage';
-import { fetchHealthStatus, createProject, fetchProject, HealthResponse, APIState } from './services/api';
-import { AnalysisResult, Project } from './types/schema';
+import { fetchHealthStatus, createProject, fetchProject, fetchProviderModeStatus, updateProviderMode, validateDefaultProviderMode, HealthResponse, APIState } from './services/api';
+import { AnalysisResult, Project, ProviderMode, ProviderModeStatus } from './types/schema';
+
+const PROVIDER_MODE_PREFERENCE_KEY = 'interfaceforge_provider_mode';
 
 export const AppContent: React.FC = () => {
   const navigate = useNavigate();
@@ -24,6 +26,11 @@ export const AppContent: React.FC = () => {
   });
 
   const [project, setProject] = useState<Project | null>(null);
+  const [preProjectProviderMode, setPreProjectProviderMode] = useState<ProviderMode>(() => {
+    return sessionStorage.getItem(PROVIDER_MODE_PREFERENCE_KEY) === 'live' ? 'live' : 'mock';
+  });
+  const [providerStatus, setProviderStatus] = useState<ProviderModeStatus | null>(null);
+  const [providerModeError, setProviderModeError] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState<boolean>(() => {
     return !!sessionStorage.getItem('interfaceforge_project_id');
   });
@@ -58,33 +65,59 @@ export const AppContent: React.FC = () => {
         .then((hydrated) => {
           if (hydrated && hydrated.project_id && hydrated.interface_a && hydrated.interface_b) {
             setProject(hydrated);
+            fetchProviderModeStatus(hydrated.project_id, savedToken || undefined)
+              .then(setProviderStatus)
+              .catch(() => setProviderStatus(null));
           } else {
             sessionStorage.removeItem('interfaceforge_project_id');
             sessionStorage.removeItem('interfaceforge_project_token');
             setProject(null);
+            setProviderStatus(null);
           }
         })
         .catch(() => {
           sessionStorage.removeItem('interfaceforge_project_id');
           sessionStorage.removeItem('interfaceforge_project_token');
           setProject(null);
+          setProviderStatus(null);
         })
         .finally(() => {
           setIsHydrating(false);
         });
     } else {
-      setIsHydrating(false);
+      const preferred = sessionStorage.getItem(PROVIDER_MODE_PREFERENCE_KEY) === 'live' ? 'live' : 'mock';
+      setPreProjectProviderMode(preferred);
+      validateDefaultProviderMode(preferred)
+        .then((status) => {
+          setProviderStatus(status);
+          setProviderModeError(null);
+          const effectiveMode = status.effective_mode;
+          setPreProjectProviderMode(effectiveMode);
+          sessionStorage.setItem(PROVIDER_MODE_PREFERENCE_KEY, effectiveMode);
+        })
+        .catch((err: unknown) => {
+          const errorMessage = err instanceof Error ? err.message : 'Provider mode could not be checked.';
+          setProviderModeError(errorMessage);
+          setPreProjectProviderMode('mock');
+          sessionStorage.setItem(PROVIDER_MODE_PREFERENCE_KEY, 'mock');
+          validateDefaultProviderMode('mock').then(setProviderStatus).catch(() => setProviderStatus(null));
+        })
+        .finally(() => {
+          setIsHydrating(false);
+        });
     }
   }, [checkBackendHealth]);
 
   // Project Creation Handler
   const handleStartProject = useCallback(async (): Promise<Project> => {
-    const newProject = await createProject();
+    const newProject = await createProject(preProjectProviderMode);
     sessionStorage.setItem('interfaceforge_project_id', newProject.project_id);
     sessionStorage.setItem('interfaceforge_project_token', newProject.project_token);
     setProject(newProject);
+    setProviderModeError(null);
+    setProviderStatus(await fetchProviderModeStatus(newProject.project_id, newProject.project_token));
     return newProject;
-  }, []);
+  }, [preProjectProviderMode]);
 
   // Project Restart Handler
   const handleRestartProject = useCallback(() => {
@@ -94,6 +127,45 @@ export const AppContent: React.FC = () => {
     navigate('/');
   }, [navigate]);
 
+  const handleProviderModeChange = useCallback(async (mode: ProviderMode): Promise<void> => {
+    setProviderModeError(null);
+    try {
+      if (project) {
+        const result = await updateProviderMode(project.project_id, mode, project.project_token);
+        setProject(result.project);
+        setProviderStatus(result.provider_status);
+        setPreProjectProviderMode(result.provider_status.effective_mode);
+        sessionStorage.setItem(PROVIDER_MODE_PREFERENCE_KEY, result.provider_status.effective_mode);
+        return;
+      }
+
+      const status = await validateDefaultProviderMode(mode);
+      setProviderStatus(status);
+      setPreProjectProviderMode(status.effective_mode);
+      sessionStorage.setItem(PROVIDER_MODE_PREFERENCE_KEY, status.effective_mode);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Provider mode could not be changed.';
+      setProviderModeError(errorMessage);
+      if (project) {
+        try {
+          const status = await fetchProviderModeStatus(project.project_id, project.project_token);
+          setProviderStatus(status);
+          setPreProjectProviderMode(status.effective_mode);
+          sessionStorage.setItem(PROVIDER_MODE_PREFERENCE_KEY, status.effective_mode);
+        } catch {
+          setProviderStatus(null);
+        }
+      } else {
+        setPreProjectProviderMode('mock');
+        sessionStorage.setItem(PROVIDER_MODE_PREFERENCE_KEY, 'mock');
+        try {
+          setProviderStatus(await validateDefaultProviderMode('mock'));
+        } catch {
+          setProviderStatus(null);
+        }
+      }
+    }
+  }, [project]);
   return (
     <div className="app-shell">
       <SkipLink />
@@ -102,6 +174,9 @@ export const AppContent: React.FC = () => {
         project={project}
         onRetryHealth={checkBackendHealth}
         onRestartProject={handleRestartProject}
+      providerStatus={providerStatus}
+        providerModeError={providerModeError}
+        onProviderModeChange={handleProviderModeChange}
       />
       <StepNavigation project={project} />
 
@@ -219,5 +294,4 @@ export const App: React.FC = () => {
     </ErrorBoundary>
   );
 };
-
 export default App;

@@ -307,7 +307,14 @@ class MockAnalysisProvider(AnalysisProvider):
                         outer_contour = trace_res["traced_outer_contour"]
                         hole_contours = trace_res["traced_hole_contours"]
                         trace_svg, overlay_svg, _ = generate_svg_trace_and_overlay(
-                            outer_contour, hole_contours, image_bytes, cleaned_bytes, w, h
+                            outer_contour,
+                            hole_contours,
+                            image_bytes,
+                            cleaned_bytes,
+                            w,
+                            h,
+                            outer_pixel_points=trace_res.get("outer_pixel_points"),
+                            hole_pixel_points=trace_res.get("hole_pixel_points"),
                         )
                         safe_base = os.path.splitext(os.path.basename(filename))[0]
                         safe_name = (
@@ -373,6 +380,9 @@ class MockAnalysisProvider(AnalysisProvider):
                             is_complex=True,
                             complex_reason="Extrusion cross-section traced via OpenCV contours.",
                             cleaned_image_ref=cleaned_ref,
+                            analysis_image_ref=cleaned_ref,
+                            analysis_image_width=w,
+                            analysis_image_height=h,
                             trace_svg_ref=trace_ref,
                             overlay_svg_ref=overlay_ref,
                             raw_outer_point_count=trace_res["raw_outer_point_count"],
@@ -888,7 +898,14 @@ class GeminiAnalysisProvider(AnalysisProvider):
             traced_holes = trace_res["traced_hole_contours"]
 
             trace_svg, overlay_svg, _ = generate_svg_trace_and_overlay(
-                traced_outer, traced_holes, image_bytes, cleaned_bytes, cw, ch
+                traced_outer,
+                traced_holes,
+                image_bytes,
+                cleaned_bytes,
+                cw,
+                ch,
+                outer_pixel_points=trace_res.get("outer_pixel_points"),
+                hole_pixel_points=trace_res.get("hole_pixel_points"),
             )
 
             safe_base = os.path.splitext(os.path.basename(filename))[0]
@@ -921,6 +938,9 @@ class GeminiAnalysisProvider(AnalysisProvider):
                 is_complex=is_complex,
                 complex_reason=complex_reason,
                 cleaned_image_ref=cleaned_ref,
+                analysis_image_ref=cleaned_ref,
+                analysis_image_width=cw,
+                analysis_image_height=ch,
                 trace_svg_ref=trace_ref,
                 overlay_svg_ref=overlay_ref,
                 raw_outer_point_count=trace_res["raw_outer_point_count"],

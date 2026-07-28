@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { Project } from '../types/schema';
+import { getInterfaceStepPath } from '../services/workflow';
 
 interface StepNavigationProps {
   project?: Project | null;
@@ -29,7 +30,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
   const steps: StepItem[] = [
     {
       id: 1,
-      path: '/step1',
+      path: getInterfaceStepPath(project ?? null, 'interface_a'),
       analysisPath: '/step1/analysis',
       fullName: 'Interface A Capture',
       isCompleted: interfaceAApproved,
@@ -37,7 +38,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
     },
     {
       id: 2,
-      path: '/step2',
+      path: getInterfaceStepPath(project ?? null, 'interface_b'),
       analysisPath: '/step2/analysis',
       fullName: 'Interface B Capture',
       isCompleted: interfaceBApproved,
@@ -112,3 +113,4 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
 };
 
 export default StepNavigation;
+

@@ -32,22 +32,29 @@ def _segments_intersect(p1: Point2D, p2: Point2D, p3: Point2D, p4: Point2D) -> b
     return _ccw(p1, p3, p4) != _ccw(p2, p3, p4) and _ccw(p1, p2, p3) != _ccw(p1, p2, p4)
 
 
-def check_self_intersection(pts: List[Point2D]) -> bool:
-    """Check if closed 2D polygon intersects itself."""
+MAX_SELF_INTERSECTION_SEGMENT_COMPARISONS = 250_000
+
+
+def check_self_intersection(pts: List[Point2D]) -> Tuple[bool, bool]:
+    """Check if closed 2D polygon intersects itself. Returns (intersects, budget_exceeded)."""
     n = len(pts)
     if n < 4:
-        return False
+        return False, False
+    comparisons = 0
     for i in range(n):
         p1 = pts[i]
         p2 = pts[(i + 1) % n]
         for j in range(i + 2, n):
             if i == 0 and j == n - 1:
                 continue
+            comparisons += 1
+            if comparisons > MAX_SELF_INTERSECTION_SEGMENT_COMPARISONS:
+                return False, True
             p3 = pts[j]
             p4 = pts[(j + 1) % n]
             if _segments_intersect(p1, p2, p3, p4):
-                return True
-    return False
+                return True, False
+    return False, False
 
 
 def compute_deflection_angles(pts: np.ndarray) -> np.ndarray:
@@ -375,6 +382,7 @@ def extract_pixel_contours(
         return mm_points
 
     outer_mm_pts = px_pts_to_mm(adaptive_outer_px)
+    outer_pixel_points = [(float(pt[0]), float(pt[1])) for pt in adaptive_outer_px]
 
     # Calculate outer contour fidelity metrics (deviation in mm)
     raw_outer_px = outer_cnt.reshape(-1, 2).astype(np.float64)
@@ -391,13 +399,26 @@ def extract_pixel_contours(
             "4-point bounding box fallback was generated."
         )
 
-    # Rejection check 2: Self-intersection
-    if check_self_intersection(outer_mm_pts):
+    # Rejection check 2: Self-intersection with bounded complexity
+    intersects, budget_exceeded = check_self_intersection(outer_mm_pts)
+    if budget_exceeded:
+        rejection_reasons.append(
+            "IF-PROFILE-COMPLEXITY-BUDGET: contour validation exceeded "
+            f"{MAX_SELF_INTERSECTION_SEGMENT_COMPARISONS} segment comparisons."
+        )
+    elif intersects:
         perimeter = cv2.arcLength(outer_cnt, True)
         fallback_approx = cv2.approxPolyDP(outer_cnt, 0.003 * perimeter, True)
         fallback_mm_pts = px_pts_to_mm(fallback_approx)
-        if not check_self_intersection(fallback_mm_pts):
+        fallback_intersects, fallback_budget_exceeded = check_self_intersection(fallback_mm_pts)
+        if fallback_budget_exceeded:
+            rejection_reasons.append(
+                "IF-PROFILE-COMPLEXITY-BUDGET: fallback contour validation exceeded "
+                f"{MAX_SELF_INTERSECTION_SEGMENT_COMPARISONS} segment comparisons."
+            )
+        elif not fallback_intersects:
             outer_mm_pts = fallback_mm_pts
+            outer_pixel_points = [(float(pt[0][0]), float(pt[0][1])) for pt in fallback_approx]
             simplified_outer_count = len(fallback_mm_pts)
             warnings.append("Self-intersection detected; applied robust fallback.")
         else:
@@ -405,6 +426,7 @@ def extract_pixel_contours(
 
     # Process inner contours (holes / cutouts)
     inner_contours: List[TracedContour] = []
+    inner_pixel_points: List[List[Tuple[float, float]]] = []
     min_hole_area = 0.001 * outer_area
     fitted_circles_count = 0
 
@@ -445,6 +467,7 @@ def extract_pixel_contours(
         )
         if circle_fit and decision != "ignore":
             hole_mm_pts = circle_fit["points"]
+            hole_px_pts = [(float(pt[0][0]), float(pt[0][1])) for pt in c_cnt]
             fitted_circles_count += 1
             classification = "circle"
         else:
@@ -454,9 +477,11 @@ def extract_pixel_contours(
             if len(simp_inner_px) < 3:
                 continue
             hole_mm_pts = px_pts_to_mm(simp_inner_px)
+            hole_px_pts = [(float(pt[0]), float(pt[1])) for pt in simp_inner_px]
             if len(simp_inner_px) > 35:
                 classification = "cavity"
 
+        inner_pixel_points.append(hole_px_pts)
         inner_contours.append(
             TracedContour(
                 id=f"region_{len(inner_contours) + 1}",
@@ -500,6 +525,8 @@ def extract_pixel_contours(
         "inner_contour_count": len(inner_contours),
         "scale_calibration": scale_calibration,
         "fidelity_metrics": fidelity_metrics,
+        "outer_pixel_points": outer_pixel_points,
+        "hole_pixel_points": inner_pixel_points,
         "warnings": warnings,
         "rejection_reasons": rejection_reasons,
     }
@@ -512,105 +539,98 @@ def generate_svg_trace_and_overlay(
     cleaned_image_bytes: bytes,
     img_w: int = 400,
     img_h: int = 400,
+    outer_pixel_points: Optional[List[Tuple[float, float]]] = None,
+    hole_pixel_points: Optional[List[List[Tuple[float, float]]]] = None,
 ) -> Tuple[str, str, str]:
-    """Generate SVG Trace and Real Source Overlay SVG content strings.
+    """Generate SVG trace and analysis-crop overlay artifacts.
 
-    Returns:
-        (trace_svg_content, overlay_svg_content, b64_original_image)
+    When pixel-space contours are supplied, the SVG viewBox and image layer match the
+    exact processed image passed into OpenCV contour extraction.
     """
-    all_pts = list(outer_contour.points)
-    for h in hole_contours:
-        all_pts.extend(h.points)
+    b64_analysis = base64.b64encode(cleaned_image_bytes).decode("ascii")
 
-    if not all_pts:
-        min_x, max_x, min_y, max_y = -20.0, 20.0, -20.0, 20.0
-    else:
-        min_x = min(p.x for p in all_pts)
-        max_x = max(p.x for p in all_pts)
-        min_y = min(p.y for p in all_pts)
-        max_y = max(p.y for p in all_pts)
+    def px_poly(points: List[Tuple[float, float]]) -> str:
+        return " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
 
-    range_x = max_x - min_x or 1.0
-    range_y = max_y - min_y or 1.0
+    def mm_poly(points: List[Point2D]) -> str:
+        all_pts = list(outer_contour.points)
+        for h in hole_contours:
+            all_pts.extend(h.points)
+        if not all_pts:
+            min_x, max_x, min_y, max_y = -20.0, 20.0, -20.0, 20.0
+        else:
+            min_x = min(p.x for p in all_pts)
+            max_x = max(p.x for p in all_pts)
+            min_y = min(p.y for p in all_pts)
+            max_y = max(p.y for p in all_pts)
+        range_x = max_x - min_x or 1.0
+        range_y = max_y - min_y or 1.0
+        scale = min(float(img_w) / range_x, float(img_h) / range_y)
+        used_w = range_x * scale
+        used_h = range_y * scale
+        offset_x = (float(img_w) - used_w) / 2.0
+        offset_y = (float(img_h) - used_h) / 2.0
+        return " ".join(
+            f"{(offset_x + (p.x - min_x) * scale):.2f},{(offset_y + (max_y - p.y) * scale):.2f}"
+            for p in points
+        )
 
-    margin = 30
-    vw = 400
-    vh = 400
-    draw_w = vw - margin * 2
-    draw_h = vh - margin * 2
-    scale = min(draw_w / range_x, draw_h / range_y)
+    use_pixel_space = bool(outer_pixel_points)
+    vw = max(int(img_w), 1)
+    vh = max(int(img_h), 1)
+    outer_poly = (
+        px_poly(outer_pixel_points or [])
+        if use_pixel_space
+        else mm_poly(outer_contour.points)
+    )
 
-    def to_svg_poly(pts: List[Point2D]) -> str:
-        coords = []
-        for p in pts:
-            sx = margin + (p.x - min_x) * scale
-            sy = margin + (max_y - p.y) * scale
-            coords.append(f"{sx:.2f},{sy:.2f}")
-        return " ".join(coords)
-
-    outer_poly = to_svg_poly(outer_contour.points)
-
-    # 1. Generate Clean Standalone SVG Trace
+    hole_pixel_points = hole_pixel_points or []
     holes_svg_elements = []
-    for h in hole_contours:
-        poly_str = to_svg_poly(h.points)
-        stroke = "#00e676"  # included opening: green/cyan
+    for idx, h in enumerate(hole_contours):
+        if use_pixel_space and idx < len(hole_pixel_points):
+            poly_str = px_poly(hole_pixel_points[idx])
+        else:
+            poly_str = mm_poly(h.points)
+        stroke = "#00e676"
         fill = "rgba(0, 230, 118, 0.25)"
         dash = ""
         if h.classification == "circle":
-            stroke = "#76ff03"  # fitted circle: bright lime green
+            stroke = "#76ff03"
             fill = "rgba(118, 255, 3, 0.30)"
         elif h.decision == "ignore":
-            stroke = "#ff9100"  # ignored region: orange
+            stroke = "#ff9100"
             fill = "rgba(255, 145, 0, 0.20)"
             dash = ' stroke-dasharray="4 2"'
         elif h.decision == "unsure":
-            stroke = "#d500f9"  # uncertain contour: purple
+            stroke = "#d500f9"
             fill = "rgba(213, 0, 249, 0.20)"
             dash = ' stroke-dasharray="3 3"'
-
         holes_svg_elements.append(
             f'  <polygon points="{poly_str}" fill="{fill}" stroke="{stroke}" '
             f'stroke-width="1.8"{dash} data-feature-id="{h.id}" />'
         )
-
     holes_rendered = "\n".join(holes_svg_elements)
 
     trace_svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vw} {vh}" '
-        f'width="100%" height="100%" aria-label="OpenCV Vector Profile Trace">\n'
-        f'  <rect width="{vw}" height="{vh}" fill="#0d1117" rx="6" />\n'
+        f'width="{vw}" height="{vh}" aria-label="OpenCV Vector Profile Trace">\n'
+        f'  <rect width="{vw}" height="{vh}" fill="#0d1117" />\n'
         f'  <polygon points="{outer_poly}" fill="rgba(0, 229, 255, 0.20)" '
         f'stroke="#00e5ff" stroke-width="2.5" data-feature-id="outer_contour" />\n'
         f"{holes_rendered}\n"
-        f'  <g transform="translate(12, {vh - 20})">\n'
-        f'    <rect x="0" y="0" width="10" height="4" fill="#00e5ff" rx="1" />\n'
-        f'    <text x="14" y="5" fill="#8b949e" font-size="9">Outer boundary</text>\n'
-        f'    <rect x="95" y="0" width="10" height="4" fill="#00e676" rx="1" />\n'
-        f'    <text x="109" y="5" fill="#8b949e" font-size="9">Included opening</text>\n'
-        f'    <rect x="195" y="0" width="10" height="4" fill="#76ff03" rx="1" />\n'
-        f'    <text x="209" y="5" fill="#8b949e" font-size="9">Fitted circle</text>\n'
-        f'    <rect x="275" y="0" width="10" height="4" fill="#ff9100" rx="1" />\n'
-        f'    <text x="289" y="5" fill="#8b949e" font-size="9">Ignored region</text>\n'
-        f"  </g>\n"
         f"</svg>"
     )
 
-    # 2. Generate Real Source Image Overlay SVG
-    b64_orig = base64.b64encode(original_image_bytes).decode("ascii")
-    img_mime = "image/jpeg"
-    if original_image_bytes.startswith(b"\x89PNG"):
-        img_mime = "image/png"
-
     overlay_svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vw} {vh}" '
-        f'width="100%" height="100%" aria-label="Real Source Image Profile Overlay">\n'
-        f'  <image href="data:{img_mime};base64,{b64_orig}" width="{vw}" height="{vh}" '
-        f'preserveAspectRatio="xMidYMid meet" opacity="0.65" />\n'
+        f'width="{vw}" height="{vh}" aria-label="Analysis crop profile overlay">\n'
+        f'  <title>Analysis crop</title>\n'
+        f'  <image href="data:image/png;base64,{b64_analysis}" x="0" y="0" '
+        f'width="{vw}" height="{vh}" preserveAspectRatio="none" opacity="0.72" />\n'
         f'  <polygon points="{outer_poly}" fill="rgba(0, 229, 255, 0.25)" '
-        f'stroke="#00e5ff" stroke-width="2.5" />\n'
+        f'stroke="#00e5ff" stroke-width="2.5" data-feature-id="outer_contour" />\n'
         f"{holes_rendered}\n"
         f"</svg>"
     )
 
-    return trace_svg, overlay_svg, b64_orig
+    return trace_svg, overlay_svg, b64_analysis

@@ -824,6 +824,14 @@ class ZooExportProvider(ExportProvider):
     STRICTLY PROHIBITS OBJ CONVERSION ENDPOINTS AND LOCAL GEOMETRY RECONSTRUCTION.
     """
 
+    def __init__(
+        self,
+        api_token: Optional[str] = None,
+        api_base_url: Optional[str] = None,
+    ) -> None:
+        self.api_token = api_token
+        self.api_base_url = api_base_url
+
     async def export_format(
         self,
         project_id: str,
@@ -846,20 +854,6 @@ class ZooExportProvider(ExportProvider):
                     f"Unsupported export format '{format_name}'. Supported: stl, step, kcl."
                 ),
                 recovery_steps=["Request export in a supported format (stl, step, kcl)."],
-                is_mock=False,
-            )
-
-        token = settings.zoo_api_token
-        if not token:
-            return ExportResult(
-                success=False,
-                format=fmt,
-                error_id="IF-ZOO-401",
-                error_message="Zoo API token is not configured in backend environment.",
-                recovery_steps=[
-                    "Configure ZOO_API_TOKEN in backend/.env file.",
-                    "Set EXPORT_PROVIDER=mock for offline development.",
-                ],
                 is_mock=False,
             )
 
@@ -913,9 +907,6 @@ class ZooExportProvider(ExportProvider):
                 kcl_hash=effective_kcl_hash,
             )
 
-        # Enforce prohibition guard against local generate_adapter_obj() per S8.3
-        set_prohibit_local_obj(True)
-
         os.makedirs("artifacts", exist_ok=True)
         filename = (
             f"export_{project_id}_rev{model_revision}_zoo_native_"
@@ -946,8 +937,26 @@ class ZooExportProvider(ExportProvider):
                     is_mock=False,
                 )
 
-        ws_url = f"{settings.zoo_api_base_url.replace('http', 'ws')}/ws/modeling/commands"
+        token = self.api_token or settings.zoo_api_token
+        if not token:
+            return ExportResult(
+                success=False,
+                format=fmt,
+                error_id="IF-ZOO-401",
+                error_message="Zoo API token is not configured in backend environment.",
+                recovery_steps=[
+                    "Configure ZOO_API_TOKEN in backend/.env file.",
+                    "Set EXPORT_PROVIDER=mock for offline development.",
+                ],
+                is_mock=False,
+            )
+
+        api_base_url = self.api_base_url or settings.zoo_api_base_url
+        ws_url = f"{api_base_url.replace('http', 'ws')}/ws/modeling/commands"
         headers = {"Authorization": f"Bearer {token}"}
+
+        # Enforce prohibition guard against local generate_adapter_obj() per S8.3
+        set_prohibit_local_obj(True)
 
         try:
             # Execute Zoo-native export via live Zoo Modeling WebSocket session
@@ -1283,9 +1292,9 @@ class ZooExportProvider(ExportProvider):
             set_prohibit_local_obj(False)
 
 
-def get_export_provider() -> ExportProvider:
-    """Factory function returning active ExportProvider based on configuration."""
-    provider_name = settings.get_effective_export_provider()
+def get_export_provider(provider_mode: str | None = None) -> ExportProvider:
+    """Factory function returning active ExportProvider based on configuration or project mode."""
+    provider_name = "zoo" if provider_mode == "live" and settings.zoo_api_token else settings.get_effective_export_provider()
     if provider_name == "zoo":
         return ZooExportProvider()
     return MockExportProvider()

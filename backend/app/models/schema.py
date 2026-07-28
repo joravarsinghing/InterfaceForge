@@ -77,6 +77,13 @@ class ModelRevisionStatus(str, Enum):
     SUPERSEDED = "superseded"
 
 
+class ProviderMode(str, Enum):
+    """Project-scoped provider mode for offline mock or live backend providers."""
+
+    MOCK = "mock"
+    LIVE = "live"
+
+
 class Point2D(BaseModel):
     """2D coordinate representation."""
 
@@ -106,7 +113,7 @@ class Dimension(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critical: bool = True
     feature_ref: Optional[str] = None  # e.g. 'outer_contour', 'region_1', 'bore'
-    source_annotation: Optional[str] = None  # e.g. '40', 'Ø16', 'R5'
+    source_annotation: Optional[str] = None  # e.g. '40', 'Ã˜16', 'R5'
     consistency_state: str = "valid"  # 'valid', 'conflict', 'unmapped', 'recalculated'
 
 
@@ -184,13 +191,16 @@ class Interface(BaseModel):
     verification_status: str = "pending_review"
     primitive_fallback_active: bool = False
     primitive_fallback_label: Optional[str] = (
-        None  # 'Simplified envelope — not the exact cross-section'
+        None  # 'Simplified envelope â€” not the exact cross-section'
     )
     analysis_provider_name: Optional[str] = None  # e.g. 'mock', 'gemini'
     generation_unsupported: bool = False  # True if downstream KCL cannot handle this profile yet
     generation_unsupported_reason: Optional[str] = None
     # S10.5A: OpenCV pixel tracing artifacts and metrics
     cleaned_image_ref: Optional[str] = None
+    analysis_image_ref: Optional[str] = None
+    analysis_image_width: Optional[int] = None
+    analysis_image_height: Optional[int] = None
     trace_svg_ref: Optional[str] = None
     overlay_svg_ref: Optional[str] = None
     raw_outer_point_count: Optional[int] = None
@@ -247,6 +257,8 @@ class Project(BaseModel):
 
     project_id: str
     project_token: str
+    display_name: str = "Adapter"
+    provider_mode: ProviderMode = ProviderMode.MOCK
     schema_version: str = "0.1"
     state: WorkflowState = WorkflowState.NEW
     created_at: str = Field(default_factory=current_iso_timestamp)
@@ -264,13 +276,40 @@ class Project(BaseModel):
 # --- DTOs / Request & Response Payloads ---
 
 
+class ProjectCreateRequest(BaseModel):
+    """Optional request payload for creating a project with a provider mode."""
+
+    provider_mode: ProviderMode = ProviderMode.MOCK
+
+
 class ProjectCreateResponse(BaseModel):
     """Response payload returned when a project is created."""
 
     project_id: str
     project_token: str
+    display_name: str
+    provider_mode: ProviderMode
     schema_version: str
     state: WorkflowState
+
+
+class ProviderModeUpdateRequest(BaseModel):
+    """Request payload for changing a project's active provider mode."""
+
+    provider_mode: ProviderMode
+
+
+class ProviderModeStatus(BaseModel):
+    """Truthful provider capability state safe for browser display."""
+
+    selected_mode: ProviderMode
+    effective_mode: ProviderMode
+    live_available: bool
+    engine_provider: str
+    export_provider: str
+    analysis_provider: str
+    agent_provider: str
+    message: str
 
 
 class ProjectPatchRequest(BaseModel):
@@ -300,6 +339,9 @@ class InterfacePatchRequest(BaseModel):
     primitive_fallback_label: Optional[str] = None
     approved: Optional[bool] = None
     cleaned_image_ref: Optional[str] = None
+    analysis_image_ref: Optional[str] = None
+    analysis_image_width: Optional[int] = None
+    analysis_image_height: Optional[int] = None
     trace_svg_ref: Optional[str] = None
     overlay_svg_ref: Optional[str] = None
     raw_outer_point_count: Optional[int] = None
@@ -434,6 +476,9 @@ class AnalysisResult(BaseModel):
     complex_reason: Optional[str] = None
     # S10.5A: OpenCV pixel tracing artifacts and metrics
     cleaned_image_ref: Optional[str] = None
+    analysis_image_ref: Optional[str] = None
+    analysis_image_width: Optional[int] = None
+    analysis_image_height: Optional[int] = None
     trace_svg_ref: Optional[str] = None
     overlay_svg_ref: Optional[str] = None
     raw_outer_point_count: Optional[int] = None

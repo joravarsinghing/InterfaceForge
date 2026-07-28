@@ -52,8 +52,8 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
         >
           <p>
             For best results, upload a <strong>clean cross-section image</strong> without
-            dimensions or annotations. One confirmed measurement is enough to scale the
-            profile accurately.
+            dimensions or annotations. One confirmed measurement is enough to calibrate
+            the profile scale after review.
           </p>
         </div>
 

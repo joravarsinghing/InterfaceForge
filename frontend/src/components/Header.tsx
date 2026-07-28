@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HealthResponse } from '../services/api';
-import { Project } from '../types/schema';
+import { Project, ProviderMode, ProviderModeStatus } from '../types/schema';
 import { Wordmark } from './Wordmark';
 
 interface HeaderProps {
@@ -10,25 +10,47 @@ interface HeaderProps {
     error: string | null;
   };
   project?: Project | null;
+  providerStatus?: ProviderModeStatus | null;
+  providerModeError?: string | null;
   onRetryHealth: () => void;
   onRestartProject?: () => void;
+  onProviderModeChange?: (mode: ProviderMode) => Promise<void> | void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   healthState,
   project,
+  providerStatus,
+  providerModeError,
   onRetryHealth,
   onRestartProject,
+  onProviderModeChange,
 }) => {
   const [showHelp, setShowHelp] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [changingMode, setChangingMode] = useState<ProviderMode | null>(null);
+
+  const effectiveMode: ProviderMode = providerStatus?.effective_mode ?? project?.provider_mode ?? 'mock';
+  const selectedMode: ProviderMode = providerStatus?.selected_mode ?? project?.provider_mode ?? 'mock';
+  const statusIsLive = Boolean(effectiveMode === 'live' && providerStatus?.live_available);
+  const statusLabel = statusIsLive ? 'Live' : 'Mock / Offline';
+  const canChangeProviderMode = Boolean(onProviderModeChange);
+
+  const handleModeClick = async (mode: ProviderMode) => {
+    if (!onProviderModeChange || changingMode) return;
+    setChangingMode(mode);
+    try {
+      await onProviderModeChange(mode);
+    } finally {
+      setChangingMode(null);
+    }
+  };
 
   const getStatusBadge = () => {
     if (healthState.loading) {
       return (
         <span className="status-badge status-loading" aria-live="polite">
-          <img src="/InterfaceForge_logo_in.svg" alt="" className="logo-badge-icon" />
-          <span className="status-dot"></span> Checking backend...
+          <span className="status-dot" aria-hidden="true"></span> Checking backend
         </span>
       );
     }
@@ -37,21 +59,22 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           className="status-badge status-offline"
           onClick={onRetryHealth}
-          title={`Backend Unavailable: ${healthState.error || 'Unknown error'}. Click to retry.`}
+          title={`Backend unavailable: ${healthState.error || 'Unknown error'}. Click to retry.`}
           aria-live="polite"
         >
-          <img src="/InterfaceForge_logo_in.svg" alt="" className="logo-badge-icon" />
-          <span className="status-dot"></span> Service: Offline (Retry)
+          <span className="status-dot" aria-hidden="true"></span> Offline (Retry)
         </button>
       );
     }
     return (
       <span
-        className="status-badge status-online"
-        title={`Connected to ${healthState.data.service_name} v${healthState.data.version} (${healthState.data.environment})`}
+        className={`status-badge ${statusIsLive ? 'status-live' : 'status-mock'}`}
+        title={providerStatus?.message || `${healthState.data.service_name} is reachable.`}
         aria-live="polite"
+        data-provider-mode={effectiveMode}
+        data-pulse={statusIsLive ? 'true' : 'false'}
       >
-        <span className="status-dot"></span> Service: Online
+        <span className="status-dot" aria-hidden="true"></span> {statusLabel}
       </span>
     );
   };
@@ -61,19 +84,38 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="header-container">
         <div className="header-left">
           <a href="/" className="logo-link" aria-label="InterfaceForge Home">
-            <img src="/InterfaceForge_logo.svg" alt="InterfaceForge Logo" className="logo-full-desktop" />
-            <img src="/InterfaceForge_logo_in.svg" alt="InterfaceForge Mark" className="logo-compact-mobile" />
-            <Wordmark className="logo-text" />
+            <img src="/InterfaceForge_logo_in.svg" alt="" className="logo-compact-header" />
+            <Wordmark className="brand-wordmark" />
           </a>
-          <span className="mock-mode-badge" title="Mock mode active for Zoo Engine API">
-            Mock Mode
-          </span>
+
+          {canChangeProviderMode && (
+            <div className="provider-toggle" role="group" aria-label="Provider mode">
+              <button
+                type="button"
+                className={selectedMode === 'mock' ? 'provider-toggle-option active' : 'provider-toggle-option'}
+                aria-pressed={selectedMode === 'mock'}
+                disabled={changingMode !== null}
+                onClick={() => handleModeClick('mock')}
+              >
+                Mock
+              </button>
+              <button
+                type="button"
+                className={selectedMode === 'live' ? 'provider-toggle-option active' : 'provider-toggle-option'}
+                aria-pressed={selectedMode === 'live'}
+                disabled={changingMode !== null}
+                onClick={() => handleModeClick('live')}
+              >
+                {changingMode === 'live' ? 'Checking' : 'Live'}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="header-right">
           {project && (
-            <span className="project-id-badge" style={{ fontSize: '0.78rem', color: '#8b949e', background: '#161b22', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #30363d' }}>
-              Project: <code style={{ color: '#79c0ff' }}>{project.project_id.substring(0, 8)}...</code>
+            <span className="project-name-badge" title={`Project ID: ${project.project_id}`}>
+              Project: <strong>{project.display_name || 'Adapter'}</strong>
             </span>
           )}
 
@@ -82,9 +124,8 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setShowConfirmModal(true)}
-              style={{ fontSize: '0.8rem', padding: '0.3rem 0.6rem' }}
             >
-              🔄 Start Over
+              Start Over
             </button>
           )}
 
@@ -92,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="help-button"
             onClick={() => setShowHelp(!showHelp)}
             aria-expanded={showHelp}
-            aria-label="Toggle help dialog"
+            aria-label="Toggle help panel"
           >
             Help
           </button>
@@ -100,15 +141,31 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
+      {providerModeError && (
+        <div className="provider-mode-message" role="status">
+          {providerModeError}
+        </div>
+      )}
+
       {showHelp && (
-        <div className="help-panel" role="region" aria-label="Help and documentation">
+        <div className="help-panel" role="region" aria-label="Creator and workflow help">
           <div className="help-panel-content">
-            <h3><Wordmark /> Help &amp; Documentation</h3>
+            <h3>Created by Joravar Singh</h3>
             <p>
-              <Wordmark /> connects two physical products by converting 2D interface images into parametric CAD models via Zoo Engine API.
+              InterfaceForge was created by Joravar Singh for the Zoo API Makeathon 2026.
+            </p>
+            <p>
+              <a
+                href="https://joravarsinghing.github.io/portfolio/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="portfolio-link"
+              >
+                Open Joravar Singh's portfolio
+              </a>
             </p>
             <p className="status-note">
-              <strong>Stage S6A Note:</strong> Full guided web app workflow is active in Mock Mode. Complete all steps to generate deterministic KCL code and view 3D adapter specifications.
+              Workflow: approve both interface profiles, configure the connection, then generate and review the adapter candidate before export.
             </p>
             <button className="btn btn-secondary" onClick={() => setShowHelp(false)}>
               Close Help
@@ -118,22 +175,19 @@ export const Header: React.FC<HeaderProps> = ({
       )}
 
       {showConfirmModal && (
-        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.5rem', maxWidth: '440px', width: '90%', color: '#f0f6fc' }}>
-            <h3 style={{ marginTop: 0, color: '#f85149', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>⚠️</span> Restart Project?
-            </h3>
-            <p style={{ fontSize: '0.9rem', color: '#c9d1d9' }}>
-              Are you sure you want to exit or restart? All active session data for this project will be reset.
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3>Restart Project?</h3>
+            <p>
+              All active session data for this project will be reset in this browser. Existing backend records are not deleted.
             </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmModal(false)}>
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
-                style={{ background: '#da3633', borderColor: '#f85149' }}
+                className="btn btn-primary btn-danger-confirm"
                 onClick={() => {
                   setShowConfirmModal(false);
                   if (onRestartProject) onRestartProject();

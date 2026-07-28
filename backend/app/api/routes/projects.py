@@ -2,10 +2,11 @@
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, File, Header, Query, UploadFile, status
+from fastapi import APIRouter, File, Form, Header, Query, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
+from app.core.exceptions import APIError
 from app.models.schema import (
     ConnectionConfigRequest,
     ConnectionUpdateRequest,
@@ -15,8 +16,11 @@ from app.models.schema import (
     ManufacturingUpdateRequest,
     ModelFailRequest,
     ModelSucceedRequest,
+    ProjectCreateRequest,
     ProjectCreateResponse,
     ProjectPatchRequest,
+    ProviderMode,
+    ProviderModeUpdateRequest,
     RevisionConfirmRequest,
     RevisionProposeRequest,
 )
@@ -40,18 +44,101 @@ def get_service() -> ProjectService:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=StandardResponse)
-def create_project() -> Dict[str, Any]:
+def create_project(req: Optional[ProjectCreateRequest] = None) -> Dict[str, Any]:
     """Create a new project with canonical design schema and access token."""
     service = get_service()
-    project = service.create_project()
+    provider_mode = req.provider_mode if req else ProviderMode.MOCK
+    mode_status = service.get_provider_mode_status_for_selection(provider_mode)
+    if provider_mode == ProviderMode.LIVE and mode_status.effective_mode != ProviderMode.LIVE:
+        raise APIError(
+            error_id="IF-PROVIDER-409",
+            message=mode_status.message,
+            status_code=409,
+            recovery_steps=[
+                "Configure required backend provider credentials, then retry Live mode.",
+                "Continue in Mock / Offline mode without changing project geometry.",
+            ],
+        )
+    project = service.create_project(provider_mode=provider_mode)
     create_dto = ProjectCreateResponse(
         project_id=project.project_id,
         project_token=project.project_token,
+        display_name=project.display_name,
+        provider_mode=project.provider_mode,
         schema_version=project.schema_version,
         state=project.state,
     )
     return {"success": True, "data": create_dto.model_dump()}
 
+
+
+
+@router.get("/provider-mode", response_model=StandardResponse)
+def get_default_provider_mode() -> Dict[str, Any]:
+    """Return default mock provider status before a project exists."""
+    service = get_service()
+    mode_status = service.get_provider_mode_status_for_selection(ProviderMode.MOCK)
+    return {"success": True, "data": mode_status.model_dump()}
+
+
+@router.patch("/provider-mode", response_model=StandardResponse)
+def validate_default_provider_mode(req: ProviderModeUpdateRequest) -> Dict[str, Any]:
+    """Validate a pre-project provider mode preference without creating a project."""
+    service = get_service()
+    mode_status = service.get_provider_mode_status_for_selection(req.provider_mode)
+    if req.provider_mode == ProviderMode.LIVE and mode_status.effective_mode != ProviderMode.LIVE:
+        raise APIError(
+            error_id="IF-PROVIDER-409",
+            message=mode_status.message,
+            status_code=409,
+            recovery_steps=[
+                "Configure required backend provider credentials, then retry Live mode.",
+                "Continue in Mock / Offline mode before starting a project.",
+            ],
+        )
+    return {"success": True, "data": mode_status.model_dump()}
+@router.get("/{project_id}/provider-mode", response_model=StandardResponse)
+def get_project_provider_mode(
+    project_id: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Return selected/effective provider mode without exposing credentials."""
+    service = get_service()
+    project = service.get_project(project_id=project_id, project_token=x_project_token)
+    mode_status = service.get_provider_mode_status(project)
+    return {"success": True, "data": mode_status.model_dump()}
+
+
+@router.patch("/{project_id}/provider-mode", response_model=StandardResponse)
+def update_project_provider_mode(
+    project_id: str,
+    req: ProviderModeUpdateRequest,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Persist provider mode when the requested mode can be honored by backend config."""
+    service = get_service()
+    project, mode_status = service.set_provider_mode(
+        project_id=project_id,
+        provider_mode=req.provider_mode,
+        project_token=x_project_token,
+    )
+    if req.provider_mode == ProviderMode.LIVE and mode_status.effective_mode != ProviderMode.LIVE:
+        raise APIError(
+            error_id="IF-PROVIDER-409",
+            message=mode_status.message,
+            status_code=409,
+            recovery_steps=[
+                "Configure required backend provider credentials, then retry Live mode.",
+                "Continue in Mock / Offline mode without changing project geometry.",
+            ],
+        )
+    return {
+        "success": True,
+        "data": {
+            "project": project.model_dump(),
+            "provider_status": mode_status.model_dump(),
+        },
+    }
 
 @router.get("/{project_id}", response_model=StandardResponse)
 def get_project(
@@ -107,6 +194,9 @@ async def upload_interface_image(
     project_id: str,
     interface_id: str,
     file: UploadFile = File(...),
+    known_measurement_type: Optional[str] = Form(None),
+    known_measurement_value: Optional[float] = Form(None),
+    known_measurement_unit: str = Form("mm"),
     x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
 ) -> Dict[str, Any]:
     """Multipart upload endpoint for Interface A/B image files."""
@@ -122,6 +212,9 @@ async def upload_interface_image(
         filename=filename,
         content_type=content_type,
         project_token=x_project_token,
+        known_measurement_type=known_measurement_type,
+        known_measurement_value=known_measurement_value,
+        known_measurement_unit=known_measurement_unit,
     )
     return {"success": True, "data": upload_data.model_dump()}
 
@@ -165,6 +258,25 @@ def get_interface_cleaned_image(
         project_id=project_id,
         interface_id=interface_id,
         artifact_type="cleaned_image",
+        project_token=effective_token,
+    )
+    return Response(content=file_bytes, media_type=content_type)
+
+
+@router.get("/{project_id}/interfaces/{interface_id}/analysis_image")
+def get_interface_analysis_image(
+    project_id: str,
+    interface_id: str,
+    token: Optional[str] = Query(None, description="Optional project token in query parameter"),
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Response:
+    """Fetch the exact processed analysis image passed to OpenCV contour extraction."""
+    service = get_service()
+    effective_token = x_project_token or token
+    file_bytes, content_type = service.get_interface_artifact_bytes(
+        project_id=project_id,
+        interface_id=interface_id,
+        artifact_type="analysis_image",
         project_token=effective_token,
     )
     return Response(content=file_bytes, media_type=content_type)
@@ -222,7 +334,10 @@ def analyze_interface_image(
 ) -> Dict[str, Any]:
     """Run mock or AI analysis on uploaded interface image to extract profile candidates."""
     service = get_service()
-    active_provider = get_analysis_provider(provider) if provider else None
+    project = service.get_project(project_id=project_id, project_token=x_project_token)
+    project_mode = project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode)
+    provider_name = provider or ("gemini" if project_mode == "live" and service.get_provider_mode_status(project).analysis_provider == "gemini" else None)
+    active_provider = get_analysis_provider(provider_name) if provider_name else None
     result = service.analyze_interface_image(
         project_id=project_id,
         interface_id=interface_id,
@@ -542,12 +657,14 @@ async def propose_revision(
 ) -> Dict[str, Any]:
     """Propose structured natural language parameter revisions per Stage S9."""
     service = get_service()
-    service.get_project(project_id, project_token=x_project_token)
+    project = service.get_project(project_id, project_token=x_project_token)
     agent_svc = get_agent_service()
+    project_mode = project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode)
+    provider_name = req.provider or ("zoo" if project_mode == "live" else "mock")
     proposal = await agent_svc.propose_revision(
         project_id=project_id,
         prompt=req.prompt,
-        provider_name=req.provider,
+        provider_name=provider_name,
     )
     return {"success": True, "data": proposal.model_dump()}
 

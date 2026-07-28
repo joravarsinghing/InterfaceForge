@@ -57,9 +57,9 @@ Stage S4A introduces the decoupled `AnalysisProvider` abstraction:
                                      │
          ┌───────────────────────────┴───────────────────────────┐
          ▼                                                       ▼
-GeminiAnalysisProvider (Active in S7)                     MockAnalysisProvider (Fallback)
-- Real multimodal Gemini 2.5 Flash vision extraction     - Deterministic candidate profile generation
-- Versioned prompt template (v1.0)                       - Configurable offline/demo provider
+GeminiAnalysisProvider (Vision guidance)                     MockAnalysisProvider (Fallback)
+- Multimodal image guidance for clean cross-sections     - Deterministic candidate profile generation
+- OpenCV remains responsible for deterministic tracing                       - Configurable offline/demo provider
 - Strict JSON schema & finite value validation           - Safe fallback when key is unconfigured
 - Honest low-confidence quality rejection (< 0.60)       - Selected via ANALYSIS_PROVIDER=mock
 ```
@@ -138,7 +138,7 @@ Stage S6A connects all individual page components into one end-to-end web applic
 2. **Server-Side & Client-Side Route Guards (`ProtectedRoute.tsx`):** Computes `getEarliestIncompleteStep(project)`. Redirects invalid direct URL access automatically.
 3. **Stale Model Handling:** Upstream edits to approved interfaces or connection parameters set model state to `STALE` and trigger warning notices on Step 4 and Step 5.
 4. **Preservation of Last-Known-Good Model:** Failed generation attempts preserve `last_known_good_model_revision` without overwriting active model state.
-5. **Honest Export Placeholder (`ResultPage.tsx`):** Explicitly states that real STL/STEP binary exports will run via live Zoo Engine in Stage S6 while making deterministic KCL code artifacts available for download and copying.
+5. **Result and Export Review (`ResultPage.tsx`):** Presents the generated adapter as an inspectable candidate, preserves stale/last-known-good status, and offers STL/STEP/KCL exports only from the current approved model revision.
 
 ---
 

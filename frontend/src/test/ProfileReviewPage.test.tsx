@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ProfileReviewPage } from '../pages/ProfileReviewPage';
@@ -12,6 +12,7 @@ vi.mock('../services/api', async () => {
     patchInterface: vi.fn(),
     approveInterface: vi.fn(),
   };
+
 });
 
 const mockProject: Project = {
@@ -93,7 +94,7 @@ describe('ProfileReviewPage Component', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText(/Interface A — Profile Review & Approval/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Interface A.*Profile Review & Approval/i })).toBeInTheDocument();
     expect(screen.getByText(/Source Image/i)).toBeInTheDocument();
     expect(screen.getByText(/Clean SVG Profile/i)).toBeInTheDocument();
     expect(screen.getByTitle(/circle Profile Preview/i)).toBeInTheDocument();
@@ -123,10 +124,10 @@ describe('ProfileReviewPage Component', () => {
     );
 
     expect(screen.getByText(/Legend:/i)).toBeInTheDocument();
-    expect(screen.getByText(/👤 User Entered/i)).toBeInTheDocument();
-    expect(screen.getByText(/📷 Image Extracted/i)).toBeInTheDocument();
-    expect(screen.getByText(/⚙️ System Inferred/i)).toBeInTheDocument();
-    expect(screen.getByText(/❓ Unresolved/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/User Entered/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Image Extracted/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/System Inferred/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Unresolved/i).length).toBeGreaterThan(0);
   });
 
   it('displays validation summary error when fewer than two known dimensions exist', async () => {
@@ -189,6 +190,93 @@ describe('ProfileReviewPage Component', () => {
       );
       expect(approveMock).toHaveBeenCalledWith('proj_123', 'interface_a', 'tok_abc');
     });
+  });
+
+  it('pre-populates uploaded measurement scale and requires explicit confirmation for primitive profiles', () => {
+    const measuredProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        dimensions: [
+          ...mockProject.interface_a.dimensions,
+          {
+            id: 'overall_width',
+            label: 'Overall Width',
+            value: 41.5,
+            unit: 'mm',
+            provenance: 'user_entered',
+            confidence: 1.0,
+            critical: true,
+            feature_ref: 'outer_contour',
+          },
+        ],
+        scale_calibration: {
+          source: 'user_calibration',
+          reference_dimension: 'overall_width',
+          pixel_distance: 96,
+          real_distance_mm: 41.5,
+          confidence: 1.0,
+          confirmed: false,
+        },
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={measuredProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Millimetre Scale Calibration/i)).toBeInTheDocument();
+    expect(screen.getByText(/Scale Unconfirmed/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/41.5 mm/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
+  });
+
+  it('hydrates confirmed scale after refresh and keeps approval available', () => {
+    const hydratedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        scale_calibration: {
+          source: 'user_calibration',
+          reference_dimension: 'overall_width',
+          pixel_distance: 96,
+          real_distance_mm: 41.5,
+          confidence: 1.0,
+          confirmed: true,
+        },
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={hydratedProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getAllByText(/Scale Confirmed/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Approve Interface A/i })).not.toBeDisabled();
+  });
+
+  it('shows backend approval rejection without presenting approved state', async () => {
+    vi.mocked(api.patchInterface).mockResolvedValue(mockProject);
+    vi.mocked(api.approveInterface).mockRejectedValue(
+      new Error('[IF-APPROVAL-400] Scale calibration must be confirmed')
+    );
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={mockProject} />
+      </BrowserRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Approve Interface A/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Scale calibration must be confirmed/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Status: Approved/i)).not.toBeInTheDocument();
   });
 
   it('renders approved state and allows re-editing', () => {
@@ -290,7 +378,7 @@ describe('ProfileReviewPage Component', () => {
         ...mockProject.interface_a,
         profile_type: 'traced_closed',
         primitive_fallback_active: true,
-        primitive_fallback_label: 'Simplified envelope — not the exact cross-section',
+        primitive_fallback_label: 'Simplified envelope â€” not the exact cross-section',
       },
     };
 
@@ -300,6 +388,141 @@ describe('ProfileReviewPage Component', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getAllByText(/Simplified envelope — not the exact cross-section/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Simplified envelope.*not the exact cross-section/i).length).toBeGreaterThan(0);
   });
+
+  it('uses original upload for Original and processed artifact SVG for Overlay', () => {
+    const tracedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        analysis_image_ref: 'artifacts/cleaned_profile.png',
+        analysis_image_width: 512,
+        analysis_image_height: 256,
+        trace_svg_ref: 'artifacts/trace_profile.svg',
+        overlay_svg_ref: 'artifacts/overlay_profile.svg',
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [
+            { x: -20, y: -20 },
+            { x: 20, y: -20 },
+            { x: 20, y: 20 },
+            { x: -20, y: 20 },
+          ],
+          is_closed: true,
+          classification: 'outer_contour',
+          provenance: 'analysis',
+          confidence: 0.9,
+          point_count: 4,
+        },
+        traced_hole_contours: [],
+        scale_calibration: {
+          source: 'drawing_dimension',
+          reference_dimension: 'overall_width',
+          pixel_distance: 400,
+          real_distance_mm: 40,
+          confidence: 0.95,
+          confirmed: true,
+        },
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={tracedProject} />
+      </BrowserRouter>
+    );
+
+    const overlay = screen.getByAltText(/Analysis crop overlay for Interface A/i) as HTMLImageElement;
+    expect(overlay.src).toContain('/api/projects/proj_123/interfaces/interface_a/overlay_svg');
+    expect(overlay).toHaveAttribute('width', '512');
+    expect(overlay).toHaveAttribute('height', '256');
+    expect(screen.getByText(/Overlay base: Analysis crop/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Original/i }));
+    const original = screen.getByAltText(/Original source file for Interface A/i) as HTMLImageElement;
+    expect(original.src).toContain('/api/projects/proj_123/interfaces/interface_a/image');
+  });
+
+  it('hydrates aligned overlay metadata after refresh', () => {
+    const hydratedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        analysis_image_ref: 'artifacts/cleaned_profile.png',
+        analysis_image_width: 640,
+        analysis_image_height: 480,
+        overlay_svg_ref: 'artifacts/overlay_profile.svg',
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [
+            { x: -20, y: -20 },
+            { x: 20, y: -20 },
+            { x: 20, y: 20 },
+            { x: -20, y: 20 },
+          ],
+          is_closed: true,
+          classification: 'outer_contour',
+          provenance: 'analysis',
+          confidence: 0.9,
+          point_count: 4,
+        },
+        traced_hole_contours: [],
+      },
+    };
+
+    const { rerender } = render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={hydratedProject} />
+      </BrowserRouter>
+    );
+    rerender(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={{ ...hydratedProject }} />
+      </BrowserRouter>
+    );
+
+    const overlay = screen.getByAltText(/Analysis crop overlay for Interface A/i);
+    expect(overlay).toHaveAttribute('width', '640');
+    expect(overlay).toHaveAttribute('height', '480');
+  });
+
+  it('shows unavailable overlay state instead of falling back to original upload', () => {
+    const missingArtifactProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        overlay_svg_ref: null,
+        analysis_image_ref: null,
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [
+            { x: -20, y: -20 },
+            { x: 20, y: -20 },
+            { x: 20, y: 20 },
+            { x: -20, y: 20 },
+          ],
+          is_closed: true,
+          classification: 'outer_contour',
+          provenance: 'analysis',
+          confidence: 0.9,
+          point_count: 4,
+        },
+        traced_hole_contours: [],
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={missingArtifactProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Overlay unavailable because the analysis crop artifact is missing/i)).toBeInTheDocument();
+    expect(screen.queryByAltText(/overlay background/i)).not.toBeInTheDocument();
+  });
+
 });

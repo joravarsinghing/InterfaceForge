@@ -1,5 +1,7 @@
 import { Project } from '../types/schema';
 
+type InterfaceId = 'interface_a' | 'interface_b';
+
 export const STEP_ORDER: Record<string, number> = {
   '/': 0,
   '/step1': 1,
@@ -11,23 +13,33 @@ export const STEP_ORDER: Record<string, number> = {
   '/step5': 7,
 };
 
+export function getInterfaceStepPath(
+  project: Project | null,
+  interfaceId: InterfaceId
+): string {
+  const uploadPath = interfaceId === 'interface_b' ? '/step2' : '/step1';
+  const reviewPath = interfaceId === 'interface_b' ? '/step2/analysis' : '/step1/analysis';
+  const interfaceData = interfaceId === 'interface_b' ? project?.interface_b : project?.interface_a;
+
+  if (!interfaceData) return uploadPath;
+
+  if (interfaceData.approved || interfaceData.source_image_ref) {
+    return reviewPath;
+  }
+
+  return uploadPath;
+}
 export function getEarliestIncompleteStep(project: Project | null): string {
   if (!project) return '/';
 
   // Step 1 Check
   if (!project.interface_a?.approved) {
-    if (!project.interface_a?.source_image_ref) {
-      return '/step1';
-    }
-    return '/step1/analysis';
+    return getInterfaceStepPath(project, 'interface_a');
   }
 
   // Step 2 Check
   if (!project.interface_b?.approved) {
-    if (!project.interface_b?.source_image_ref) {
-      return '/step2';
-    }
-    return '/step2/analysis';
+    return getInterfaceStepPath(project, 'interface_b');
   }
 
   // Step 3 Check: Connection configured
@@ -49,3 +61,4 @@ export function getEarliestIncompleteStep(project: Project | null): string {
   // Step 5: Ready
   return '/step5';
 }
+

@@ -7,6 +7,9 @@ import type {
   APIEnvelope,
   InterfacePatchRequest,
   Project,
+  ProviderMode,
+  ProviderModeStatus,
+  ProviderModeUpdateResponse,
   UploadResponseData,
 } from '../types/schema';
 
@@ -71,13 +74,64 @@ export async function fetchReadinessStatus(): Promise<ReadyResponse> {
   return json.data as ReadyResponse;
 }
 
+
+export async function validateDefaultProviderMode(
+  providerMode: ProviderMode
+): Promise<ProviderModeStatus> {
+  const response = await fetch(`${BACKEND_BASE_URL}/api/projects/provider-mode`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider_mode: providerMode }),
+  });
+  const json: APIEnvelope<ProviderModeStatus> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function fetchProviderModeStatus(
+  projectId: string,
+  projectToken?: string
+): Promise<ProviderModeStatus> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(`${BACKEND_BASE_URL}/api/projects/${projectId}/provider-mode`, {
+    headers,
+  });
+  const json: APIEnvelope<ProviderModeStatus> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function updateProviderMode(
+  projectId: string,
+  providerMode: ProviderMode,
+  projectToken?: string
+): Promise<ProviderModeUpdateResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(`${BACKEND_BASE_URL}/api/projects/${projectId}/provider-mode`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ provider_mode: providerMode }),
+  });
+  const json: APIEnvelope<ProviderModeUpdateResponse> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
 /**
  * Project API client functions matching S3 contracts
  */
-export async function createProject(): Promise<Project> {
+export async function createProject(providerMode: ProviderMode = 'mock'): Promise<Project> {
   const response = await fetch(`${BACKEND_BASE_URL}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider_mode: providerMode }),
   });
   const json: APIEnvelope<Project> = await response.json();
   if (!json.success) {
@@ -135,10 +189,16 @@ export async function uploadInterfaceImage(
   projectId: string,
   interfaceId: 'interface_a' | 'interface_b',
   file: File,
-  projectToken?: string
+  projectToken?: string,
+  knownMeasurement?: { type: string; value: number; unit: string }
 ): Promise<UploadResponseData> {
   const formData = new FormData();
   formData.append('file', file);
+  if (knownMeasurement && Number.isFinite(knownMeasurement.value) && knownMeasurement.value > 0) {
+    formData.append('known_measurement_type', knownMeasurement.type);
+    formData.append('known_measurement_value', String(knownMeasurement.value));
+    formData.append('known_measurement_unit', knownMeasurement.unit);
+  }
 
   const headers: Record<string, string> = {};
   if (projectToken) {
@@ -606,6 +666,17 @@ export function getInterfaceImageUrl(
 ): string {
   const tokenQuery = projectToken ? `?token=${encodeURIComponent(projectToken)}` : '';
   return `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/image${tokenQuery}`;
+}
+
+
+export function getInterfaceArtifactUrl(
+  projectId: string,
+  interfaceId: 'interface_a' | 'interface_b',
+  artifact: 'analysis_image' | 'cleaned_image' | 'trace_svg' | 'overlay_svg',
+  projectToken?: string
+): string {
+  const tokenQuery = projectToken ? `?token=${encodeURIComponent(projectToken)}` : '';
+  return `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/${artifact}${tokenQuery}`;
 }
 
 export async function proposeRevision(

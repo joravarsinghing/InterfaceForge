@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SvgProfileViewer } from '../components/SvgProfileViewer';
 import { TracedProfileSvgViewer } from '../components/TracedProfileSvgViewer';
-import { approveInterface, patchInterface, getInterfaceImageUrl } from '../services/api';
+import { approveInterface, patchInterface, getInterfaceImageUrl, getInterfaceArtifactUrl } from '../services/api';
 import {
   Dimension,
   DimensionProvenance,
@@ -41,8 +41,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [imageError, setImageError] = useState<boolean>(false);
-  // Image view tab: 'source' | 'cleaned' | 'trace' | 'overlay' (default 'overlay' for traced profiles)
-  const [imageTab, setImageTab] = useState<'source' | 'cleaned' | 'trace' | 'overlay'>(
+  // Image view tab: Original stays untouched; Overlay uses saved analysis artifacts.
+  const [imageTab, setImageTab] = useState<'source' | 'analysis' | 'trace' | 'overlay'>(
     targetInterface?.profile_type === 'traced_closed' ? 'overlay' : 'source'
   );
   // Feature highlighting state
@@ -280,7 +280,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const handleTogglePrimitiveFallback = async (active: boolean) => {
     if (!project) return;
     setPrimitiveFallbackActive(active);
-    const label = active ? 'Simplified envelope — not the exact cross-section' : null;
+    const label = active ? 'Warning: Simplified envelope - not the exact cross-section' : undefined;
     const vStatus = active ? 'simplified_envelope_only' : 'exact_trace_ready';
 
     try {
@@ -302,13 +302,15 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   // Structural Validation Summary Calculation
   const isTracedProfile = profileType === 'traced_closed';
+  const hasStoredScaleCalibration = targetInterface?.scale_calibration != null;
+  const requiresScaleConfirmation = hasStoredScaleCalibration || isTracedProfile;
   const knownCount = dimensions.filter(
     (d) => d.provenance !== 'unresolved' && d.value > 0 && isFinite(d.value)
   ).length;
 
   const validationErrors: string[] = [];
 
-  // For traced profiles: contour presence & scale confirmation checks
+  // For traced profiles: contour presence checks
   if (isTracedProfile) {
     const hasOuterContour =
       targetInterface?.traced_outer_contour != null &&
@@ -318,11 +320,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         'Traced profile requires a valid outer contour with at least 4 points.'
       );
     }
-    if (!scaleCalibration.confirmed) {
-      validationErrors.push(
-        'Scale calibration is unconfirmed. Visible confirmation required before profile approval.'
-      );
-    }
   } else {
     // Primitive profiles need at least 2 known dimensions
     if (knownCount < 2) {
@@ -330,6 +327,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         `At least two known dimensions are required (found ${knownCount}).`
       );
     }
+  }
+
+  if (requiresScaleConfirmation && !scaleCalibration.confirmed) {
+    validationErrors.push(
+      'Scale calibration is unconfirmed. Visible confirmation required before profile approval.'
+    );
   }
 
   dimensions.forEach((d) => {
@@ -362,7 +365,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         {
           profile_type: profileType,
           dimensions,
-          scale_calibration: scaleCalibration,
+          scale_calibration: hasStoredScaleCalibration ? scaleCalibration : undefined,
           primitive_fallback_active: primitiveFallbackActive,
         },
         project.project_token
@@ -416,21 +419,21 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const getProvenanceBadge = (provenance: DimensionProvenance) => {
     switch (provenance) {
       case 'user_entered':
-        return { text: 'User Entered', icon: '👤', className: 'badge-user' };
+        return { text: 'User Entered', icon: 'ðŸ‘¤', className: 'badge-user' };
       case 'image_extracted':
-        return { text: 'Image Extracted', icon: '📷', className: 'badge-extracted' };
+        return { text: 'Image Extracted', icon: 'ðŸ“·', className: 'badge-extracted' };
       case 'system_inferred':
-        return { text: 'System Inferred', icon: '⚙️', className: 'badge-inferred' };
+        return { text: 'System Inferred', icon: 'âš™ï¸', className: 'badge-inferred' };
       case 'unresolved':
       default:
-        return { text: 'Unresolved', icon: '❓', className: 'badge-unresolved' };
+        return { text: 'Unresolved', icon: 'â“', className: 'badge-unresolved' };
     }
   };
 
   return (
     <div className="profile-review-page container">
       <header className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h1 className="page-title">{interfaceName} — Profile Review & Approval</h1>
+        <h1 className="page-title">{interfaceName} â€” Profile Review & Approval</h1>
         <p className="page-subtitle">
           Review extracted SVG profile, edit parameters, and confirm approval.
         </p>
@@ -450,9 +453,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                     background: '#6e7681',
                     color: '#ffffff',
                   }}
-                  title="Analysis ran in deterministic mock mode — output is demo data"
+                  title="Analysis ran in deterministic mock mode â€” output is demo data"
                 >
-                  🧪 Mock Analysis — Demo Output
+                  ðŸ§ª Mock Analysis â€” Demo Output
                 </span>
               );
             }
@@ -470,7 +473,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   }}
                   title="Analysis ran using Gemini Vision multimodal AI"
                 >
-                  🤖 Gemini Vision
+                  ðŸ¤– Gemini Vision
                 </span>
               );
             }
@@ -487,7 +490,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   color: '#ffffff',
                 }}
               >
-                🤖 {prov}
+                ðŸ¤– {prov}
               </span>
             );
           })()}
@@ -507,7 +510,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   }}
                   title="Primitive fallback active"
                 >
-                  ⚠️ Simplified envelope — not the exact cross-section
+                  Warning: Simplified envelope - not the exact cross-section
                 </span>
               );
             }
@@ -524,7 +527,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                     color: '#ffffff',
                   }}
                 >
-                  {isFormValid ? '✓ Exact trace ready for review' : '⚠️ Trace requires correction'}
+                  {isFormValid ? 'âœ“ Trace ready for approval review' : 'âš ï¸ Trace requires correction'}
                 </span>
               );
             }
@@ -540,7 +543,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   color: '#ffffff',
                 }}
               >
-                ✓ Standard Validation Verified
+                âœ“ Standard profile ready for approval review
               </span>
             );
           })()}
@@ -557,7 +560,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               marginTop: '0.5rem',
             }}
           >
-            <strong>✓ Status: Approved</strong> — Interface is approved and ready.
+            <strong>âœ“ Status: Approved</strong> â€” Interface is approved for adapter configuration.
           </div>
         )}
       </header>
@@ -580,7 +583,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             gap: '0.75rem',
           }}
         >
-          <span style={{ fontSize: '1.4rem' }}>💡</span>
+          <span style={{ fontSize: '1.4rem' }}>ðŸ’¡</span>
           <div>
             Check that the blue line follows the outside edge. Coloured internal regions are openings that may remain empty in the adapter.
           </div>
@@ -615,14 +618,14 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         >
           <h2>Source Image</h2>
 
-          {/* Tab switcher — shown for traced profiles */}
+          {/* Tab switcher â€” shown for traced profiles */}
           {targetInterface?.profile_type === 'traced_closed' && (
             <div
               role="tablist"
               aria-label="Image view mode"
               style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}
             >
-              {(['source', 'cleaned', 'trace', 'overlay'] as const).map((tab) => (
+              {(['source', 'analysis', 'trace', 'overlay'] as const).map((tab) => (
                 <button
                   key={tab}
                   id={`tab-${tab}`}
@@ -642,12 +645,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   }}
                 >
                   {tab === 'source'
-                    ? '📷 Original'
-                    : tab === 'cleaned'
-                    ? '🧹 Cleaned Image'
+                    ? 'ðŸ“· Original'
+                    : tab === 'analysis'
+                    ? 'Analysis crop'
                     : tab === 'trace'
-                    ? '✏️ Trace'
-                    : '🔀 Overlay'}
+                    ? 'âœï¸ Trace'
+                    : 'ðŸ”€ Overlay'}
                 </button>
               ))}
             </div>
@@ -684,7 +687,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                       alignItems: 'center',
                     }}
                   >
-                    <span style={{ fontSize: '2rem' }}>🚫</span>
                     <strong>Image could not be loaded.</strong>
                     <button
                       type="button"
@@ -709,69 +711,76 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                 )
               )}
 
-            {/* Cleaned Image V2 tab */}
-            {imageTab === 'cleaned' && targetInterface?.profile_type === 'traced_closed' && (
-              <img
-                src={`http://localhost:8000/api/projects/${project!.project_id}/interfaces/${interfaceId}/cleaned_image${project?.project_token ? `?token=${project.project_token}` : ''}`}
-                alt={`Cleaned image V2 for ${interfaceName}`}
-                style={{ maxHeight: '200px', maxWidth: '100%', objectFit: 'contain' }}
-                onError={(e) => {
-                  // Fallback to original image if artifact not yet fetched
-                  (e.target as HTMLImageElement).src = getInterfaceImageUrl(
+            {/* Analysis crop tab */}
+            {imageTab === 'analysis' && targetInterface?.profile_type === 'traced_closed' && (
+              targetInterface.analysis_image_ref && targetInterface.analysis_image_width && targetInterface.analysis_image_height ? (
+                <img
+                  src={getInterfaceArtifactUrl(
                     project!.project_id,
                     interfaceId,
+                    'analysis_image',
                     project?.project_token
-                  );
-                }}
-              />
+                  )}
+                  alt={`Analysis crop for ${interfaceName}`}
+                  width={targetInterface.analysis_image_width}
+                  height={targetInterface.analysis_image_height}
+                  style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <div role="status" style={{ color: '#f0b72f', padding: '1rem', textAlign: 'center' }}>
+                  Analysis crop unavailable. Re-run analysis to regenerate the processed image artifact.
+                </div>
+              )
             )}
 
-            {/* Trace tab — shows TracedProfileSvgViewer */}
+            {/* Trace tab */}
             {imageTab === 'trace' && targetInterface?.profile_type === 'traced_closed' && (
-              <TracedProfileSvgViewer
-                outerContour={targetInterface.traced_outer_contour}
-                holeContours={targetInterface.traced_hole_contours ?? []}
-                width={280}
-                height={240}
-              />
+              targetInterface.trace_svg_ref && targetInterface.analysis_image_width && targetInterface.analysis_image_height ? (
+                <img
+                  src={getInterfaceArtifactUrl(
+                    project!.project_id,
+                    interfaceId,
+                    'trace_svg',
+                    project?.project_token
+                  )}
+                  alt={`Trace SVG for ${interfaceName}`}
+                  width={targetInterface.analysis_image_width}
+                  height={targetInterface.analysis_image_height}
+                  style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
+                />
+              ) : (
+                <div role="status" style={{ color: '#f0b72f', padding: '1rem', textAlign: 'center' }}>
+                  Trace artifact unavailable. Re-run analysis to regenerate the trace.
+                </div>
+              )
             )}
 
-            {/* Overlay tab — shows real source image overlay */}
+            {/* Overlay tab */}
             {imageTab === 'overlay' && targetInterface?.profile_type === 'traced_closed' && (
-              <div style={{ position: 'relative', display: 'inline-block', maxHeight: '200px' }}>
-                {!imageError && targetInterface.source_image_ref && (
+              targetInterface.overlay_svg_ref && targetInterface.analysis_image_width && targetInterface.analysis_image_height ? (
+                <figure style={{ margin: 0 }} aria-label={`Analysis crop overlay for ${interfaceName}`}>
                   <img
-                    src={getInterfaceImageUrl(
+                    src={getInterfaceArtifactUrl(
                       project!.project_id,
                       interfaceId,
+                      'overlay_svg',
                       project?.project_token
                     )}
-                    alt={`Source file for ${interfaceName} (overlay background)`}
-                    style={{ maxHeight: '200px', maxWidth: '100%', objectFit: 'contain', opacity: 0.5 }}
-                    onError={() => setImageError(true)}
+                    alt={`Analysis crop overlay for ${interfaceName}`}
+                    width={targetInterface.analysis_image_width}
+                    height={targetInterface.analysis_image_height}
+                    style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
                   />
-                )}
-                <div
-                  style={{
-                    position: imageError ? 'static' : 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <TracedProfileSvgViewer
-                    outerContour={targetInterface.traced_outer_contour}
-                    holeContours={targetInterface.traced_hole_contours ?? []}
-                    width={200}
-                    height={200}
-                    isOverlay
-                  />
+                  <figcaption style={{ marginTop: '0.4rem', color: '#8b949e', fontSize: '0.85rem' }}>
+                    Overlay base: Analysis crop
+                  </figcaption>
+                </figure>
+              ) : (
+                <div role="status" style={{ color: '#f0b72f', padding: '1rem', textAlign: 'center' }}>
+                  Overlay unavailable because the analysis crop artifact is missing. Re-run analysis to restore an aligned overlay.
                 </div>
-              </div>
+              )
             )}
           </div>
 
@@ -789,7 +798,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               }}
             >
               <div style={{ fontWeight: 600, color: '#58a6ff', marginBottom: '0.25rem' }}>
-                🔬 OpenCV Profile Tracing Metrics:
+                ðŸ”¬ OpenCV Profile Tracing Metrics:
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
                 <div>Raw Outer Points: <strong style={{ color: '#c9d1d9' }}>{targetInterface.raw_outer_point_count ?? (targetInterface.traced_outer_contour?.points.length ? targetInterface.traced_outer_contour.points.length * 40 : 2181)}</strong></div>
@@ -804,7 +813,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           {targetInterface?.generation_unsupported && (
             <div
               role="note"
-              aria-label="Generation limitation notice"
               style={{
                 marginTop: '0.75rem',
                 padding: '0.75rem',
@@ -815,7 +823,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                 fontSize: '0.85rem',
               }}
             >
-              <strong>⚠️ Generation Limitation:</strong>
+              <strong>Generation Limitation:</strong>
               <br />
               Traced profile captured successfully.
               <br />
@@ -907,7 +915,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       </section>
 
       {/* S10.4 Scale Confirmation Panel */}
-      {isTracedProfile && (
+      {requiresScaleConfirmation && (
         <section
           className="scale-confirmation-card"
           style={{
@@ -929,7 +937,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             }}
           >
             <h2 style={{ fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              📏 Millimetre Scale Calibration
+              ðŸ“ Millimetre Scale Calibration
               <span
                 id="scale-confirmation-status"
                 className="badge"
@@ -941,7 +949,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   color: '#ffffff',
                 }}
               >
-                {scaleCalibration.confirmed ? '✓ Scale Confirmed' : '⚠️ Scale Unconfirmed'}
+                {scaleCalibration.confirmed ? 'âœ“ Scale Confirmed' : 'âš ï¸ Scale Unconfirmed'}
               </span>
             </h2>
             <div style={{ fontSize: '0.85rem', color: '#8b949e' }}>
@@ -950,8 +958,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           </header>
 
           <p style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Scale detected from drawing width: <strong>{scaleCalibration.real_distance_mm} mm</strong>.
-            Confirm or adjust calibration before approving manufacturing profile.
+            Trace scale is currently set from <strong>{scaleCalibration.real_distance_mm} mm</strong>.
+            Confirm or adjust calibration before approving this profile.
           </p>
 
           <div
@@ -977,7 +985,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                 fontWeight: 600,
               }}
             >
-              {scaleCalibration.confirmed ? '✓ Scale Confirmed (40.0 mm)' : `Confirm Scale (${scaleCalibration.real_distance_mm} mm)`}
+              {scaleCalibration.confirmed ? `Scale Confirmed (${scaleCalibration.real_distance_mm} mm)` : `Confirm Scale (${scaleCalibration.real_distance_mm} mm)`}
             </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1026,7 +1034,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         >
           <header style={{ marginBottom: '0.75rem' }}>
             <h2 style={{ fontSize: '1.1rem', margin: 0 }}>
-              🕳️ Internal Cavities & Openings ({targetInterface?.traced_hole_contours?.length ?? 0} Detected)
+              ðŸ•³ï¸ Internal Cavities & Openings ({targetInterface?.traced_hole_contours?.length ?? 0} Detected)
             </h2>
             <p style={{ color: '#8b949e', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
               Review enclosed negative regions. Included regions remain open internal cavities in the extruded profile.
@@ -1094,7 +1102,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                           fontWeight: decision === 'include' ? 600 : 400,
                         }}
                       >
-                        ✓ Include as opening
+                        âœ“ Include as opening
                       </button>
                       <button
                         type="button"
@@ -1108,7 +1116,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                           fontWeight: decision === 'ignore' ? 600 : 400,
                         }}
                       >
-                        ✗ Ignore
+                        âœ— Ignore
                       </button>
                       <button
                         type="button"
@@ -1168,7 +1176,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <br />
             <span style={{ fontSize: '0.85rem', color: primitiveFallbackActive ? '#ffab40' : '#8b949e' }}>
               {primitiveFallbackActive
-                ? '⚠️ Simplified envelope — not the exact cross-section'
+                ? 'Warning: Simplified envelope - not the exact cross-section'
                 : 'Traced closed mode is active. You may optionally simplify to a bounding primitive.'}
             </span>
           </div>
@@ -1297,7 +1305,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                               borderRadius: '4px',
                             }}
                           >
-                            ✓ Mapped to {dim.feature_ref}
+                            âœ“ Mapped to {dim.feature_ref}
                           </span>
                         ) : (
                           <span
@@ -1310,7 +1318,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                               borderRadius: '4px',
                             }}
                           >
-                            Detected annotation — not mapped to geometry
+                            Detected annotation â€” not mapped to geometry
                           </span>
                         )}
                       </td>
@@ -1333,12 +1341,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                           }}
                         >
                           {cState === 'conflict'
-                            ? '⚠️ Conflict'
+                            ? 'âš ï¸ Conflict'
                             : cState === 'recalculated'
-                            ? '⚙️ Recalculated'
+                            ? 'âš™ï¸ Recalculated'
                             : cState === 'unmapped'
-                            ? 'ℹ️ Unmapped'
-                            : '✓ Valid'}
+                            ? 'â„¹ï¸ Unmapped'
+                            : 'âœ“ Valid'}
                         </span>
                       </td>
                       <td style={{ padding: '0.5rem' }}>
@@ -1444,10 +1452,10 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           <span>
             <strong>Legend:</strong>
           </span>
-          <span>👤 User Entered</span>
-          <span>📷 Image Extracted</span>
-          <span>⚙️ System Inferred</span>
-          <span>❓ Unresolved</span>
+          <span>ðŸ‘¤ User Entered</span>
+          <span>ðŸ“· Image Extracted</span>
+          <span>âš™ï¸ System Inferred</span>
+          <span>â“ Unresolved</span>
         </div>
       </section>
 
@@ -1484,12 +1492,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             style={{ color: '#f85149', marginTop: '0.5rem', paddingLeft: '1.2rem' }}
           >
             {validationErrors.map((err, idx) => (
-              <li key={idx}>⚠️ {err}</li>
+              <li key={idx}>Warning: {err}</li>
             ))}
           </ul>
         ) : (
           <p style={{ color: '#3fb950', marginTop: '0.5rem' }}>
-            ✓ All structural validation rules passed. Profile is ready for approval.
+            All structural validation rules passed. Profile is ready for approval.
           </p>
         )}
       </section>

@@ -1,7 +1,8 @@
-import React, { useState, useCallback, ChangeEvent, DragEvent } from 'react';
+import React, { useState, useCallback, useEffect, ChangeEvent, DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImageGuidance } from '../components/ImageGuidance';
 import { uploadInterfaceImage, analyzeInterfaceImage, fetchProject } from '../services/api';
+import { getInterfaceStepPath } from '../services/workflow';
 import { AnalysisResult, Project } from '../types/schema';
 
 interface UploadPageProps {
@@ -23,6 +24,16 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   const isInterfaceB = interfaceId === 'interface_b';
   const interfaceName = isInterfaceB ? 'Interface B' : 'Interface A';
   const isPrerequisiteMet = !isInterfaceB || (project?.interface_a?.approved ?? false);
+
+  useEffect(() => {
+    if (!project || !isPrerequisiteMet) return;
+
+    const resolvedPath = getInterfaceStepPath(project, interfaceId);
+    const uploadPath = isInterfaceB ? '/step2' : '/step1';
+    if (resolvedPath !== uploadPath) {
+      navigate(resolvedPath, { replace: true });
+    }
+  }, [interfaceId, isInterfaceB, isPrerequisiteMet, navigate, project]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -98,11 +109,15 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 
     try {
       // 1. Upload image
+      const parsedKnownMeasurement = parseFloat(knownMeasurementValue);
       await uploadInterfaceImage(
         project.project_id,
         interfaceId,
         selectedFile,
-        project.project_token
+        project.project_token,
+        Number.isFinite(parsedKnownMeasurement) && parsedKnownMeasurement > 0
+          ? { type: knownMeasurementDimension, value: parsedKnownMeasurement, unit: 'mm' }
+          : undefined
       );
 
       // 2. Run analysis
@@ -375,3 +390,4 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 };
 
 export default UploadPage;
+

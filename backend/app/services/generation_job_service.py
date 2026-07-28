@@ -140,7 +140,7 @@ class GenerationJobService:
         self._jobs[job_id] = job
 
         # 6. Execute job via active EngineProvider
-        engine = get_engine_provider()
+        engine = get_engine_provider(project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode))
         job.status = JobStatus.RUNNING
         executed_job = await engine.execute_generation(job, compile_result.kcl_code)
         self._jobs[job_id] = executed_job
@@ -202,14 +202,14 @@ class GenerationJobService:
             )
 
         job.status = JobStatus.CANCEL_REQUESTED
-        # Execute cancellation logic via mock engine
-        engine = get_engine_provider()
+        # Execute cancellation logic via active project engine provider
+        project = self.project_service.get_project(project_id, project_token)
+        engine = get_engine_provider(project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode))
         job.mock_scenario = MockScenario.CANCELLATION
         cancelled_job = await engine.execute_generation(job, "")
         self._jobs[job_id] = cancelled_job
 
         # Restore last known good model state
-        project = self.project_service.get_project(project_id, project_token)
         target_rev = next(
             (r for r in project.model_revisions if r.model_revision == job.model_revision),
             None,

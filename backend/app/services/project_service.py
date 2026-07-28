@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 import uuid
+from pathlib import Path
 from typing import Optional
 
 from PIL import Image
@@ -22,11 +23,14 @@ from app.core.exceptions import (
     StaleModelOperationError,
     UnsupportedExportFormatError,
 )
+from app.core.path_safety import resolve_path_within
 from app.models.schema import (
     AnalysisResult,
     Connection,
     ConnectionUpdateRequest,
     ConnectionValidationResult,
+    Dimension,
+    DimensionProvenance,
     ExportCompleteRequest,
     ExportFormatStatus,
     ExportStatusResponse,
@@ -39,10 +43,13 @@ from app.models.schema import (
     ModelRevision,
     ModelRevisionStatus,
     ModelSucceedRequest,
+    ProviderMode,
+    ProviderModeStatus,
     ProfileType,
     ProfileValidation,
     Project,
     ProjectPatchRequest,
+    ScaleCalibration,
     UploadResponseData,
     WorkflowState,
     current_iso_timestamp,
@@ -62,6 +69,117 @@ from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
 from app.services.profile_validation import validate_interface_profile
 
 logger = logging.getLogger(__name__)
+
+
+SUPPORTED_MEASUREMENT_TYPES = {
+    "overall_width": "Overall Width",
+    "overall_height": "Overall Height",
+    "hole_diameter": "Hole Diameter",
+    "reference_distance": "Reference Distance",
+}
+
+
+def _profile_geometry_fingerprint(interface: Interface) -> tuple:
+    outer = interface.traced_outer_contour
+    holes = interface.traced_hole_contours or []
+
+    def pts_key(points):
+        return tuple((round(p.x, 6), round(p.y, 6)) for p in points)
+
+    return (
+        str(interface.profile_type),
+        pts_key(interface.profile_points or []),
+        pts_key(outer.points) if outer else None,
+        tuple((h.id, h.decision, pts_key(h.points)) for h in holes),
+    )
+
+
+def _measurement_fingerprint(interface: Interface) -> tuple:
+    scale = interface.scale_calibration
+    dims = tuple(
+        (d.id, round(float(d.value), 6), d.unit, str(d.provenance), d.feature_ref)
+        for d in interface.dimensions
+    )
+    return (
+        dims,
+        (
+            scale.reference_dimension,
+            round(float(scale.real_distance_mm), 6),
+            getattr(scale, "unit", "mm"),
+        )
+        if scale
+        else None,
+    )
+
+
+def _apply_known_measurement(
+    interface: Interface, measurement_type: str, value: float, unit: str
+) -> None:
+    if measurement_type not in SUPPORTED_MEASUREMENT_TYPES:
+        raise InvalidFileUploadError(
+            f"Unsupported known measurement type '{measurement_type}'.",
+            recovery_steps=[
+                "Use overall_width, overall_height, hole_diameter, or reference_distance."
+            ],
+        )
+    if unit != "mm":
+        raise InvalidFileUploadError(
+            f"Unsupported known measurement unit '{unit}'.",
+            recovery_steps=["Use millimetres (mm) for this submission-critical flow."],
+        )
+    if value <= 0:
+        raise InvalidFileUploadError(
+            "Known measurement value must be positive.",
+            recovery_steps=["Enter a positive millimetre value or leave measurement blank."],
+        )
+
+    label = SUPPORTED_MEASUREMENT_TYPES[measurement_type]
+    existing = {d.id: d for d in interface.dimensions}
+    existing[measurement_type] = Dimension(
+        id=measurement_type,
+        label=label,
+        value=value,
+        unit=unit,
+        provenance=DimensionProvenance.USER_ENTERED,
+        confidence=1.0,
+        critical=True,
+        feature_ref="outer_contour"
+        if measurement_type in {"overall_width", "overall_height"}
+        else None,
+        source_annotation=None,
+        consistency_state="valid",
+    )
+    interface.dimensions = list(existing.values())
+    pixel_distance = 0.0
+    if (
+        interface.scale_calibration
+        and interface.scale_calibration.reference_dimension == measurement_type
+    ):
+        pixel_distance = interface.scale_calibration.pixel_distance
+    interface.scale_calibration = ScaleCalibration(
+        source="user_calibration",
+        reference_dimension=measurement_type,
+        pixel_distance=pixel_distance,
+        real_distance_mm=value,
+        confidence=1.0,
+        confirmed=False,
+    )
+
+
+def _merge_upload_measurement_after_analysis(interface: Interface, previous: Interface) -> None:
+    previous_scale = previous.scale_calibration
+    if not previous_scale or previous_scale.source != "user_calibration":
+        return
+    measurement_type = previous_scale.reference_dimension or "overall_width"
+    value = previous_scale.real_distance_mm
+    unit = "mm"
+    result_pixel_distance = 0.0
+    if interface.scale_calibration:
+        result_pixel_distance = interface.scale_calibration.pixel_distance
+    _apply_known_measurement(interface, measurement_type, value, unit)
+    if interface.scale_calibration:
+        interface.scale_calibration.pixel_distance = result_pixel_distance
+        interface.scale_calibration.confirmed = False
 
 
 class ProjectService:
@@ -104,15 +222,19 @@ class ProjectService:
                 ):
                     rev.status = ModelRevisionStatus.STALE
 
-    def create_project(self) -> Project:
+    def create_project(self, provider_mode: ProviderMode = ProviderMode.MOCK) -> Project:
         """Create a new project with initialized canonical schema and unguessable token."""
         project_id = str(uuid.uuid4())
         project_token = f"tok_{secrets.token_urlsafe(24)}"
         now = current_iso_timestamp()
 
+        project_count = len(self.repository.list_all()) + 1
+
         project = Project(
             project_id=project_id,
             project_token=project_token,
+            display_name=f"Adapter {project_count}",
+            provider_mode=provider_mode,
             schema_version=self.SUPPORTED_SCHEMA_VERSION,
             state=WorkflowState.NEW,
             created_at=now,
@@ -124,6 +246,56 @@ class ProjectService:
             interface_b=Interface(id="interface_b"),
         )
         return self.repository.save(project)
+
+    def get_provider_mode_status_for_selection(
+        self,
+        selected: ProviderMode,
+    ) -> ProviderModeStatus:
+        """Return provider state for a requested mode without exposing credentials."""
+        live_available = bool(settings.zoo_api_token)
+        effective = ProviderMode.LIVE if selected == ProviderMode.LIVE and live_available else ProviderMode.MOCK
+        analysis_provider = "gemini" if effective == ProviderMode.LIVE and settings.gemini_api_key else "mock"
+        if effective == ProviderMode.LIVE:
+            message = "Live Zoo providers are active for future generation, export, and Agent requests."
+        elif selected == ProviderMode.LIVE:
+            message = "Live mode is unavailable because required backend credentials are not configured."
+        else:
+            message = "Mock / offline providers are active for this project."
+        return ProviderModeStatus(
+            selected_mode=selected,
+            effective_mode=effective,
+            live_available=live_available,
+            engine_provider="zoo" if effective == ProviderMode.LIVE else "mock",
+            export_provider="zoo" if effective == ProviderMode.LIVE else "mock",
+            analysis_provider=analysis_provider,
+            agent_provider="zoo" if effective == ProviderMode.LIVE else "mock",
+            message=message,
+        )
+
+    def get_provider_mode_status(
+        self,
+        project: Project,
+        requested_mode: Optional[ProviderMode] = None,
+    ) -> ProviderModeStatus:
+        """Return provider state without exposing credentials."""
+        selected = requested_mode or project.provider_mode
+        return self.get_provider_mode_status_for_selection(selected)
+
+    def set_provider_mode(
+        self,
+        project_id: str,
+        provider_mode: ProviderMode,
+        project_token: Optional[str] = None,
+    ) -> tuple[Project, ProviderModeStatus]:
+        """Set the project provider mode when the requested mode is actually available."""
+        project = self._verify_project_and_token(project_id, project_token)
+        status = self.get_provider_mode_status(project, requested_mode=provider_mode)
+        if provider_mode == ProviderMode.LIVE and status.effective_mode != ProviderMode.LIVE:
+            return project, status
+        project.provider_mode = provider_mode
+        project.updated_at = current_iso_timestamp()
+        saved = self.repository.save(project)
+        return saved, self.get_provider_mode_status(saved)
 
     def get_project(self, project_id: str, project_token: Optional[str] = None) -> Project:
         """Retrieve project by ID."""
@@ -173,6 +345,11 @@ class ProjectService:
         target_interface.approved = False
         target_interface.approved_at = None
 
+        if interface_id == "interface_a":
+            project.interface_a = target_interface
+        else:
+            project.interface_b = target_interface
+
         project.current_schema_revision += 1
         self._mark_current_model_stale_if_exists(project)
 
@@ -192,6 +369,9 @@ class ProjectService:
         filename: str,
         content_type: str,
         project_token: Optional[str] = None,
+        known_measurement_type: Optional[str] = None,
+        known_measurement_value: Optional[float] = None,
+        known_measurement_unit: str = "mm",
     ) -> UploadResponseData:
         """Securely validate, save, and record an uploaded interface image."""
         project = self._verify_project_and_token(project_id, project_token)
@@ -246,10 +426,9 @@ class ProjectService:
         safe_filename = (
             f"upload_{project_id}_{interface_id}_{clean_base}_{uuid.uuid4().hex[:8]}{ext}"
         )
-        target_path = os.path.abspath(os.path.join(upload_dir, safe_filename))
-
-        abs_upload_dir = os.path.abspath(upload_dir)
-        if not target_path.startswith(abs_upload_dir):
+        try:
+            target_path = resolve_path_within(upload_dir, Path(upload_dir) / safe_filename)
+        except ValueError:
             raise InvalidFileUploadError("Malicious filename or path traversal detected.")
 
         with open(target_path, "wb") as f:
@@ -262,6 +441,13 @@ class ProjectService:
         target_interface.source_image_ref = artifact_ref
         target_interface.approved = False
         target_interface.approved_at = None
+        if known_measurement_type is not None and known_measurement_value is not None:
+            _apply_known_measurement(
+                target_interface,
+                known_measurement_type,
+                float(known_measurement_value),
+                known_measurement_unit,
+            )
 
         project.current_schema_revision += 1
         self._mark_current_model_stale_if_exists(project)
@@ -349,8 +535,8 @@ class ProjectService:
         )
 
         artifact_ref = None
-        if artifact_type == "cleaned_image":
-            artifact_ref = target_interface.cleaned_image_ref
+        if artifact_type in ("cleaned_image", "analysis_image"):
+            artifact_ref = target_interface.analysis_image_ref or target_interface.cleaned_image_ref
             content_type = "image/png"
         elif artifact_type == "trace_svg":
             artifact_ref = target_interface.trace_svg_ref
@@ -389,6 +575,7 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
+        previous_interface = target_interface.model_copy(deep=True)
 
         if interface_id == "interface_b" and not project.interface_a.approved:
             raise MissingPrerequisiteError(
@@ -417,6 +604,9 @@ class ProjectService:
         target_interface.analysis_provider_name = result.analysis_provider_name
         target_interface.scale_calibration = result.scale_calibration
         target_interface.cleaned_image_ref = result.cleaned_image_ref
+        target_interface.analysis_image_ref = result.analysis_image_ref or result.cleaned_image_ref
+        target_interface.analysis_image_width = result.analysis_image_width
+        target_interface.analysis_image_height = result.analysis_image_height
         target_interface.trace_svg_ref = result.trace_svg_ref
         target_interface.overlay_svg_ref = result.overlay_svg_ref
         target_interface.raw_outer_point_count = result.raw_outer_point_count
@@ -438,6 +628,8 @@ class ProjectService:
             target_interface.verification_status = "pending_review"
             target_interface.generation_unsupported = False
             target_interface.generation_unsupported_reason = None
+
+        _merge_upload_measurement_after_analysis(target_interface, previous_interface)
 
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         target_interface.validation = ProfileValidation(
@@ -476,14 +668,26 @@ class ProjectService:
                 f"Invalid interface ID '{interface_id}'. Must be 'interface_a' or 'interface_b'."
             )
 
-        target_interface = (
+        original_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
+        original_geometry_fingerprint = _profile_geometry_fingerprint(original_interface)
+        original_measurement_fingerprint = _measurement_fingerprint(original_interface)
+        target_interface = original_interface.model_copy(deep=True)
 
         if interface_id == "interface_b" and not project.interface_a.approved:
             raise MissingPrerequisiteError(
                 "Interface A must be approved before Interface B can be modified.",
                 recovery_steps=["Approve Interface A first."],
+            )
+
+        if patch.approved is True:
+            raise InvalidInterfaceApprovalError(
+                "Interface approval must use the approval endpoint so backend validation "
+                "cannot be bypassed.",
+                recovery_steps=[
+                    "Call POST /interfaces/{interface_id}/approve after validation passes."
+                ],
             )
 
         if patch.source_image_ref is not None:
@@ -506,11 +710,21 @@ class ProjectService:
             if (
                 target_interface.profile_type == ProfileType.TRACED_CLOSED
                 and target_interface.traced_outer_contour
-                and target_interface.source_image_ref
-                and os.path.exists(target_interface.source_image_ref)
+                and (target_interface.analysis_image_ref or target_interface.cleaned_image_ref)
+                and os.path.exists(
+                    target_interface.analysis_image_ref
+                    or target_interface.cleaned_image_ref
+                    or ""
+                )
             ):
                 try:
-                    with open(target_interface.source_image_ref, "rb") as f:
+                    analysis_ref = (
+                        target_interface.analysis_image_ref
+                        or target_interface.cleaned_image_ref
+                    )
+                    if not analysis_ref:
+                        raise FileNotFoundError("Analysis crop artifact is missing")
+                    with open(analysis_ref, "rb") as f:
                         img_bytes = f.read()
                     from app.services.opencv_tracer import generate_svg_trace_and_overlay
 
@@ -519,6 +733,8 @@ class ProjectService:
                         target_interface.traced_hole_contours or [],
                         img_bytes,
                         img_bytes,
+                        target_interface.analysis_image_width or 400,
+                        target_interface.analysis_image_height or 400,
                     )
                     if target_interface.trace_svg_ref:
                         with open(target_interface.trace_svg_ref, "w", encoding="utf-8") as f:
@@ -556,17 +772,53 @@ class ProjectService:
                 warnings=errors + warnings,
             )
 
-        # Allow setting approved directly in patch if requested
-        if patch.approved is not None:
-            target_interface.approved = patch.approved
-            if patch.approved:
-                target_interface.approved_at = current_iso_timestamp()
+        geometry_changed = (
+            _profile_geometry_fingerprint(target_interface) != original_geometry_fingerprint
+        )
+        measurement_changed = (
+            _measurement_fingerprint(target_interface) != original_measurement_fingerprint
+        )
+        if (
+            geometry_changed or (patch.dimensions is not None and measurement_changed)
+        ) and target_interface.scale_calibration:
+            target_interface.scale_calibration.confirmed = False
 
-        # Upstream modification rule: clears approval (unless explicitly setting approved)
-        # and increments schema revision
+        severe_update_errors = [
+            err
+            for err in errors
+            if any(
+                marker in err.lower()
+                for marker in (
+                    "contour",
+                    "intersects",
+                    "complexity",
+                    "non-finite",
+                    "unresolved",
+                    "conflict",
+                )
+            )
+        ]
+        if original_interface.approved and severe_update_errors:
+            raise InvalidInterfaceApprovalError(
+                "Invalid update rejected; last approved profile was preserved "
+                f"({severe_update_errors[0]}).",
+                recovery_steps=["Correct the profile locally, then submit a valid update."],
+            )
+
+        if patch.approved is False:
+            target_interface.approved = False
+            target_interface.approved_at = None
+
+        # Upstream modification rule: clears approval and increments schema revision
         if patch.approved is None:
             target_interface.approved = False
             target_interface.approved_at = None
+
+        if interface_id == "interface_a":
+            project.interface_a = target_interface
+        else:
+            project.interface_b = target_interface
+
         project.current_schema_revision += 1
         self._mark_current_model_stale_if_exists(project)
 
@@ -603,16 +855,23 @@ class ProjectService:
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
 
-        # Scale confirmation check for traced profiles
-        if target_interface.profile_type == ProfileType.TRACED_CLOSED:
-            if (
-                target_interface.scale_calibration is None
-                or not target_interface.scale_calibration.confirmed
-            ):
-                raise InvalidInterfaceApprovalError(
-                    "Cannot approve interface: Scale calibration must be confirmed.",
-                    recovery_steps=["Confirm the scale calibration in the review panel."],
-                )
+        if (
+            target_interface.scale_calibration is not None
+            and not target_interface.scale_calibration.confirmed
+        ):
+            raise InvalidInterfaceApprovalError(
+                "Cannot approve interface: Scale calibration must be confirmed.",
+                recovery_steps=["Confirm the scale calibration in the review panel."],
+            )
+
+        if target_interface.profile_type == ProfileType.TRACED_CLOSED and (
+            target_interface.traced_outer_contour is None
+            or len(target_interface.traced_outer_contour.points) < 4
+        ):
+            raise InvalidInterfaceApprovalError(
+                "Cannot approve interface: missing traced profile data.",
+                recovery_steps=["Re-run analysis or upload a cleaner interface image."],
+            )
 
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         if not is_valid or errors:
@@ -973,12 +1232,12 @@ class ProjectService:
         effective_kcl_hash = current_rev.kcl_hash or computed_kcl_hash
         current_rev.kcl_hash = effective_kcl_hash
 
-        export_prov = provider or get_export_provider()
+        export_prov = provider or get_export_provider(project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode))
         zoo_model_id_val = current_rev.zoo_model_id
         if (
             not zoo_model_id_val
-            and isinstance(export_prov, get_export_provider().__class__)
-            and settings.get_effective_export_provider() == "mock"
+            and isinstance(export_prov, get_export_provider("mock").__class__)
+            and (project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode)) == "mock"
         ):
             zoo_model_id_val = f"mock_model_{project.project_id[:8]}"
 
@@ -1166,10 +1425,9 @@ class ProjectService:
                 f"Export artifact for '{fmt}' failed non-zero or format signature validation."
             )
 
-        # Path traversal check
-        abs_artifacts_dir = os.path.abspath("artifacts")
-        abs_ref = os.path.abspath(ref)
-        if not abs_ref.startswith(abs_artifacts_dir):
+        try:
+            resolve_path_within("artifacts", ref)
+        except ValueError:
             raise InvalidProjectTokenError()
 
         mime_types = {

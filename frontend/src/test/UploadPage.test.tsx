@@ -176,7 +176,8 @@ describe('UploadPage Component', () => {
         'proj-123',
         'interface_a',
         file,
-        'tok-123'
+        'tok-123',
+        undefined
       );
       expect(apiModule.analyzeInterfaceImage).toHaveBeenCalledWith(
         'proj-123',
@@ -184,6 +185,50 @@ describe('UploadPage Component', () => {
         'tok-123'
       );
       expect(onComplete).toHaveBeenCalled();
+    });
+  });
+
+  it('sends known measurement metadata with upload for scale review', async () => {
+    vi.mocked(apiModule.uploadInterfaceImage).mockResolvedValue({
+      artifact_ref: 'artifacts/uploads/upload_test.png',
+      original_filename: 'test_circle.png',
+      stored_filename: 'upload_test.png',
+      content_type: 'image/png',
+      size_bytes: 100,
+      uploaded_at: '2026-07-22T00:00:00Z',
+    });
+    vi.mocked(apiModule.analyzeInterfaceImage).mockResolvedValue({
+      profile_type: 'circle',
+      candidate_points: [],
+      candidate_dimensions: [],
+      provenance: 'image_extracted',
+      confidence: 0.95,
+      warnings: [],
+      rejection_reasons: [],
+      success: true,
+    });
+    vi.mocked(apiModule.fetchProject).mockResolvedValue(mockProject);
+
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['fake-png-content'], 'test_circle.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Known dimension type'), { target: { value: 'hole_diameter' } });
+    fireEvent.change(screen.getByLabelText('Known measurement value in millimetres'), { target: { value: '12.5' } });
+    fireEvent.click(screen.getByText('Use This Image and Analyze'));
+
+    await waitFor(() => {
+      expect(apiModule.uploadInterfaceImage).toHaveBeenCalledWith(
+        'proj-123',
+        'interface_a',
+        file,
+        'tok-123',
+        { type: 'hole_diameter', value: 12.5, unit: 'mm' }
+      );
     });
   });
 

@@ -171,7 +171,7 @@ export create_adapter()`;
               Review &amp; Export Adapter Design
             </h1>
             <p className="page-subtitle" style={{ color: '#8b949e', margin: 0 }}>
-              Verify model geometry, inspection specifications, KCL code, and export readiness.
+              Verify the adapter candidate, inspection values, deterministic KCL, and export readiness.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -406,10 +406,10 @@ export create_adapter()`;
           </div>
         </div>
 
-        {/* Right Column: Physical & Manufacturing Specifications */}
+        {/* Right Column: Physical & Fabrication Specifications */}
         <div className="card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.25rem' }}>
           <h2 style={{ fontSize: '1.1rem', marginTop: 0, marginBottom: '1rem', color: '#f0f6fc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>📋</span> Complete Design Specifications
+            <span>📋</span> Adapter Candidate Specifications
           </h2>
 
           <div className="spec-table" style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -445,9 +445,9 @@ export create_adapter()`;
               </div>
             </div>
 
-            {/* Manufacturing Spec */}
+            {/* Fabrication Settings */}
             <div style={{ background: '#0d1117', padding: '0.75rem', borderRadius: '6px', border: '1px solid #21262d' }}>
-              <strong style={{ color: '#a371f7', display: 'block', marginBottom: '0.25rem' }}>Manufacturing &amp; Materials:</strong>
+              <strong style={{ color: '#a371f7', display: 'block', marginBottom: '0.25rem' }}>Fabrication Settings:</strong>
               <div style={{ color: '#c9d1d9' }}>
                 Process: <strong>{mfg.process.toUpperCase()}</strong> | Material: <strong>{mfg.material}</strong> | Wall: {mfg.wall_thickness_mm} mm | Clearances: A={mfg.clearance_a_mm}mm, B={mfg.clearance_b_mm}mm
               </div>
@@ -478,7 +478,7 @@ export create_adapter()`;
               📄 Deterministic KCL Code Artifact
             </h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
-              Source-of-truth KCL script compiled from canonical project schema per ADR-001 &amp; ADR-002.
+              Deterministic KCL script compiled from the approved canonical project schema per ADR-001 &amp; ADR-002.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -508,10 +508,10 @@ export create_adapter()`;
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f0f6fc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🚀</span> CAD File Export Suite
+              <span>🚀</span> CAD File Export
             </h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
-              Download production-ready STL, STEP, and KCL artifacts derived from exact model revision #{currentRevNumber || 1}.
+              Download STL, STEP, and KCL artifacts from model revision #{currentRevNumber || 1}. Inspect exported files before manufacturing.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -541,10 +541,10 @@ export create_adapter()`;
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <strong style={{ color: '#f0f6fc', fontSize: '1rem' }}>STL Mesh (.stl)</strong>
-                <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>3D PRINTING</span>
+                <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>SLICER REVIEW</span>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#8b949e', margin: '0 0 0.75rem 0' }}>
-                Binary 3D mesh for Cura, PrusaSlicer, and additive manufacturing.
+                Binary 3D mesh for slicer inspection and 3D-print preparation.
               </p>
             </div>
             <div>
@@ -569,7 +569,7 @@ export create_adapter()`;
                 <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>CAD EDITING</span>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#8b949e', margin: '0 0 0.75rem 0' }}>
-                ISO 10303 B-Rep solid model for SolidWorks, Fusion 360, &amp; CNC machining.
+                ISO 10303 B-Rep solid model for downstream CAD inspection or editing.
               </p>
             </div>
             <div>
@@ -594,7 +594,7 @@ export create_adapter()`;
                 <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>PARAMETRIC</span>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#8b949e', margin: '0 0 0.75rem 0' }}>
-                Source-of-truth deterministic KittyCAD KCL code artifact.
+                Deterministic KittyCAD KCL artifact compiled from the approved canonical schema.
               </p>
             </div>
             <div>

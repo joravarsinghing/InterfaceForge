@@ -223,11 +223,17 @@ def apply_dimension_edits_to_geometry(
                             p.x = round(hcx + (p.x - hcx) * sw_scale, 2)
             dim.consistency_state = "recalculated"
 
-    if check_self_intersection(interface.traced_outer_contour.points):
+    intersects, budget_exceeded = check_self_intersection(interface.traced_outer_contour.points)
+    if intersects or budget_exceeded:
         interface.traced_outer_contour = backup_outer
         interface.traced_hole_contours = backup_holes
         warnings.append(
-            "Geometry edit resulted in self-intersecting polygon. Reverted to previous geometry."
+            "IF-PROFILE-COMPLEXITY-BUDGET: geometry edit exceeded validation budget."
+            if budget_exceeded
+            else (
+                "Geometry edit resulted in self-intersecting polygon. "
+                "Reverted to previous geometry."
+            )
         )
         for dim in new_dimensions:
             dim.consistency_state = "conflict"

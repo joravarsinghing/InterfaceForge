@@ -18,6 +18,8 @@ vi.mock('../services/api', async () => {
     }),
     createProject: vi.fn(),
     fetchProject: vi.fn(),
+    fetchProviderModeStatus: vi.fn().mockResolvedValue({ selected_mode: 'mock', effective_mode: 'mock', live_available: false, engine_provider: 'mock', export_provider: 'mock', analysis_provider: 'mock', agent_provider: 'mock', message: 'Mock / offline providers are active for this project.' }),
+    updateProviderMode: vi.fn(),
     uploadInterfaceImage: vi.fn(),
     analyzeInterfaceImage: vi.fn(),
     patchInterface: vi.fn(),

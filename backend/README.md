@@ -42,7 +42,10 @@ backend/
 ## Setup & Running
 
 ### Requirements
-- Python 3.10+ (Target Python 3.12)
+- Python 3.10.x. Phase 1 installation/startup verification is tested on Python 3.10 only.
+
+### Dependency policy
+Runtime dependencies are declared in `pyproject.toml` and include FastAPI, Uvicorn, Pydantic, Pydantic Settings, WebSockets, Pillow, NumPy, OpenCV headless, and Python Multipart. The `dev` extra adds pytest, pytest-asyncio, httpx, Ruff, Mypy, msgpack, and google-genai for local verification and provider-mocked tests.
 
 ### Running locally
 From root directory:

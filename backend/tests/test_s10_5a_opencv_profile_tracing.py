@@ -98,12 +98,24 @@ class TestS105AOpenCVProfileTracing:
         cleaned_bytes, cleaned_mask, w, h = cleanup_image_v2(img_bytes)
         res = extract_pixel_contours(cleaned_mask)
         trace_svg, overlay_svg, b64_orig = generate_svg_trace_and_overlay(
-            res["traced_outer_contour"], res["traced_hole_contours"], img_bytes, cleaned_bytes, w, h
+            res["traced_outer_contour"],
+            res["traced_hole_contours"],
+            img_bytes,
+            cleaned_bytes,
+            w,
+            h,
+            outer_pixel_points=res["outer_pixel_points"],
+            hole_pixel_points=res["hole_pixel_points"],
         )
 
+        expected_bounds = f'viewBox="0 0 {w} {h}"'
         assert "<svg" in trace_svg
-        assert "<svg" in overlay_svg
-        assert "data:image/" in overlay_svg
+        assert expected_bounds in trace_svg
+        assert expected_bounds in overlay_svg
+        assert "Analysis crop" in overlay_svg
+        assert "data:image/png" in overlay_svg
+        assert 'preserveAspectRatio="none"' in overlay_svg
+        assert "xMidYMid" not in overlay_svg
         assert len(b64_orig) > 100
 
     def test_bounding_box_rejection_for_complex_profile(self):
@@ -159,6 +171,9 @@ class TestS105AOpenCVProfileTracing:
         an_data = an_resp.json()["data"]
         assert an_data["profile_type"] == "traced_closed"
         assert an_data["cleaned_image_ref"] is not None
+        assert an_data["analysis_image_ref"] == an_data["cleaned_image_ref"]
+        assert an_data["analysis_image_width"] > 0
+        assert an_data["analysis_image_height"] > 0
         assert an_data["trace_svg_ref"] is not None
         assert an_data["overlay_svg_ref"] is not None
 
@@ -168,6 +183,9 @@ class TestS105AOpenCVProfileTracing:
         proj_data = get_resp.json()["data"]
         interface_a = proj_data["interface_a"]
         assert interface_a["cleaned_image_ref"] is not None
+        assert interface_a["analysis_image_ref"] == interface_a["cleaned_image_ref"]
+        assert interface_a["analysis_image_width"] == an_data["analysis_image_width"]
+        assert interface_a["analysis_image_height"] == an_data["analysis_image_height"]
         assert interface_a["raw_outer_point_count"] > 1000
         assert interface_a["simplified_outer_point_count"] >= 30
 
@@ -179,12 +197,25 @@ class TestS105AOpenCVProfileTracing:
         assert clean_resp.status_code == 200
         assert clean_resp.headers["content-type"] == "image/png"
 
+        analysis_resp = client.get(
+            f"/api/projects/{pid}/interfaces/interface_a/analysis_image",
+            headers={"X-Project-Token": token},
+        )
+        assert analysis_resp.status_code == 200
+        assert analysis_resp.headers["content-type"] == "image/png"
+
         overlay_resp = client.get(
             f"/api/projects/{pid}/interfaces/interface_a/overlay_svg",
             headers={"X-Project-Token": token},
         )
         assert overlay_resp.status_code == 200
-        assert "data:image/" in overlay_resp.text
+        bounds = (
+            f'viewBox="0 0 {interface_a["analysis_image_width"]} '
+            f'{interface_a["analysis_image_height"]}"'
+        )
+        assert bounds in overlay_resp.text
+        assert "Analysis crop" in overlay_resp.text
+        assert "data:image/png" in overlay_resp.text
 
     def test_primitive_profile_regression(self):
         """Primitive profiles (circle, rectangle, rounded rectangle) remain fully supported."""

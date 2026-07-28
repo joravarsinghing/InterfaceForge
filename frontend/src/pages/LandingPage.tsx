@@ -43,11 +43,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* Hero Section */}
       <section className="hero-section" aria-labelledby="hero-heading">
         <div className="hero-container">
+          <img src="/InterfaceForge_logo.svg" alt="" className="hero-icon" />
           <h1 id="hero-heading" className="hero-title">
             Two interfaces in. One adapter out.
           </h1>
           <p className="hero-subtitle">
-            Upload or sketch two physical interfaces, confirm dimensions, choose how they connect, and generate a parametric CAD adapter powered by Zoo Engine API.
+            Upload clean cross-section images for A and B, confirm scale, approve each trace, configure the adapter, and generate a parametric CAD candidate with Zoo Engine.
           </p>
 
           <div className="hero-actions">
@@ -70,12 +71,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="workflow-card">
             <div className="workflow-step-num">1</div>
             <h3>Capture Interface A</h3>
-            <p>Upload a photograph or sketch facing the opening directly.</p>
+            <p>Upload a clean front-facing cross-section of the first mating face.</p>
           </div>
           <div className="workflow-card">
             <div className="workflow-step-num">2</div>
             <h3>Capture Interface B</h3>
-            <p>Upload photograph or sketch for the second mating product.</p>
+            <p>Approve A, then repeat trace and scale review for the second interface.</p>
           </div>
           <div className="workflow-card">
             <div className="workflow-step-num">3</div>
@@ -85,12 +86,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="workflow-card">
             <div className="workflow-step-num">4</div>
             <h3>Generate Model</h3>
-            <p>Execute deterministic KCL generation via Zoo Engine API.</p>
+            <p>Compile deterministic KCL from approved parameters and execute with Zoo Engine.</p>
           </div>
           <div className="workflow-card">
             <div className="workflow-step-num">5</div>
             <h3>Review & Export</h3>
-            <p>Inspect 3D render and download manufacturing-ready STL/STEP files.</p>
+            <p>Inspect the adapter candidate, optionally revise parameters, and export STL/STEP/KCL.</p>
           </div>
         </div>
       </section>
@@ -100,11 +101,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <h2 id="examples-heading" className="section-title">Example Applications</h2>
         <div className="examples-grid">
           <div className="example-card">
+            <div className="example-image-placeholder" role="img" aria-label="Placeholder for future Vacuum Hose Adapter example image">
+              <span>Vacuum Hose Adapter image placeholder</span>
+            </div>
             <h3>Vacuum Hose Adapter</h3>
             <p>Connect shop dust extractors to CNC router dust ports with tight slip fit.</p>
             <span className="card-badge">Coaxial Mode</span>
           </div>
           <div className="example-card">
+            <div className="example-image-placeholder" role="img" aria-label="Placeholder for future Camera Mount Adapter example image">
+              <span>Camera Mount Adapter image placeholder</span>
+            </div>
             <h3>Camera Mount Adapter</h3>
             <p>Transition between non-standard tripod plates and camera rigs.</p>
             <span className="card-badge">Offset Mode</span>

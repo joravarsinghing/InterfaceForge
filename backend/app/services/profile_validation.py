@@ -1,13 +1,14 @@
 """Profile structural validation logic per S4B and S10.3 specification."""
 
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from app.models.schema import DimensionProvenance, Interface, Point2D, ProfileType, TracedContour
 
 # Maximum allowed point count for traced profiles before rejecting as too dense
 MAX_TRACED_POINTS = 2000
 MIN_TRACED_OUTER_POINTS = 4
+MAX_SEGMENT_COMPARISONS = 250_000
 
 
 def _validate_contour(
@@ -98,11 +99,12 @@ def _segments_intersect(p1: Point2D, p2: Point2D, p3: Point2D, p4: Point2D) -> b
     return _ccw(p1, p3, p4) != _ccw(p2, p3, p4) and _ccw(p1, p2, p3) != _ccw(p1, p2, p4)
 
 
-def _check_self_intersection(pts: List[Point2D]) -> bool:
-    """Check if a closed polygon defined by pts intersects itself."""
+def _check_self_intersection(pts: List[Point2D]) -> Tuple[bool, Optional[str]]:
+    """Check if a closed polygon defined by pts intersects itself within a fixed budget."""
     n = len(pts)
     if n < 4:
-        return False
+        return False, None
+    comparisons = 0
     for i in range(n):
         p1 = pts[i]
         p2 = pts[(i + 1) % n]
@@ -110,11 +112,18 @@ def _check_self_intersection(pts: List[Point2D]) -> bool:
             # Skip adjacent line segment at start/end wrap
             if i == 0 and j == n - 1:
                 continue
+            comparisons += 1
+            if comparisons > MAX_SEGMENT_COMPARISONS:
+                return (
+                    False,
+                    "IF-PROFILE-COMPLEXITY-BUDGET: contour validation exceeded "
+                    f"{MAX_SEGMENT_COMPARISONS} segment comparisons.",
+                )
             p3 = pts[j]
             p4 = pts[(j + 1) % n]
             if _segments_intersect(p1, p2, p3, p4):
-                return True
-    return False
+                return True, None
+    return False, None
 
 
 def _validate_traced_profile(
@@ -138,8 +147,12 @@ def _validate_traced_profile(
         )
 
     # Check outer contour self-intersection
-    if outer.points and _check_self_intersection(outer.points):
-        errors.append("Outer contour intersects itself. Please adjust boundary points.")
+    if outer.points:
+        intersects, complexity_error = _check_self_intersection(outer.points)
+        if complexity_error:
+            errors.append(complexity_error)
+        elif intersects:
+            errors.append("Outer contour intersects itself. Please adjust boundary points.")
 
     # Validate hole contours
     if interface.traced_hole_contours:
@@ -151,8 +164,12 @@ def _validate_traced_profile(
         outer_bbox = _points_bbox(outer.points) if outer.points else None
         for idx, hole in enumerate(interface.traced_hole_contours):
             _validate_contour(hole, f"Hole[{idx}]", errors, warnings)
-            if hole.points and _check_self_intersection(hole.points):
-                errors.append(f"Hole[{idx}] contour intersects itself.")
+            if hole.points:
+                intersects, complexity_error = _check_self_intersection(hole.points)
+                if complexity_error:
+                    errors.append(f"Hole[{idx}] {complexity_error}")
+                elif intersects:
+                    errors.append(f"Hole[{idx}] contour intersects itself.")
             # Bbox containment check for holes
             if outer_bbox and hole.points:
                 min_ox, max_ox, min_oy, max_oy = outer_bbox

@@ -466,9 +466,9 @@ class ZooEngineProvider(EngineProvider):
 RealEngineProviderStub = ZooEngineProvider
 
 
-def get_engine_provider() -> EngineProvider:
-    """Factory function returning active EngineProvider based on configuration."""
-    provider_name = settings.get_effective_engine_provider()
+def get_engine_provider(provider_mode: str | None = None) -> EngineProvider:
+    """Factory function returning active EngineProvider based on configuration or project mode."""
+    provider_name = "zoo" if provider_mode == "live" and settings.zoo_api_token else settings.get_effective_engine_provider()
     if provider_name == "zoo":
         return ZooEngineProvider()
     return MockEngineProvider()

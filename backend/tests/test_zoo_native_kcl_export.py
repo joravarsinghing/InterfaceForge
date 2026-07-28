@@ -99,7 +99,10 @@ def approved_project() -> Project:
 @pytest.mark.asyncio
 async def test_kcl_hash_equality_required(approved_project: Project):
     """Verify export fails if executed KCL hash does not equal stored KCL hash."""
-    provider = ZooExportProvider()
+    provider = ZooExportProvider(
+        api_token="test_zoo_token",
+        api_base_url="https://zoo.example.invalid",
+    )
     kcl_res = compile_project_to_kcl(approved_project)
     fake_kcl_hash = hashlib.sha256(b"altered_kcl_bytes").hexdigest()
 
@@ -131,7 +134,10 @@ def test_prohibit_local_obj_guard(approved_project: Project):
 @pytest.mark.asyncio
 async def test_obj_endpoint_prohibition_and_native_command(approved_project: Project):
     """Verify ZooExportProvider issues WebSocket native export without calling OBJ endpoint."""
-    provider = ZooExportProvider()
+    provider = ZooExportProvider(
+        api_token="test_zoo_token",
+        api_base_url="https://zoo.example.invalid",
+    )
     kcl_res = compile_project_to_kcl(approved_project)
     reset_local_obj_call_count()
 
@@ -242,7 +248,10 @@ async def test_obj_endpoint_prohibition_and_native_command(approved_project: Pro
 @pytest.mark.asyncio
 async def test_missing_zoo_model_id_blocks_export(approved_project: Project):
     """Verify missing zoo_model_id blocks production export with IF-EXPORT-003."""
-    provider = ZooExportProvider()
+    provider = ZooExportProvider(
+        api_token="test_zoo_token",
+        api_base_url="https://zoo.example.invalid",
+    )
     kcl_res = compile_project_to_kcl(approved_project)
 
     res = await provider.export_format(
@@ -261,7 +270,10 @@ async def test_missing_zoo_model_id_blocks_export(approved_project: Project):
 @pytest.mark.asyncio
 async def test_zoo_native_export_failure_handling(approved_project: Project):
     """Verify WebSocket engine error returns clear ExportResult failure envelope."""
-    provider = ZooExportProvider()
+    provider = ZooExportProvider(
+        api_token="test_zoo_token",
+        api_base_url="https://zoo.example.invalid",
+    )
     kcl_res = compile_project_to_kcl(approved_project)
 
     mock_ws = AsyncMock()

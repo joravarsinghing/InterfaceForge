@@ -35,6 +35,8 @@ export type ConnectionMode = 'coaxial' | 'offset' | 'angled';
 
 export type ManufacturingProcess = 'fdm' | 'sla' | 'cnc';
 
+export type ProviderMode = 'mock' | 'live';
+
 export type ModelRevisionStatus =
   | 'draft'
   | 'generating'
@@ -108,6 +110,9 @@ export interface InterfaceDefinition {
   generation_unsupported?: boolean;
   generation_unsupported_reason?: string | null;
   cleaned_image_ref?: string | null;
+  analysis_image_ref?: string | null;
+  analysis_image_width?: number | null;
+  analysis_image_height?: number | null;
   trace_svg_ref?: string | null;
   overlay_svg_ref?: string | null;
   raw_outer_point_count?: number | null;
@@ -188,6 +193,8 @@ export interface ModelRevision {
 export interface Project {
   project_id: string;
   project_token: string;
+  display_name?: string;
+  provider_mode?: ProviderMode;
   schema_version: string;
   state: WorkflowState;
   created_at: string;
@@ -200,6 +207,22 @@ export interface Project {
   connection: Connection;
   manufacturing: Manufacturing;
   model_revisions: ModelRevision[];
+}
+
+export interface ProviderModeStatus {
+  selected_mode: ProviderMode;
+  effective_mode: ProviderMode;
+  live_available: boolean;
+  engine_provider: string;
+  export_provider: string;
+  analysis_provider: string;
+  agent_provider: string;
+  message: string;
+}
+
+export interface ProviderModeUpdateResponse {
+  project: Project;
+  provider_status: ProviderModeStatus;
 }
 
 export interface UploadResponseData {
@@ -227,6 +250,12 @@ export interface AnalysisResult {
   scale_calibration?: ScaleCalibration | null;
   is_complex?: boolean;
   complex_reason?: string | null;
+  cleaned_image_ref?: string | null;
+  analysis_image_ref?: string | null;
+  analysis_image_width?: number | null;
+  analysis_image_height?: number | null;
+  trace_svg_ref?: string | null;
+  overlay_svg_ref?: string | null;
 }
 
 export interface ValidationIssue {

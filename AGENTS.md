@@ -1,129 +1,177 @@
-# InterfaceForge — Agent Governance and Operation Guidelines (AGENTS.md)
+# InterfaceForge — Agent Guidelines
 
-**Project:** InterfaceForge (Zoo API Makeathon 2026)  
-**Document status:** Active Governance Rules  
+**Project:** InterfaceForge  
+**Status:** Active agent governance  
+**Priority:** Submission reliability, minimal scope, evidence-based completion
 
----
+## 1. Read Before Editing
 
-## 1. Mandatory Reading
+Before making changes, inspect only the source documents relevant to the task:
 
-Every AI coding or review agent (Codex, Antigravity/Gemini, Claude, or subagents) MUST read the following source-of-truth documents before making modifications:
+- `README.md`
+- `InterfaceForge_PRD_v0.1.md`
+- `technical_design.md`
+- `user_flow.md`
+- `docs/ARCHITECTURE.md`
+- relevant source files, tests, and current production report
 
-1. [`InterfaceForge_PRD_v0.1.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/InterfaceForge_PRD_v0.1.md)
-2. [`technical_design.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/technical_design.md)
-3. [`user_flow.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/user_flow.md)
-4. [`ascii_wireframes.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/ascii_wireframes.md)
-5. [`README.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/README.md)
-6. [`LICENSE`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/LICENSE)
-7. [`.gitignore`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/.gitignore)
-8. [`.gitattributes`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/.gitattributes)
-9. [`production_docs/S1_PROJECT_FOUNDATION.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/production_docs/S1_PROJECT_FOUNDATION.md)
+Read additional documents only when needed. Do not spend tokens summarizing documents unless requested.
 
----
+## 2. Source-of-Truth Order
 
-## 2. Document Precedence Hierarchy
+Resolve decisions using this order:
 
-When conflicts or ambiguities arise, agents MUST enforce the following precedence order:
+1. Current user instruction
+2. Accepted ADRs and `technical_design.md`
+3. PRD
+4. Current user flow
+5. Current architecture and API documentation
+6. Existing tested implementation
+7. Production reports and archived stage history
 
-1. **Product Requirements Document (PRD)** ([`InterfaceForge_PRD_v0.1.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/InterfaceForge_PRD_v0.1.md))
-2. **Technical Design & Accepted ADRs** ([`technical_design.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/technical_design.md))
-3. **User Flows** ([`user_flow.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/user_flow.md))
-4. **ASCII Wireframes** ([`ascii_wireframes.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/ascii_wireframes.md))
-5. **Production Control Documents** (`production_docs/S<N>_*.md`)
-6. **Implementation Notes & Scratchpads**
+Do not silently resolve a material conflict. Report it before implementing when it affects product behavior, architecture, schema, geometry, or provider boundaries.
 
-*Note: Agents must not silently resolve conflicts. Any conflict must be explicitly documented in production stage reports.*
+## 3. Core Architecture Rules
 
----
+- Canonical project JSON is the source of truth.
+- KCL is generated deterministically from approved project data.
+- AI output is an untrusted proposal until validated and confirmed.
+- Interface approval and explicit scale confirmation are mandatory before generation.
+- Preserve the last-known-good state after failed analysis, generation, export, or revision.
+- Zoo Engine is the authoritative CAD executor.
+- Zoo Agent may propose only bounded, allowlisted parameter changes.
+- External credentials and privileged API calls remain backend-only.
+- Keep the MVP as the existing frontend/backend modular monolith.
+- Do not introduce a local production geometry engine.
+- Do not expand geometry or input scope without approval.
+- Errors must be truthful, recoverable, and use stable error identifiers where established.
 
-## 3. Mandatory Governance Rules
+## 4. Product Scope
 
-### 3.1 Accepted ADR Compliance
-Agents must strictly comply with all accepted Architecture Decision Records (ADR-001 through ADR-015 in `technical_design.md`):
-- **ADR-001:** Canonical design schema is the source of truth; KCL is a generated artifact.
-- **ADR-002:** Final KCL generation is deterministic; no unconstrained LLM CAD generation.
-- **ADR-003:** AI outputs are untrusted proposals; validation and approval required.
-- **ADR-004:** Interface approval is a mandatory gate before 3D generation.
-- **ADR-005:** Preserve the last-known-good model after failed revisions.
-- **ADR-006:** Zoo Engine API is the core geometry executor.
-- **ADR-007:** Agent API is limited to structured revisions and explanations.
-- **ADR-008:** Purpose-built UX replaces manual Zoo Design Studio editing for users.
-- **ADR-009:** Backend owns all privileged external API calls and credentials.
-- **ADR-010:** MVP remains a modular monolith (single frontend + single backend).
-- **ADR-011:** No user accounts, billing, or cloud project systems in MVP.
-- **ADR-012:** Geometry scope is strictly constrained to supported families and modes.
-- **ADR-013:** Errors are product features with stable error IDs, plain text, and recovery steps.
-- **ADR-014:** Accessibility baseline is enforced before visual polish.
-- **ADR-015:** Competition documentation is maintained continuously during development.
+Primary supported workflow:
 
-### 3.2 Scope and Modifications
-- **No Unapproved Scope Expansion:** Do not add unrequested features or post-MVP capabilities.
-- **Small & Reviewable Changes:** Keep edits modular, focused, and testable.
-- **Tests Required:** Behavioral and logic changes must include accompanying unit/integration tests.
-- **No Destructive Edits Without Rollback:** Never perform destructive refactors without preserving a working rollback state.
-- **Preserve Last-Known-Good Behavior:** Existing working behavior must remain stable when adding or refactoring code.
+'''
+Clean profile A
+→ provide and confirm one known measurement
+→ review and approve A
+→ repeat for profile B
+→ configure connection
+→ generate through Zoo Engine
+→ optionally confirm a bounded Zoo Agent revision
+→ export current STL, STEP, and KCL
+'''
 
-### 3.3 Security & Assets
-- **No Committed Secrets or Private Data:** Never commit API keys, `.env` files, credentials, personal uploads, or temporary artifacts.
-- **Artifact Isolation:** Generated STL, STEP, KCL, GLB, SQLite DBs, and preview images must reside in `artifacts/` and remain git-ignored.
+Product boundaries:
 
-### 3.4 Bug Tracking & Zoo API Reporting
-- All Zoo API issues, SDK bugs, or unexpected behavior must be recorded immediately in [`docs/BUGS_AND_LIMITATIONS.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/BUGS_AND_LIMITATIONS.md) and [`docs/ZOO_API_NOTES.md`](file:///C:/Users/jvsin/Documents/GitHub/InterfaceForge/docs/ZOO_API_NOTES.md) with reproduction steps.
+- Clean, front-facing cross-section images are the supported primary input.
+- Annotation-heavy engineering drawings are experimental/manual-review inputs.
+- Gemini may provide interpretation or guidance but must not author final geometry.
+- OpenCV produces deterministic traces.
+- Scale is never applied or confirmed silently.
+- Outputs are editable adapter candidates requiring inspection before manufacturing.
+- Do not claim arbitrary photo-to-CAD, perfect drawing cleanup, automatic scale accuracy, or unconditional manufacturing readiness.
 
----
+## 5. Change Discipline
 
-## 4. Mandatory Approval Gates
+For every task:
 
-Agents MUST STOP and request explicit user/product-owner approval before altering any of the following:
+- Inspect the current implementation before editing.
+- Make the smallest reliable change that satisfies the request.
+- Preserve existing working behavior.
+- Avoid unrelated refactors, formatting churn, dependency upgrades, or documentation rewrites.
+- Reuse existing schemas, services, helpers, and provider boundaries where practical.
+- Add tests for changed behavior and regressions.
+- Do not weaken backend validation to simplify frontend behavior.
+- Do not commit, push, delete user work, or reset the working tree unless explicitly instructed.
+- Assume the worktree may already contain unrelated changes; preserve them.
+- Do not begin the next phase or add unrequested features.
 
-1. **Canonical Schema** (`schema_version`, data structures, dimension definitions)
-2. **User Flows** (step sequences, approval gates, navigation logic)
-3. **API Responsibilities** (frontend/backend boundaries, provider roles)
-4. **Geometry Scope** (profile types, lofting rules, connection modes, physical constraints)
-5. **Deployment Model** (stack choices, hosting architecture, database selection)
-6. **Accepted ADRs** (ADR-001 through ADR-015)
-7. **Competition Deliverables** (README scope, video scripts, contest submission forms)
+## 6. Approval Required Before Changing
 
----
+Stop and request approval before materially changing:
 
-## 5. Stage Reports and Response Format
+- canonical schema or schema version;
+- workflow sequence or approval gates;
+- frontend/backend responsibility boundaries;
+- provider roles or credential handling;
+- supported geometry families or connection modes;
+- deployment architecture or database choice;
+- accepted ADRs;
+- competition deliverables or public product positioning.
 
-- Relevant production control documents in `production_docs/` must be updated as work progresses.
-- **Completion Report Requirement:** Every task execution response provided by an agent MUST end with the standardized completion-report format defined below:
+A requested bug fix within the established workflow does not require another approval unless it changes one of these boundaries.
 
-```text
-Work completed
-Files created
-Files modified
-Governance established
-Repository structure
-Final tree
-Any deviations from requested structure
-Tests run
-Exact commands
-Passed
-Failed
-Skipped
-Validation evidence
-Repository-audit output
-Git-status summary
-Secret-scan summary
-Markdown/link-check summary
-Issues found
-Conflicts between source documents
-Missing information
-Risks
-Technical debt
-Scope concerns
-Documentation updated
-Production report
-README
-AGENTS.md
-Placeholder documents
-User intervention required
-Exact decisions or manual actions needed
-Recommended next stage
-State whether current stage is ready to close
-List blockers
-Recommend the exact scope of next stage
-```
+## 7. Security and Repository Hygiene
+
+Never commit:
+
+- `.env` files, API keys, tokens, credentials, or private data;
+- runtime uploads or local databases;
+- generated STL, STEP, KCL, previews, masks, traces, caches, or scratch artifacts;
+- local agent tooling.
+
+Generated runtime content must remain in ignored artifact locations.
+
+Record reproducible Zoo API or SDK defects in:
+
+- `docs/BUGS_AND_LIMITATIONS.md`
+- `docs/ZOO_API_NOTES.md`
+
+Do not log secrets while recording failures.
+
+## 8. Validation
+
+Select checks appropriate to the files and behavior changed. Prefer focused checks first, then broader regression checks when practical.
+
+Typical checks:
+
+- focused unit or integration tests;
+- affected backend or frontend test suite;
+- frontend build when frontend code changes;
+- lint and type checks for affected code;
+- `git diff --check`;
+- repository audit when relevant;
+- manual browser or live-provider QA when automation cannot prove behavior.
+
+Do not claim:
+
+- visual PASS without visual inspection;
+- live-provider PASS without credentialed execution;
+- clean-install PASS using an existing environment;
+- full regression PASS when only focused tests ran.
+
+Sandbox/tooling failures are not product failures when the same command passes in the correct project environment, but report both outcomes briefly.
+
+## 9. Automatic Failure Conditions
+
+Mark the task FAIL or PARTIAL when any of these apply:
+
+- requested behavior is cosmetic rather than functional;
+- backend safety can be bypassed;
+- failed work overwrites valid saved state;
+- credentials are exposed;
+- tests fail due to the implementation;
+- unsupported capability claims are introduced;
+- unrelated architecture or product scope is changed;
+- manual or live verification is required but presented as proven;
+- user-authored or pre-existing work is reverted unintentionally.
+
+## 10. Completion Response
+
+Keep the final response concise and include only:
+
+1. **Result:** PASS, PARTIAL, FAIL, or UNPROVEN.
+2. **What changed:** files and key behavior.
+3. **Validation:** commands and exact pass/fail totals.
+4. **Unproven or deferred:** live, visual, credential, or edge-case limitations.
+5. **Manual QA:** only when user action is genuinely required.
+6. **Diff summary:** concise `git diff --stat` assessment.
+7. **Blockers:** omit when none.
+
+Do not repeat the task prompt, print the full repository tree, recommend a next phase unless requested, or add boilerplate sections with no useful information.
+
+## 11. Task Prompt Convention
+
+The current task prompt defines the immediate objective and acceptance criteria. This file supplies the standing rules, so task prompts should not repeat these guidelines unless an exception or special emphasis is necessary.
+
+When requirements are ambiguous, inspect the implementation first and make a reasonable, conservative decision. Ask the user only when the decision materially changes product behavior or crosses an approval boundary.
