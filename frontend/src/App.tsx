@@ -125,6 +125,7 @@ export const AppContent: React.FC = () => {
                   interfaceId="interface_a"
                   project={project}
                   onAnalysisComplete={(res) => setLatestAnalysisA(res)}
+                  onProjectUpdate={(updated) => setProject(updated)}
                 />
               </ProtectedRoute>
             }
@@ -149,6 +150,7 @@ export const AppContent: React.FC = () => {
                   interfaceId="interface_b"
                   project={project}
                   onAnalysisComplete={(res) => setLatestAnalysisB(res)}
+                  onProjectUpdate={(updated) => setProject(updated)}
                 />
               </ProtectedRoute>
             }

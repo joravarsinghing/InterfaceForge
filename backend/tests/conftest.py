@@ -24,6 +24,7 @@ def temp_db(tmp_path: Path) -> Generator[Path, None, None]:
     """Configure isolated temporary SQLite database for tests."""
     db_file = tmp_path / "test_interfaceforge.db"
     settings.db_path = str(db_file)
+    settings.analysis_provider = "mock"
     SQLiteProjectRepository(db_path=str(db_file))
     yield db_file
     if db_file.exists():

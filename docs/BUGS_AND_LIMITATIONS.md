@@ -5,18 +5,29 @@
 
 ---
 
-## 1. Active Stage Limitations (Stage S9 — Bounded Zoo Agent Revisions)
+## 1. Active Stage Limitations (Stage S10.5H — Input Requirements and Honest Upload Guidance)
 
-1. **Live Zoo Agent API Bounded Revisions Active (S9):** Natural-language model revisions use live Zoo Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`). AI proposals are strictly bounded by a 7-field server-side allowlist (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `connection.angle_deg`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Direct CAD/KCL code generation by the AI is strictly prohibited.
-2. **User Confirmation Gate Enforced:** Changes are presented as unapplied proposals in a before/after review panel. Canonical schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation.
-3. **Preservation of Last-Known-Good Model (ADR-005):** Failed 3D regeneration attempts preserve the last successful model revision without overwriting active model state.
-4. **Live Export Geometry Fidelity Audit PASSED (S8.4):** Proven that Zoo-native exported CAD geometry matches requested canonical design parameters (coaxial, parallel offset, angled, dissimilar profile transitions) with real hollow passage subtraction (`boolean_subtract`), matching linear dimensions (±0.2mm) and angle inclinations (±0.5°). Uniform 12-facet solid box fallbacks are eliminated.
-5. **Live Native WebSocket Export Active (S8.3 & S8.4):** Exports execute native `export` command directly on Zoo Engine WebSocket gateway (`wss://api.zoo.dev/ws/modeling/commands`) using `loft` and `boolean_subtract` modeling commands. Local OBJ mesh generator is strictly prohibited in production export path.
-6. **Deep Topology & Geometry Validation Active:** File format validation uses `parse_and_validate_stl()` and `parse_and_validate_step()`, rejecting empty ASCII STL files, zero-facet binary STL files, header-only STEP files, and STEP files lacking solid body entities.
-7. **Live Gemini Vision Provider Active & Verified (S7.3):** Real multimodal vision analysis (`GeminiAnalysisProvider`) uses `gemini-3.5-flash-lite` by default (`GEMINI_VISION_MODEL`) with single fallback to `gemini-3.6-flash`.
-8. **Camera Angle & Lighting Sensitivity:** Automatic vision profile extraction requires direct square-on camera orientation and adequate lighting; off-axis perspective skew or severe shadows trigger honest low-confidence rejection (< 0.60).
-9. **Live Zoo Engine Execution Active:** Stage S6 implements live Zoo Engine execution (`ZooEngineProvider`) via `wss://api.zoo.dev/ws/modeling/commands` with `MockEngineProvider` available as configurable fallback.
-10. **Supported Profile Scope:** Geometry scope remains strictly constrained to `circle`, `rectangle`, `rounded_rectangle`, and `traced_closed` per ADR-012.
+1. **Preferred Input: Clean Cross-Section Only (S10.5H):** The supported and reliable input is a clean cross-section image without dimension annotations. Upload guidance on both Interface A and B screens now communicates this explicitly with a preferred input section, example illustrations, checklist, and quality status badge.
+
+2. **Dimensioned Drawing Support: Experimental / Manual Review Required (S10.5H):** Dimensioned engineering drawings (with leaders, extension lines, center marks, and text) are **not automatically supported**. Annotation masking (S10.5G/S10.5G.1) is an experimental pre-processing step that reduces but does not eliminate false edges. The traced SVG profile must be reviewed and corrected manually before approval.
+
+3. **Gemini Cleanup Does Not Preserve CAD Geometry Perfectly:** Gemini vision analysis identifies annotation regions for masking — it does not redraw or reconstruct profile geometry. False edges near masked annotation junctions may persist. This is documented as a known limitation, not a production capability.
+
+4. **One-Dimension Scaling — User Confirmation Mandatory (S10.5H, ADR-004):** Scale calibration from a user-supplied known measurement is not automatically applied. The user must explicitly confirm the scale after the trace is reviewed. No manufacturing-ready output is claimed before this gate.
+
+5. **Input Quality Classification is Heuristic Only (S10.5H):** The client-side quality classification (Recommended / Usable with review / Manual cleanup likely / Unsupported) is a filename-based heuristic. It is a pre-analysis signal, not a guarantee. The authoritative quality assessment comes from the backend GeminiAnalysisProvider after upload.
+
+6. **Live Zoo Agent API Bounded Revisions Active (S9):** Natural-language model revisions use live Zoo Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`). AI proposals are strictly bounded by a 7-field server-side allowlist (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `connection.angle_deg`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Direct CAD/KCL code generation by the AI is strictly prohibited.
+7. **User Confirmation Gate Enforced:** Changes are presented as unapplied proposals in a before/after review panel. Canonical schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation.
+8. **Preservation of Last-Known-Good Model (ADR-005):** Failed 3D regeneration attempts preserve the last successful model revision without overwriting active model state.
+9. **Live Export Geometry Fidelity Audit PASSED (S8.4):** Proven that Zoo-native exported CAD geometry matches requested canonical design parameters (coaxial, parallel offset, angled, dissimilar profile transitions) with real hollow passage subtraction (`boolean_subtract`), matching linear dimensions (±0.2mm) and angle inclinations (±0.5°). Uniform 12-facet solid box fallbacks are eliminated.
+10. **Live Native WebSocket Export Active (S8.3 & S8.4):** Exports execute native `export` command directly on Zoo Engine WebSocket gateway (`wss://api.zoo.dev/ws/modeling/commands`) using `loft` and `boolean_subtract` modeling commands. Local OBJ mesh generator is strictly prohibited in production export path.
+11. **Deep Topology & Geometry Validation Active:** File format validation uses `parse_and_validate_stl()` and `parse_and_validate_step()`, rejecting empty ASCII STL files, zero-facet binary STL files, header-only STEP files, and STEP files lacking solid body entities.
+12. **Live Gemini Vision Provider Active & Verified (S7.3):** Real multimodal vision analysis (`GeminiAnalysisProvider`) uses `gemini-3.5-flash-lite` by default (`GEMINI_VISION_MODEL`) with single fallback to `gemini-3.6-flash`.
+13. **Camera Angle & Lighting Sensitivity:** Automatic vision profile extraction requires direct square-on camera orientation and adequate lighting; off-axis perspective skew or severe shadows trigger honest low-confidence rejection (< 0.60).
+14. **Live Zoo Engine Execution Active:** Stage S6 implements live Zoo Engine execution (`ZooEngineProvider`) via `wss://api.zoo.dev/ws/modeling/commands` with `MockEngineProvider` available as configurable fallback.
+15. **Supported Profile Scope:** Geometry scope remains strictly constrained to `circle`, `rectangle`, `rounded_rectangle`, and `traced_closed` per ADR-012.
+
 
 
 ---

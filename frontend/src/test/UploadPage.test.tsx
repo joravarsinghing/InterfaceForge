@@ -11,6 +11,7 @@ vi.mock('../services/api', async () => {
     ...actual,
     uploadInterfaceImage: vi.fn(),
     analyzeInterfaceImage: vi.fn(),
+    fetchProject: vi.fn(),
   };
 });
 
@@ -206,5 +207,204 @@ describe('UploadPage Component', () => {
     await waitFor(() => {
       expect(screen.getByText('[IF-FILE-400] Unsupported image format')).toBeInTheDocument();
     });
+  });
+});
+
+// ─── S10.1 Regression Suite: Interface A Analysis Navigation Fix ───────────────
+describe('S10.1 Regression: Analysis → Navigation', () => {
+  const mockAnalysisResult = {
+    profile_type: 'circle' as const,
+    candidate_points: [],
+    candidate_dimensions: [],
+    provenance: 'image_extracted' as const,
+    confidence: 0.92,
+    warnings: [],
+    rejection_reasons: [],
+    success: true,
+  };
+
+  /** Refreshed project returned by fetchProject after analysis */
+  const refreshedProject: Project = {
+    ...mockProject,
+    state: 'interface_a_review_required',
+    interface_a: {
+      ...mockProject.interface_a,
+      source_image_ref: 'artifacts/uploads/interface_a_upload.png',
+      profile_type: 'circle',
+      profile_points: [],
+    },
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(apiModule.uploadInterfaceImage).mockResolvedValue({
+      artifact_ref: 'artifacts/uploads/interface_a_upload.png',
+      original_filename: 'test_circle.png',
+      stored_filename: 'interface_a_upload.png',
+      content_type: 'image/png',
+      size_bytes: 1024,
+      uploaded_at: '2026-07-27T00:00:00Z',
+    });
+    vi.mocked(apiModule.analyzeInterfaceImage).mockResolvedValue(mockAnalysisResult);
+    vi.mocked(apiModule.fetchProject).mockResolvedValue(refreshedProject);
+  });
+
+  it('R1: analyze button has type=button (does not cause native form submit)', () => {
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+
+    const btn = screen.getByText('Use This Image and Analyze');
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn).toHaveAttribute('type', 'button');
+  });
+
+  it('R2: exactly one upload and one analyze request on single click', async () => {
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Use This Image and Analyze'));
+
+    await waitFor(() => {
+      expect(apiModule.uploadInterfaceImage).toHaveBeenCalledTimes(1);
+      expect(apiModule.analyzeInterfaceImage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('R3: button is disabled while loading (prevents duplicate clicks)', async () => {
+    // Block analyze so loading state persists
+    vi.mocked(apiModule.analyzeInterfaceImage).mockImplementation(
+      () => new Promise(() => {}) // never resolves
+    );
+
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+
+    const btn = screen.getByText('Use This Image and Analyze');
+    fireEvent.click(btn);
+
+    // Once upload starts, the loading spinner replaces the form
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+    // Button is no longer in DOM while loading spinner is shown — verifying
+    // it cannot be double-clicked (spinner replaces preview-card).
+    expect(screen.queryByText('Use This Image and Analyze')).not.toBeInTheDocument();
+  });
+
+  it('R4: onProjectUpdate is called with the refreshed project after successful analysis', async () => {
+    const onProjectUpdate = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <UploadPage
+          interfaceId="interface_a"
+          project={mockProject}
+          onProjectUpdate={onProjectUpdate}
+        />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Use This Image and Analyze'));
+
+    await waitFor(() => {
+      expect(onProjectUpdate).toHaveBeenCalledTimes(1);
+      expect(onProjectUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: 'interface_a_review_required',
+          interface_a: expect.objectContaining({
+            source_image_ref: 'artifacts/uploads/interface_a_upload.png',
+          }),
+        })
+      );
+    });
+  });
+
+  it('R5: fetchProject is called with the project id and token after analysis', async () => {
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Use This Image and Analyze'));
+
+    await waitFor(() => {
+      expect(apiModule.fetchProject).toHaveBeenCalledWith(
+        mockProject.project_id,
+        mockProject.project_token
+      );
+    });
+  });
+
+  it('R6: shows inline error and preserves image when project refresh fails after 200', async () => {
+    vi.mocked(apiModule.fetchProject).mockRejectedValue(
+      new Error('Network error during project refresh')
+    );
+
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Use This Image and Analyze'));
+
+    await waitFor(() => {
+      // Error shown inline — user is NOT silently dropped back to upload screen
+      expect(
+        screen.getByText(/Analysis succeeded but the project state could not be refreshed/i)
+      ).toBeInTheDocument();
+    });
+
+    // Selected file preview must still be visible (not reset)
+    expect(screen.getByText('test.png')).toBeInTheDocument();
+  });
+
+  it('R7: malformed analyze response shows an error instead of silently resetting', async () => {
+    vi.mocked(apiModule.analyzeInterfaceImage).mockRejectedValue(
+      new Error('[IF-ANALYSIS-500] Malformed analysis response from backend')
+    );
+
+    render(
+      <MemoryRouter>
+        <UploadPage interfaceId="interface_a" project={mockProject} />
+      </MemoryRouter>
+    );
+
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Use This Image and Analyze'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('[IF-ANALYSIS-500] Malformed analysis response from backend')
+      ).toBeInTheDocument();
+    });
+
+    // fetchProject must NOT have been called — failure happened before refresh
+    expect(apiModule.fetchProject).not.toHaveBeenCalled();
   });
 });

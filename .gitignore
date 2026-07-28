@@ -77,3 +77,19 @@ artifacts/*
 tmp/
 temp/
 uploads/
+
+# Backend-generated artifacts
+backend/artifacts/*
+!backend/artifacts/.gitkeep
+
+# Temporary root-level trace/debug images
+annotation_mask_test.png
+cleaned_interface_b_exact.png
+cleaned_interface_b_test.png
+crop_*.png
+interface_b_grid.png
+raw_cnt_*.png
+thresh_*.png
+
+# Local AI agent tools and downloaded skills
+.agent/

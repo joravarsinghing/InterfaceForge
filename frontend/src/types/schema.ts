@@ -48,6 +48,26 @@ export interface Point2D {
   y: number;
 }
 
+export interface ScaleCalibration {
+  source: 'drawing_dimension' | 'user_calibration' | 'inferred';
+  reference_dimension?: string | null;
+  pixel_distance: number;
+  real_distance_mm: number;
+  confidence: number;
+  confirmed: boolean;
+}
+
+export interface TracedContour {
+  id?: string;
+  points: Point2D[];
+  is_closed: boolean;
+  classification?: 'hole' | 'cavity' | 'slot' | 'outer_contour' | 'unknown';
+  decision?: 'include' | 'ignore' | 'unsure';
+  provenance: string;  // 'analysis' | 'user_edited'
+  confidence: number;
+  point_count: number;
+}
+
 export interface Dimension {
   id: string;
   label: string;
@@ -56,6 +76,9 @@ export interface Dimension {
   provenance: DimensionProvenance;
   confidence: number;
   critical: boolean;
+  feature_ref?: string | null;
+  source_annotation?: string | null;
+  consistency_state?: 'valid' | 'conflict' | 'unmapped' | 'recalculated' | string;
 }
 
 export interface ProfileValidation {
@@ -74,6 +97,35 @@ export interface InterfaceDefinition {
   validation: ProfileValidation;
   approved: boolean;
   approved_at?: string | null;
+  // S10.3 & S10.4 traced profile fields
+  traced_outer_contour?: TracedContour | null;
+  traced_hole_contours?: TracedContour[];
+  scale_calibration?: ScaleCalibration | null;
+  verification_status?: 'exact_trace_ready' | 'trace_requires_correction' | 'simplified_envelope_only' | 'unsupported_insufficient_image' | string;
+  primitive_fallback_active?: boolean;
+  primitive_fallback_label?: string | null;
+  analysis_provider_name?: string | null;
+  generation_unsupported?: boolean;
+  generation_unsupported_reason?: string | null;
+  cleaned_image_ref?: string | null;
+  trace_svg_ref?: string | null;
+  overlay_svg_ref?: string | null;
+  raw_outer_point_count?: number | null;
+  simplified_outer_point_count?: number | null;
+  inner_contour_count?: number | null;
+}
+
+export interface InterfacePatchRequest {
+  source_image_ref?: string | null;
+  profile_type?: string;
+  dimensions?: Dimension[];
+  traced_outer_contour?: TracedContour | null;
+  traced_hole_contours?: TracedContour[];
+  scale_calibration?: ScaleCalibration | null;
+  verification_status?: string | null;
+  primitive_fallback_active?: boolean;
+  primitive_fallback_label?: string | null;
+  approved?: boolean;
 }
 
 export interface Connection {
@@ -160,6 +212,7 @@ export interface UploadResponseData {
 }
 
 export interface AnalysisResult {
+  input_type?: string;
   profile_type: ProfileType;
   candidate_points: Point2D[];
   candidate_dimensions: Dimension[];
@@ -168,6 +221,12 @@ export interface AnalysisResult {
   warnings: string[];
   rejection_reasons: string[];
   success: boolean;
+  analysis_provider_name?: string | null;  // S10.3: 'mock', 'gemini', etc.
+  traced_outer_contour?: TracedContour | null;
+  traced_hole_contours?: TracedContour[];
+  scale_calibration?: ScaleCalibration | null;
+  is_complex?: boolean;
+  complex_reason?: string | null;
 }
 
 export interface ValidationIssue {

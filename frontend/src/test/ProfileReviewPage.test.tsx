@@ -209,10 +209,97 @@ describe('ProfileReviewPage Component', () => {
     );
 
     expect(screen.getByText(/Status: Approved/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Edit Profile Again/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Edit Profile Again/i }));
+    const editBtn = screen.getByRole('button', { name: /Edit Profile Again/i });
+    expect(editBtn).toBeInTheDocument();
+    fireEvent.click(editBtn);
 
     expect(screen.getByRole('button', { name: /Update Profile/i })).toBeInTheDocument();
+  });
+
+  it('renders traced closed profile with scale confirmation and region controls', () => {
+    const tracedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [
+            { x: -20, y: -20 },
+            { x: 20, y: -20 },
+            { x: 20, y: 20 },
+            { x: -20, y: 20 },
+          ],
+          is_closed: true,
+          classification: 'outer_contour',
+          provenance: 'analysis',
+          confidence: 0.9,
+          point_count: 4,
+        },
+        traced_hole_contours: [
+          {
+            id: 'region_1',
+            points: [
+              { x: -5, y: -5 },
+              { x: 5, y: -5 },
+              { x: 5, y: 5 },
+              { x: -5, y: 5 },
+            ],
+            is_closed: true,
+            classification: 'hole',
+            decision: 'include',
+            provenance: 'analysis',
+            confidence: 0.85,
+            point_count: 4,
+          },
+        ],
+        scale_calibration: {
+          source: 'drawing_dimension',
+          reference_dimension: 'overall_width',
+          pixel_distance: 400,
+          real_distance_mm: 40,
+          confidence: 0.95,
+          confirmed: false,
+        },
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={tracedProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Millimetre Scale Calibration/i)).toBeInTheDocument();
+    expect(screen.getByText(/Scale Unconfirmed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Internal Cavities & Openings/i)).toBeInTheDocument();
+    expect(screen.getByText(/region_1/i)).toBeInTheDocument();
+
+    // Scale unconfirmed blocks approval
+    expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
+
+    // Confirming scale
+    const confirmScaleBtn = screen.getByRole('button', { name: /Confirm Scale/i });
+    expect(confirmScaleBtn).toBeInTheDocument();
+  });
+
+  it('renders primitive fallback badge when primitive fallback is activated', () => {
+    const fallbackProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        primitive_fallback_active: true,
+        primitive_fallback_label: 'Simplified envelope — not the exact cross-section',
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={fallbackProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getAllByText(/Simplified envelope — not the exact cross-section/i).length).toBeGreaterThan(0);
   });
 });

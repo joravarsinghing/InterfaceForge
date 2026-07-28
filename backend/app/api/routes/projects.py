@@ -3,7 +3,7 @@
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, File, Header, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from app.models.schema import (
@@ -124,6 +124,88 @@ async def upload_interface_image(
         project_token=x_project_token,
     )
     return {"success": True, "data": upload_data.model_dump()}
+
+
+@router.get(
+    "/{project_id}/interfaces/{interface_id}/image",
+)
+def serve_interface_image(
+    project_id: str,
+    interface_id: str,
+    token: Optional[str] = Query(None, description="Project token (query param fallback)"),
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Response:
+    """Serve the uploaded interface source image as a binary response.
+
+    Accepts the project token via X-Project-Token header or ?token= query parameter
+    so browser <img> tags can load the image without custom headers.
+    """
+    service = get_service()
+    # Accept token from header OR query param (header takes precedence)
+    effective_token = x_project_token or token
+    file_bytes, content_type = service.get_interface_image_bytes(
+        project_id=project_id,
+        interface_id=interface_id,
+        project_token=effective_token,
+    )
+    return Response(content=file_bytes, media_type=content_type)
+
+
+@router.get("/{project_id}/interfaces/{interface_id}/cleaned_image")
+def get_interface_cleaned_image(
+    project_id: str,
+    interface_id: str,
+    token: Optional[str] = Query(None, description="Optional project token in query parameter"),
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Response:
+    """Fetch cleaned binary image V2 artifact for an interface."""
+    service = get_service()
+    effective_token = x_project_token or token
+    file_bytes, content_type = service.get_interface_artifact_bytes(
+        project_id=project_id,
+        interface_id=interface_id,
+        artifact_type="cleaned_image",
+        project_token=effective_token,
+    )
+    return Response(content=file_bytes, media_type=content_type)
+
+
+@router.get("/{project_id}/interfaces/{interface_id}/trace_svg")
+def get_interface_trace_svg(
+    project_id: str,
+    interface_id: str,
+    token: Optional[str] = Query(None, description="Optional project token in query parameter"),
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Response:
+    """Fetch vector SVG trace artifact for an interface."""
+    service = get_service()
+    effective_token = x_project_token or token
+    file_bytes, content_type = service.get_interface_artifact_bytes(
+        project_id=project_id,
+        interface_id=interface_id,
+        artifact_type="trace_svg",
+        project_token=effective_token,
+    )
+    return Response(content=file_bytes, media_type=content_type)
+
+
+@router.get("/{project_id}/interfaces/{interface_id}/overlay_svg")
+def get_interface_overlay_svg(
+    project_id: str,
+    interface_id: str,
+    token: Optional[str] = Query(None, description="Optional project token in query parameter"),
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Response:
+    """Fetch real source image overlay SVG artifact for an interface."""
+    service = get_service()
+    effective_token = x_project_token or token
+    file_bytes, content_type = service.get_interface_artifact_bytes(
+        project_id=project_id,
+        interface_id=interface_id,
+        artifact_type="overlay_svg",
+        project_token=effective_token,
+    )
+    return Response(content=file_bytes, media_type=content_type)
 
 
 @router.post(

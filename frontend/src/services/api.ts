@@ -5,6 +5,7 @@
 import type {
   AnalysisResult,
   APIEnvelope,
+  InterfacePatchRequest,
   Project,
   UploadResponseData,
 } from '../types/schema';
@@ -192,11 +193,7 @@ export async function analyzeInterfaceImage(
 export async function patchInterface(
   projectId: string,
   interfaceId: 'interface_a' | 'interface_b',
-  patch: {
-    profile_type?: string;
-    dimensions?: unknown[];
-    source_image_ref?: string | null;
-  },
+  patch: InterfacePatchRequest,
   projectToken?: string
 ): Promise<Project> {
   const headers: Record<string, string> = {
@@ -596,6 +593,19 @@ export function getExportDownloadUrl(
 ): string {
   const tokenQuery = projectToken ? `?token=${encodeURIComponent(projectToken)}` : '';
   return `${BACKEND_BASE_URL}/api/projects/${projectId}/exports/${formatName}/download${tokenQuery}`;
+}
+
+/**
+ * Returns a browser-accessible URL for the uploaded interface source image.
+ * The project token is passed as a query parameter so <img src> can load it directly.
+ */
+export function getInterfaceImageUrl(
+  projectId: string,
+  interfaceId: 'interface_a' | 'interface_b',
+  projectToken?: string
+): string {
+  const tokenQuery = projectToken ? `?token=${encodeURIComponent(projectToken)}` : '';
+  return `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/image${tokenQuery}`;
 }
 
 export async function proposeRevision(

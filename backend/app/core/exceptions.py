@@ -103,12 +103,13 @@ class MissingPrerequisiteError(APIError):
 class InvalidInterfaceApprovalError(APIError):
     """Raised when interface approval rules are violated."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, recovery_steps: Optional[List[str]] = None) -> None:
         super().__init__(
             error_id="IF-APPROVAL-400",
             message=message,
             status_code=status.HTTP_400_BAD_REQUEST,
-            recovery_steps=["Review and approve Interface A before approving Interface B."],
+            recovery_steps=recovery_steps
+            or ["Review interface parameters and confirm scale before approval."],
         )
 
 

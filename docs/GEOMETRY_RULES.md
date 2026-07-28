@@ -3,7 +3,78 @@
 **Document Status:** Active Specification  
 **Project:** InterfaceForge (Zoo API Makeathon 2026)  
 **Schema Version:** `0.1`  
-**Stage:** S4C — Connection Configuration and Manufacturing Rules  
+**Stage:** S10.5H — Input Requirements and Honest Upload Guidance  
+
+---
+
+## 0. Input Requirements & Preferred Image Standard (S10.5H)
+
+Per **FR-001** (Image guidance), the upload screens must communicate the supported input standard clearly and honestly.
+
+### 0.1 Preferred Input
+
+The most reliable input for profile extraction is a **clean cross-section image** meeting all of the following criteria:
+
+| Criterion | Requirement |
+|:---|:---|
+| View angle | Front-facing / orthographic (no perspective) |
+| Profile count | One cross-section only |
+| Background | Plain, high-contrast background |
+| Fill | Solid or clearly shaded material region |
+| Annotations | No dimension lines, no text, no arrows, no leaders |
+| Center marks | None |
+| Overlapping elements | None |
+| Completeness | Full profile visible and uncropped |
+| Scale | At least one real dimension supplied separately by the user |
+
+### 0.2 Input Quality Classification
+
+The upload screen classifies images into four statuses before analysis begins:
+
+| Status | Signal | Implication |
+|:---|:---|:---|
+| **Recommended input** | Clean shaded profile, no annotation noise | Best trace fidelity; proceed normally |
+| **Usable with review** | Limited text outside profile, profile fully visible | Review SVG trace carefully before approving |
+| **Manual cleanup likely** | Leaders/extension lines/center marks touching geometry | Expect false edges; manual SVG correction required |
+| **Unsupported** | Cropped, perspective-distorted, severely blurred, or incomplete | Do not attempt to trace; upload a clean image |
+
+**Note:** The client-side classification is a heuristic pre-analysis signal. The authoritative quality assessment comes from the backend GeminiAnalysisProvider after upload.
+
+### 0.3 Why Dimensioned Drawings Are Unreliable
+
+Dimension lines, leaders, extension lines, and center marks are **indistinguishable from profile edges** by OpenCV contour detection. They create:
+
+- False cuts into the outer profile boundary
+- False boundary extensions toward annotation endpoints
+- Circle-wedge artefacts from crosshair center marks
+- Leader line intrusions into internal cavities
+
+**Annotation masking (S10.5G) is Experimental / manual review required.** It reduces annotation noise but does not guarantee zero residual false edges at junction points.
+
+### 0.4 One-Dimension Scale Workflow
+
+Dimensions do not need to be inside the drawing image. The user provides one known real-world measurement separately:
+
+- Overall width
+- Overall height
+- Hole diameter
+- Reference distance
+
+After the trace is generated, the user confirms the measurement. **Scale is never applied automatically.** This is a mandatory approval gate (ADR-004).
+
+### 0.5 Product Truthfulness Rules (S10.5H)
+
+The following claims must **not** appear anywhere in the product UI or documentation:
+
+- "Arbitrary technical drawings are always supported"
+- "Annotation masking is production-ready"
+- "Gemini cleanup preserves CAD geometry perfectly"
+- "Heavily dimensioned drawings are the recommended path"
+- "Manufacturing-ready" (before scale confirmation gate)
+
+The following claim must **always be accurate**:
+
+> Dimensioned drawings may introduce false edges and require manual cleanup.
 
 ---
 
@@ -56,7 +127,25 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 | **Self-Intersection**| $\text{total\_span} > 1.8 \cdot \text{length\_mm} + \min(D_A, D_B)$ | **`IF-CONN-009`** | Loft self-intersection risk due to excessive angle/offset. |
 | **Wall Thickness**| `wall_thickness_mm <= 0` or non-finite | **`IF-MFG-001`** | Wall thickness must be positive and finite (> 0 mm). |
 | **Min Printable Wall**| `wall_thickness_mm < 0.4` | **`IF-MFG-002`** | Wall thickness below absolute printable limit (0.4 mm). |
-| **Clearance Bounds**| `clearance < 0.0` or `clearance > 5.0` | **`IF-MFG-003`** | Clearance must be between 0.0 mm and 5.0 mm. |
+| **Clearance B** | `clearance_b_mm < 0 \|\| > 5.0` | **`IF-CONN-008`** | Interface B clearance must be between 0.0 mm and 5.0 mm. |
+
+---
+
+## 4. Complex Profile Tracing & Scale Validation Rules (Stage S10.4)
+
+### 4.1 Contour Geometry Rules
+1. **Outer Boundary Closure:** Traced outer contour must be closed (`is_closed == true`) with at least 4 ordered 2D vertices.
+2. **Self-Intersection Check:** No 2D line segment of the outer or inner contour may cross another non-adjacent segment ($\text{segment}_i \cap \text{segment}_j = \emptyset$).
+3. **Negative Region Classification:** Internal cavities are categorized as `hole` (circular/oval bore), `cavity` (arbitrary enclosed pocket), or `slot` (long recess).
+4. **User Region Decisions:** Each negative contour supports explicit user decision state:
+   - `include`: Preserved as open interior opening in adapter model.
+   - `ignore`: Filled/treated as solid material.
+   - `unsure`: Flagged for review; user approval required.
+
+### 4.2 Scale Calibration & Approval Gate
+1. **Scale Confirmation Mandatory Gate:** Profile approval (`/approve`) is strictly blocked if `scale_calibration.confirmed == false` for `traced_closed` profiles.
+2. **Real Distance Validation:** `scale_calibration.real_distance_mm` must be a positive finite float ($> 0.0$ mm).
+3. **Primitive Fallback Labeling:** When user toggles primitive envelope fallback, system forces `primitive_fallback_active = true` and attaches mandatory text: `"Simplified envelope — not the exact cross-section"`.
 | **Internal Collapse**| `wall_thickness_mm >= min(D_A, D_B) / 2.0` | **`IF-MFG-004`** | Wall thickness collapses internal flow passage. |
 
 ### 3.3 Non-Blocking Warnings

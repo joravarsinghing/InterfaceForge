@@ -28,6 +28,7 @@ from app.models.schema import (
     ProfileType,
     ProfileValidation,
     Project,
+    TracedContour,
     WorkflowState,
 )
 
@@ -58,4 +59,5 @@ __all__ = [
     "FormatExportDetail",
     "ExportGenerateRequest",
     "ExportStatusResponse",
+    "TracedContour",
 ]

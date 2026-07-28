@@ -1,19 +1,22 @@
-import React, { useState, ChangeEvent, DragEvent } from 'react';
+import React, { useState, useCallback, ChangeEvent, DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImageGuidance } from '../components/ImageGuidance';
-import { uploadInterfaceImage, analyzeInterfaceImage } from '../services/api';
+import { uploadInterfaceImage, analyzeInterfaceImage, fetchProject } from '../services/api';
 import { AnalysisResult, Project } from '../types/schema';
 
 interface UploadPageProps {
   interfaceId: 'interface_a' | 'interface_b';
   project: Project | null;
   onAnalysisComplete?: (result: AnalysisResult) => void;
+  /** Called with the refreshed Project after successful analysis so App state is updated before navigation. */
+  onProjectUpdate?: (updated: Project) => void;
 }
 
 export const UploadPage: React.FC<UploadPageProps> = ({
   interfaceId,
   project,
   onAnalysisComplete,
+  onProjectUpdate,
 }) => {
   const navigate = useNavigate();
 
@@ -28,6 +31,14 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   const [loadingText, setLoadingText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  // Optional known measurement for post-trace scale calibration (ADR-001, FR-004)
+  const [knownMeasurementValue, setKnownMeasurementValue] = useState<string>('');
+  const [knownMeasurementDimension, setKnownMeasurementDimension] = useState<string>('overall_width');
+
+  const handleKnownMeasurement = useCallback((value: string, dimension: string) => {
+    setKnownMeasurementValue(value);
+    setKnownMeasurementDimension(dimension);
+  }, []);
 
   const handleFileSelect = (file: File) => {
     setError(null);
@@ -114,14 +125,47 @@ export const UploadPage: React.FC<UploadPageProps> = ({
           );
 
       setAnalysisResult(result);
-      setLoading(false);
+
+      // 3. Refresh project so App-level state reflects updated source_image_ref and
+      //    workflow state (interface_a_review_required) before navigation.
+      //    Without this, ProtectedRoute reads stale project where source_image_ref
+      //    is null and redirects back to /step1 instead of allowing /step1/analysis.
+      setLoadingText('Refreshing project state...');
+      let refreshedProject: Project | null = null;
+      try {
+        refreshedProject = await fetchProject(project.project_id, project.project_token);
+      } catch (refreshErr: unknown) {
+        // Project refresh failed after successful analysis — show an inline error
+        // so the user can retry without losing the selected image (ADR-013).
+        if (import.meta.env.DEV) {
+          console.error(
+            '[UploadPage] Project refresh failed after successful analysis.',
+            { project_id: project.project_id, interface_id: interfaceId, refreshErr }
+          );
+        }
+        setLoading(false);
+        setError(
+          'Analysis succeeded but the project state could not be refreshed. ' +
+          'Please retry or reload the page to continue.'
+        );
+        return;
+      }
+
       if (onAnalysisComplete) {
         onAnalysisComplete(result);
       }
+      if (onProjectUpdate && refreshedProject) {
+        onProjectUpdate(refreshedProject);
+      }
+
+      setLoading(false);
       navigate(isInterfaceB ? '/step2/analysis' : '/step1/analysis');
     } catch (err: unknown) {
       setLoading(false);
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred during upload.';
+      if (import.meta.env.DEV) {
+        console.error('[UploadPage] Upload or analysis request failed.', { err });
+      }
       setError(msg);
     }
   };
@@ -273,10 +317,26 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                 </div>
 
                 <div className="confirm-section">
+                  {knownMeasurementValue && (
+                    <p
+                      className="known-measurement-summary"
+                      data-testid="known-measurement-summary"
+                      aria-label={`Known measurement: ${knownMeasurementValue} mm ${knownMeasurementDimension}`}
+                    >
+                      📏 Known measurement noted:{' '}
+                      <strong>{knownMeasurementValue} mm</strong>{' '}
+                      <span className="known-measurement-dim">
+                        ({knownMeasurementDimension.replace(/_/g, ' ')})
+                      </span>{' '}
+                      — scale will be confirmed after the trace.
+                    </p>
+                  )}
                   <button
                     type="button"
                     className="btn btn-primary btn-large"
                     onClick={() => handleUploadAndAnalyze()}
+                    disabled={loading}
+                    aria-disabled={loading}
                   >
                     Use This Image and Analyze
                   </button>
@@ -285,7 +345,10 @@ export const UploadPage: React.FC<UploadPageProps> = ({
             )}
           </div>
 
-          <ImageGuidance />
+          <ImageGuidance
+            selectedFile={selectedFile}
+            onKnownMeasurement={handleKnownMeasurement}
+          />
         </div>
       )}
 

@@ -30,19 +30,41 @@ Fetches canonical project schema and workflow state. Optional header `X-Project-
 Multipart image upload for Interface A or B.
 - **Validations:** MIME type (PNG, JPEG, WEBP), max 10MB, corrupt image check, path traversal sanitization.
 - **Enforces:** Interface B upload requires Interface A to be approved (`IF-PREREQ-400`).
+- **Preferred Input (S10.5H):** The preferred input is a clean cross-section image without dimension annotations. Dimensioned engineering drawings are accepted but classified as **Experimental / manual review required** — the user must review the traced profile before approving. See `docs/GEOMETRY_RULES.md` section 0 for the complete input standard.
+- **Known Measurement (S10.5H):** Callers may include an optional `known_measurement` JSON field alongside the file to pre-populate scale calibration. Scale is never applied automatically — user confirmation is required (ADR-004):
+  ```json
+  {
+    "source": "user_known_measurement",
+    "reference_dimension": "overall_width",
+    "real_distance_mm": 40.0,
+    "confirmed": false
+  }
+  ```
+
+### 1.3b `GET /api/projects/{project_id}/interfaces/{interface_id}/image` (Stage S10.3)
+Serves the uploaded source image binary for Interface A or B.
+- **Authentication:** Accepts project token via `X-Project-Token` header or `?token=` query parameter (enables direct loading in standard HTML `<img>` tags).
+- **Response (200 OK):** Binary image response (`image/png`, `image/jpeg`, `image/webp`).
+- **Errors:** Returns `404` if project or uploaded image artifact is missing; returns `401` for invalid token.
 
 ### 1.4 `POST /api/projects/{project_id}/interfaces/{interface_id}/analyze`
 Triggers profile extraction using configured `AnalysisProvider` interface (`GeminiAnalysisProvider` or `MockAnalysisProvider`). Accepts optional query parameter `provider=gemini` or `provider=mock` to override default provider selection.
 - **Model Optimization & Fallback (S7.1/S7.3):** Uses `gemini-3.5-flash-lite` by default (`GEMINI_VISION_MODEL`) to optimize latency and token cost. If primary analysis returns low confidence (< 0.60) without explicit rejection reasons, malformed JSON, or a retryable provider error, automatically executes a single fallback request using `gemini-3.6-flash` (`GEMINI_VISION_FALLBACK_MODEL`). Explicit poor-image rejections with valid explanations do not trigger fallback. Verified against live Google Vision API endpoints.
 - **Errors:** Returns `IF-ANALYSIS-400` on low-confidence image quality rejection or malformed provider output.
+- **Input Quality (S10.5H):** Analysis responses for dimensioned drawings may include a `quality_status` field of `manual_cleanup_likely`. This does not prevent analysis but warns the user to review the traced profile before approving. The client-side quality badge is a heuristic pre-upload signal; the backend analysis result is authoritative.
 
 ### 1.5 `PATCH /api/projects/{project_id}/interfaces/{interface_id}`
-Edits interface profile type, dimensions, or candidate points.
+Edits interface profile type, dimensions, candidate points, scale calibration, region decisions, or primitive fallback status.
+- **Traced Profile Payload Fields (Stage S10.4):**
+  - `scale_calibration`: `{"source": "drawing_dimension"|"inferred", "reference_dimension": "overall_width", "pixel_distance": 400.0, "real_distance_mm": 40.0, "confidence": 0.95, "confirmed": true}`
+  - `traced_hole_contours`: List of hole objects with updated `decision` (`"include"` | `"ignore"` | `"unsure"`)
+  - `primitive_fallback_active`: Boolean (`true` to force primitive bounding envelope)
+  - `primitive_fallback_label`: `"Simplified envelope — not the exact cross-section"`
 - **Upstream Side Effects:** Clears approval (`approved: false`, `approved_at: null`), increments `current_schema_revision`, and marks current 3D model revision as `stale`.
 
 ### 1.6 `POST /api/projects/{project_id}/interfaces/{interface_id}/approve`
 Approves interface profile.
-- **Enforces Invariants:** Interface B approval requires Interface A to be approved (`IF-APPROVAL-400`). Structural profile validation must pass.
+- **Enforces Invariants:** Interface B approval requires Interface A to be approved (`IF-APPROVAL-400`). Structural profile validation must pass. For `traced_closed` profiles, `scale_calibration.confirmed` MUST be `true` (`IF-APPROVAL-400`).
 
 ### 1.7 `POST /api/projects/{project_id}/validate-connection`
 Validates candidate connection and manufacturing configuration parameters against approved interfaces.

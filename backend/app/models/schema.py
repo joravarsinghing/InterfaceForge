@@ -84,6 +84,17 @@ class Point2D(BaseModel):
     y: float = 0.0
 
 
+class ScaleCalibration(BaseModel):
+    """Scale calibration metadata mapping pixel dimensions to real mm units."""
+
+    source: str = "inferred"  # 'drawing_dimension', 'user_calibration', 'inferred'
+    reference_dimension: Optional[str] = "overall_width"
+    pixel_distance: float = 0.0
+    real_distance_mm: float = 40.0
+    confidence: float = 1.0
+    confirmed: bool = False
+
+
 class Dimension(BaseModel):
     """Dimension parameter definition with provenance metadata."""
 
@@ -94,6 +105,9 @@ class Dimension(BaseModel):
     provenance: DimensionProvenance = DimensionProvenance.USER_ENTERED
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critical: bool = True
+    feature_ref: Optional[str] = None  # e.g. 'outer_contour', 'region_1', 'bore'
+    source_annotation: Optional[str] = None  # e.g. '40', 'Ø16', 'R5'
+    consistency_state: str = "valid"  # 'valid', 'conflict', 'unmapped', 'recalculated'
 
 
 class ProfileValidation(BaseModel):
@@ -115,6 +129,8 @@ def default_circle_dimensions() -> List[Dimension]:
             provenance=DimensionProvenance.SYSTEM_INFERRED,
             confidence=1.0,
             critical=True,
+            feature_ref="outer_contour",
+            source_annotation="50",
         ),
         Dimension(
             id="wall_thickness",
@@ -124,8 +140,26 @@ def default_circle_dimensions() -> List[Dimension]:
             provenance=DimensionProvenance.SYSTEM_INFERRED,
             confidence=1.0,
             critical=False,
+            feature_ref="wall",
+            source_annotation="5",
         ),
     ]
+
+
+class TracedContour(BaseModel):
+    """Ordered closed contour for traced_closed profile type."""
+
+    id: str = "outer_contour"
+    points: List[Point2D] = Field(default_factory=list)
+    is_closed: bool = True
+    classification: str = "hole"  # 'hole', 'cavity', 'slot', 'outer_contour', 'unknown'
+    decision: str = "include"  # 'include', 'ignore', 'unsure'
+    provenance: str = "analysis"  # 'analysis', 'user_edited'
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    point_count: int = 0
+
+    def model_post_init(self, __context: object) -> None:
+        self.point_count = len(self.points)
 
 
 class Interface(BaseModel):
@@ -140,6 +174,28 @@ class Interface(BaseModel):
     validation: ProfileValidation = Field(default_factory=ProfileValidation)
     approved: bool = False
     approved_at: Optional[str] = None
+    # Traced profile extension (S10.3 & S10.4)
+    is_complex: bool = False
+    complex_reason: Optional[str] = None
+    traced_outer_contour: Optional[TracedContour] = None
+    traced_hole_contours: List[TracedContour] = Field(default_factory=list)
+    scale_calibration: Optional[ScaleCalibration] = None
+    # 'exact_trace_ready', 'trace_requires_correction', 'simplified_envelope_only'
+    verification_status: str = "pending_review"
+    primitive_fallback_active: bool = False
+    primitive_fallback_label: Optional[str] = (
+        None  # 'Simplified envelope — not the exact cross-section'
+    )
+    analysis_provider_name: Optional[str] = None  # e.g. 'mock', 'gemini'
+    generation_unsupported: bool = False  # True if downstream KCL cannot handle this profile yet
+    generation_unsupported_reason: Optional[str] = None
+    # S10.5A: OpenCV pixel tracing artifacts and metrics
+    cleaned_image_ref: Optional[str] = None
+    trace_svg_ref: Optional[str] = None
+    overlay_svg_ref: Optional[str] = None
+    raw_outer_point_count: Optional[int] = None
+    simplified_outer_point_count: Optional[int] = None
+    inner_contour_count: Optional[int] = None
 
 
 class Connection(BaseModel):
@@ -230,10 +286,25 @@ class InterfacePatchRequest(BaseModel):
 
     source_image_ref: Optional[str] = None
     profile_type: Optional[ProfileType] = None
+    is_complex: Optional[bool] = None
+    complex_reason: Optional[str] = None
     profile_points: Optional[List[Point2D]] = None
     center: Optional[Point2D] = None
     dimensions: Optional[List[Dimension]] = None
     validation: Optional[ProfileValidation] = None
+    traced_outer_contour: Optional[TracedContour] = None
+    traced_hole_contours: Optional[List[TracedContour]] = None
+    scale_calibration: Optional[ScaleCalibration] = None
+    verification_status: Optional[str] = None
+    primitive_fallback_active: Optional[bool] = None
+    primitive_fallback_label: Optional[str] = None
+    approved: Optional[bool] = None
+    cleaned_image_ref: Optional[str] = None
+    trace_svg_ref: Optional[str] = None
+    overlay_svg_ref: Optional[str] = None
+    raw_outer_point_count: Optional[int] = None
+    simplified_outer_point_count: Optional[int] = None
+    inner_contour_count: Optional[int] = None
 
 
 class ConnectionUpdateRequest(BaseModel):
@@ -341,6 +412,7 @@ class UploadResponseData(BaseModel):
 class AnalysisResult(BaseModel):
     """Structured profile extraction result from analysis provider."""
 
+    input_type: str = "dimensioned_technical_drawing"
     profile_type: ProfileType
     candidate_points: List[Point2D] = Field(default_factory=list)
     candidate_dimensions: List[Dimension] = Field(default_factory=list)
@@ -353,6 +425,25 @@ class AnalysisResult(BaseModel):
     latency_seconds: Optional[float] = None
     fallback_triggered: bool = False
     usage_metadata: Optional[dict] = None
+    # S10.3 & S10.4: provider provenance and complex trace fields
+    analysis_provider_name: Optional[str] = None  # 'mock', 'gemini', etc.
+    traced_outer_contour: Optional[TracedContour] = None
+    traced_hole_contours: List[TracedContour] = Field(default_factory=list)
+    scale_calibration: Optional[ScaleCalibration] = None
+    is_complex: bool = False
+    complex_reason: Optional[str] = None
+    # S10.5A: OpenCV pixel tracing artifacts and metrics
+    cleaned_image_ref: Optional[str] = None
+    trace_svg_ref: Optional[str] = None
+    overlay_svg_ref: Optional[str] = None
+    raw_outer_point_count: Optional[int] = None
+    simplified_outer_point_count: Optional[int] = None
+    inner_contour_count: Optional[int] = None
+    # S10.5G.1: Temporary diagnostic fields
+    provider_used: Optional[str] = None
+    request_id: Optional[str] = None
+    fallback_used: bool = False
+    region_count: Optional[int] = None
 
 
 class ValidationIssue(BaseModel):

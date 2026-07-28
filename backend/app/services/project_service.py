@@ -1,6 +1,7 @@
 """Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
+import logging
 import os
 import secrets
 import uuid
@@ -38,6 +39,7 @@ from app.models.schema import (
     ModelRevision,
     ModelRevisionStatus,
     ModelSucceedRequest,
+    ProfileType,
     ProfileValidation,
     Project,
     ProjectPatchRequest,
@@ -58,6 +60,8 @@ from app.services.export_provider import (
 )
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
 from app.services.profile_validation import validate_interface_profile
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectService:
@@ -279,6 +283,94 @@ class ProjectService:
             uploaded_at=current_iso_timestamp(),
         )
 
+    def get_interface_image_bytes(
+        self,
+        project_id: str,
+        interface_id: str,
+        project_token: Optional[str] = None,
+    ) -> tuple[bytes, str]:
+        """Read and return the bytes and content-type for a stored interface image.
+
+        Returns:
+            (file_bytes, content_type)
+
+        Raises:
+            MissingPrerequisiteError: If no image is uploaded.
+            ExportArtifactNotFoundError: If the artifact file is missing from disk.
+        """
+        project = self._verify_project_and_token(project_id, project_token)
+
+        if interface_id not in ("interface_a", "interface_b"):
+            raise MissingPrerequisiteError(f"Invalid interface ID '{interface_id}'.")
+
+        target_interface = (
+            project.interface_a if interface_id == "interface_a" else project.interface_b
+        )
+
+        if not target_interface.source_image_ref:
+            raise MissingPrerequisiteError(
+                f"No image uploaded for {interface_id}.",
+                recovery_steps=["Upload an image first."],
+            )
+
+        image_path = target_interface.source_image_ref
+        if not os.path.exists(image_path):
+            raise ExportArtifactNotFoundError(f"Image artifact '{image_path}' not found on disk.")
+
+        ext = os.path.splitext(image_path)[1].lower()
+        content_type_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }
+        content_type = content_type_map.get(ext, "image/png")
+
+        with open(image_path, "rb") as f:
+            file_bytes = f.read()
+
+        return file_bytes, content_type
+
+    def get_interface_artifact_bytes(
+        self,
+        project_id: str,
+        interface_id: str,
+        artifact_type: str,  # 'cleaned_image', 'trace_svg', 'overlay_svg'
+        project_token: Optional[str] = None,
+    ) -> tuple[bytes, str]:
+        """Read and return bytes and content-type for a stored interface tracing artifact."""
+        project = self._verify_project_and_token(project_id, project_token)
+
+        if interface_id not in ("interface_a", "interface_b"):
+            raise MissingPrerequisiteError(f"Invalid interface ID '{interface_id}'.")
+
+        target_interface = (
+            project.interface_a if interface_id == "interface_a" else project.interface_b
+        )
+
+        artifact_ref = None
+        if artifact_type == "cleaned_image":
+            artifact_ref = target_interface.cleaned_image_ref
+            content_type = "image/png"
+        elif artifact_type == "trace_svg":
+            artifact_ref = target_interface.trace_svg_ref
+            content_type = "image/svg+xml"
+        elif artifact_type == "overlay_svg":
+            artifact_ref = target_interface.overlay_svg_ref
+            content_type = "image/svg+xml"
+        else:
+            raise MissingPrerequisiteError(f"Invalid artifact type '{artifact_type}'.")
+
+        if not artifact_ref or not os.path.exists(artifact_ref):
+            raise ExportArtifactNotFoundError(
+                f"Artifact '{artifact_type}' not found for {interface_id}."
+            )
+
+        with open(artifact_ref, "rb") as f:
+            file_bytes = f.read()
+
+        return file_bytes, content_type
+
     def analyze_interface_image(
         self,
         project_id: str,
@@ -321,6 +413,31 @@ class ProjectService:
         target_interface.profile_type = result.profile_type
         target_interface.profile_points = result.candidate_points
         target_interface.dimensions = result.candidate_dimensions
+        # S10.3 & S10.4: Persist provider provenance, scale calibration, and traced contour data
+        target_interface.analysis_provider_name = result.analysis_provider_name
+        target_interface.scale_calibration = result.scale_calibration
+        target_interface.cleaned_image_ref = result.cleaned_image_ref
+        target_interface.trace_svg_ref = result.trace_svg_ref
+        target_interface.overlay_svg_ref = result.overlay_svg_ref
+        target_interface.raw_outer_point_count = result.raw_outer_point_count
+        target_interface.simplified_outer_point_count = result.simplified_outer_point_count
+        target_interface.inner_contour_count = result.inner_contour_count
+        if result.traced_outer_contour is not None:
+            target_interface.traced_outer_contour = result.traced_outer_contour
+            target_interface.traced_hole_contours = result.traced_hole_contours
+            target_interface.verification_status = "opencv_traced_pending_review"
+            # Mark traced profiles as generation_unsupported (KCL adapter not yet implemented)
+            target_interface.generation_unsupported = True
+            target_interface.generation_unsupported_reason = (
+                "Adapter generation for arbitrary traced profiles is not yet enabled. "
+                "Profile is captured and stored for review only."
+            )
+        else:
+            target_interface.traced_outer_contour = None
+            target_interface.traced_hole_contours = []
+            target_interface.verification_status = "pending_review"
+            target_interface.generation_unsupported = False
+            target_interface.generation_unsupported_reason = None
 
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         target_interface.validation = ProfileValidation(
@@ -373,12 +490,57 @@ class ProjectService:
             target_interface.source_image_ref = patch.source_image_ref
         if patch.profile_type is not None:
             target_interface.profile_type = patch.profile_type
+        if patch.is_complex is not None:
+            target_interface.is_complex = patch.is_complex
+        if patch.complex_reason is not None:
+            target_interface.complex_reason = patch.complex_reason
         if patch.profile_points is not None:
             target_interface.profile_points = patch.profile_points
         if patch.center is not None:
             target_interface.center = patch.center
         if patch.dimensions is not None:
-            target_interface.dimensions = patch.dimensions
+            from app.services.geometry_editing import apply_dimension_edits_to_geometry
+
+            _, edit_warnings = apply_dimension_edits_to_geometry(target_interface, patch.dimensions)
+            # Regenerate SVG artifacts if traced profile geometry changed
+            if (
+                target_interface.profile_type == ProfileType.TRACED_CLOSED
+                and target_interface.traced_outer_contour
+                and target_interface.source_image_ref
+                and os.path.exists(target_interface.source_image_ref)
+            ):
+                try:
+                    with open(target_interface.source_image_ref, "rb") as f:
+                        img_bytes = f.read()
+                    from app.services.opencv_tracer import generate_svg_trace_and_overlay
+
+                    trace_svg, overlay_svg, _ = generate_svg_trace_and_overlay(
+                        target_interface.traced_outer_contour,
+                        target_interface.traced_hole_contours or [],
+                        img_bytes,
+                        img_bytes,
+                    )
+                    if target_interface.trace_svg_ref:
+                        with open(target_interface.trace_svg_ref, "w", encoding="utf-8") as f:
+                            f.write(trace_svg)
+                    if target_interface.overlay_svg_ref:
+                        with open(target_interface.overlay_svg_ref, "w", encoding="utf-8") as f:
+                            f.write(overlay_svg)
+                except Exception as exc:
+                    logger.warning("Failed to regenerate SVG trace artifacts after edit: %s", exc)
+
+        if patch.traced_outer_contour is not None:
+            target_interface.traced_outer_contour = patch.traced_outer_contour
+        if patch.traced_hole_contours is not None:
+            target_interface.traced_hole_contours = patch.traced_hole_contours
+        if patch.scale_calibration is not None:
+            target_interface.scale_calibration = patch.scale_calibration
+        if patch.verification_status is not None:
+            target_interface.verification_status = patch.verification_status
+        if patch.primitive_fallback_active is not None:
+            target_interface.primitive_fallback_active = patch.primitive_fallback_active
+        if patch.primitive_fallback_label is not None:
+            target_interface.primitive_fallback_label = patch.primitive_fallback_label
 
         # Run structural validation
         is_valid, errors, warnings = validate_interface_profile(target_interface)
@@ -394,16 +556,26 @@ class ProjectService:
                 warnings=errors + warnings,
             )
 
-        # Upstream modification rule: clears approval and increments schema revision
-        target_interface.approved = False
-        target_interface.approved_at = None
+        # Allow setting approved directly in patch if requested
+        if patch.approved is not None:
+            target_interface.approved = patch.approved
+            if patch.approved:
+                target_interface.approved_at = current_iso_timestamp()
+
+        # Upstream modification rule: clears approval (unless explicitly setting approved)
+        # and increments schema revision
+        if patch.approved is None:
+            target_interface.approved = False
+            target_interface.approved_at = None
         project.current_schema_revision += 1
         self._mark_current_model_stale_if_exists(project)
 
         if interface_id == "interface_a":
-            project.state = WorkflowState.INTERFACE_A_REVIEW_REQUIRED
+            if not target_interface.approved:
+                project.state = WorkflowState.INTERFACE_A_REVIEW_REQUIRED
         else:
-            project.state = WorkflowState.INTERFACE_B_REVIEW_REQUIRED
+            if not target_interface.approved:
+                project.state = WorkflowState.INTERFACE_B_REVIEW_REQUIRED
 
         project.updated_at = current_iso_timestamp()
         return self.repository.save(project)
@@ -411,7 +583,10 @@ class ProjectService:
     def approve_interface(
         self, project_id: str, interface_id: str, project_token: Optional[str] = None
     ) -> Project:
-        """Approve interface. Enforces Interface B prerequisite and structural validation."""
+        """Approve interface.
+
+        Enforces Interface B prerequisite, scale confirmation, and structural validation.
+        """
         project = self._verify_project_and_token(project_id, project_token)
 
         if interface_id not in ("interface_a", "interface_b"):
@@ -427,6 +602,17 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
+
+        # Scale confirmation check for traced profiles
+        if target_interface.profile_type == ProfileType.TRACED_CLOSED:
+            if (
+                target_interface.scale_calibration is None
+                or not target_interface.scale_calibration.confirmed
+            ):
+                raise InvalidInterfaceApprovalError(
+                    "Cannot approve interface: Scale calibration must be confirmed.",
+                    recovery_steps=["Confirm the scale calibration in the review panel."],
+                )
 
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         if not is_valid or errors:

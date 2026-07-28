@@ -14,7 +14,7 @@ import websockets
 from pydantic import BaseModel, Field
 
 try:
-    import msgpack
+    import msgpack  # type: ignore[import-untyped]
 except ImportError:
     msgpack = None
 
