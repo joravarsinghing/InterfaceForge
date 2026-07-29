@@ -91,6 +91,15 @@ export interface TracedContour {
   point_count: number;
 }
 
+export interface CalibrationBoundary {
+  coordinate_space: 'canonical_profile_v1' | string;
+  points: Point2D[];
+  is_closed: boolean;
+  fitted_width?: number | null;
+  fitted_height?: number | null;
+  fitted_diameter?: number | null;
+  fitted_corner_radius?: number | null;
+}
 export interface Dimension {
   id: string;
   label: string;
@@ -132,6 +141,7 @@ export interface InterfaceDefinition {
   // S10.3 & S10.4 traced profile fields
   traced_outer_contour?: TracedContour | null;
   traced_hole_contours?: TracedContour[];
+  calibration_boundary?: CalibrationBoundary | null;
   scale_calibration?: ScaleCalibration | null;
   verification_status?: 'exact_trace_ready' | 'trace_requires_correction' | 'simplified_envelope_only' | 'unsupported_insufficient_image' | string;
   primitive_fallback_active?: boolean;
@@ -166,6 +176,7 @@ export interface InterfacePatchRequest {
   fit_mode?: FitMode;
   traced_outer_contour?: TracedContour | null;
   traced_hole_contours?: TracedContour[];
+  calibration_boundary?: CalibrationBoundary | null;
   scale_calibration?: ScaleCalibration | null;
   verification_status?: string | null;
   primitive_fallback_active?: boolean;
@@ -296,6 +307,7 @@ export interface AnalysisResult {
   analysis_provider_name?: string | null; // S10.3: 'mock', 'gemini', etc.
   traced_outer_contour?: TracedContour | null;
   traced_hole_contours?: TracedContour[];
+  calibration_boundary?: CalibrationBoundary | null;
   scale_calibration?: ScaleCalibration | null;
   is_complex?: boolean;
   complex_reason?: string | null;

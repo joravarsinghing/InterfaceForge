@@ -27,6 +27,7 @@ from app.core.exceptions import (
 from app.core.path_safety import resolve_path_within
 from app.models.schema import (
     AnalysisResult,
+    CalibrationBoundary,
     Connection,
     ConnectionUpdateRequest,
     ConnectionValidationResult,
@@ -72,6 +73,7 @@ from app.services.export_provider import (
 )
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
 from app.services.profile_geometry import (
+    bbox,
     classify_primitive_candidate,
     primitive_boundary_contour,
     set_calibrated_primitive_dimensions,
@@ -307,12 +309,16 @@ def _canonical_primitive_trace_points(interface: Interface) -> list[Point2D] | N
 
     classification = classify_primitive_candidate(outer.points)
     radius_candidate = classification.corner_radius_px if classification else None
-    if (
-        radius_candidate is None
-        or not math.isfinite(radius_candidate)
-        or radius_candidate <= 0
-    ):
-        radius = min(width, height) * 0.12
+    if radius_candidate is None or not math.isfinite(radius_candidate) or radius_candidate <= 0:
+        radius_dimension = next(
+            (
+                d.value
+                for d in interface.dimensions
+                if d.id == "corner_radius" and math.isfinite(d.value) and d.value > 0
+            ),
+            0.0,
+        )
+        radius = float(radius_dimension)
     else:
         radius = float(radius_candidate)
     radius = min(max(radius, 0.0), width / 2.0, height / 2.0)
@@ -343,8 +349,58 @@ def _canonical_primitive_trace_points(interface: Interface) -> list[Point2D] | N
     return points
 
 
+def _ensure_calibration_boundary(interface: Interface) -> None:
+    """Create the one canonical primitive boundary and retain it on the interface."""
+    if interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES:
+        return
+    if interface.calibration_boundary and len(interface.calibration_boundary.points) >= 4:
+        return
+    points = _canonical_primitive_trace_points(interface)
+    if not points:
+        return
+    box = bbox(points)
+    if box is None:
+        return
+    min_x, max_x, min_y, max_y = box
+    fitted_width = max_x - min_x
+    fitted_height = max_y - min_y
+    fitted_diameter = (
+        (fitted_width + fitted_height) / 2.0
+        if interface.profile_type == ProfileType.CIRCLE
+        else None
+    )
+    fitted_radius = None
+    if interface.profile_type == ProfileType.ROUNDED_RECTANGLE:
+        candidate = (
+            classify_primitive_candidate(interface.traced_outer_contour.points)
+            if interface.traced_outer_contour
+            else None
+        )
+        if candidate and candidate.corner_radius_px and math.isfinite(candidate.corner_radius_px):
+            fitted_radius = min(candidate.corner_radius_px, fitted_width / 2.0, fitted_height / 2.0)
+        else:
+            dim = next(
+                (d.value for d in interface.dimensions if d.id == "corner_radius" and d.value > 0),
+                None,
+            )
+            fitted_radius = min(dim, fitted_width / 2.0, fitted_height / 2.0) if dim else 0.0
+    interface.calibration_boundary = CalibrationBoundary(
+        points=points,
+        is_closed=True,
+        fitted_width=round(fitted_width, 4),
+        fitted_height=round(fitted_height, 4),
+        fitted_diameter=round(fitted_diameter, 4) if fitted_diameter is not None else None,
+        fitted_corner_radius=round(fitted_radius, 4) if fitted_radius is not None else None,
+    )
+
+
 def _calibration_geometry_segments(interface: Interface) -> list[tuple[Point2D, Point2D, str]]:
-    canonical = _canonical_primitive_trace_points(interface)
+    _ensure_calibration_boundary(interface)
+    canonical = (
+        interface.calibration_boundary.points
+        if interface.calibration_boundary
+        else _canonical_primitive_trace_points(interface)
+    )
     if canonical and len(canonical) >= 4:
         return [
             (canonical[idx], canonical[(idx + 1) % len(canonical)], "canonical_primitive_boundary")
@@ -354,7 +410,12 @@ def _calibration_geometry_segments(interface: Interface) -> list[tuple[Point2D, 
 
 
 def _calibration_bbox(interface: Interface) -> tuple[float, float, float, float] | None:
-    canonical = _canonical_primitive_trace_points(interface)
+    _ensure_calibration_boundary(interface)
+    canonical = (
+        interface.calibration_boundary.points
+        if interface.calibration_boundary
+        else _canonical_primitive_trace_points(interface)
+    )
     if canonical and len(canonical) >= 4:
         return (
             min(point.x for point in canonical),
@@ -363,6 +424,8 @@ def _calibration_bbox(interface: Interface) -> tuple[float, float, float, float]
             max(point.y for point in canonical),
         )
     return _trace_bbox(interface)
+
+
 def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapResponse:
     _ensure_point_within_trace_bounds(interface, point)
     segments = _calibration_geometry_segments(interface)
@@ -381,7 +444,12 @@ def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapRespo
     edge_tolerance = max(4.0, max_dim * 0.08)
 
     best_node: tuple[float, Point2D, str] | None = None
-    canonical_nodes = _canonical_primitive_trace_points(interface)
+    _ensure_calibration_boundary(interface)
+    canonical_nodes = (
+        interface.calibration_boundary.points
+        if interface.calibration_boundary
+        else _canonical_primitive_trace_points(interface)
+    )
     if canonical_nodes:
         for vertex in canonical_nodes:
             if not _finite_point(vertex):
@@ -461,6 +529,7 @@ def _supported_primitive_candidate_type(interface: Interface) -> ProfileType | N
         return None
     return candidate.profile_type
 
+
 def _normalize_confirmed_primitive_promotion(interface: Interface) -> bool:
     promoted_type = _confirmed_primitive_promotion_type(interface)
     if promoted_type is None:
@@ -476,6 +545,7 @@ def _normalize_confirmed_primitive_promotion(interface: Interface) -> bool:
         set_calibrated_primitive_dimensions(interface, interface.scale_calibration.scale_factor)
         changed = changed or before != _measurement_fingerprint(interface)
     return changed
+
 
 def _upsert_scaled_dimension(
     interface: Interface, dim_id: str, label: str, value: float, feature_ref: str
@@ -515,7 +585,6 @@ def _update_derived_dimensions_from_scale(interface: Interface, scale_factor: fl
     )
 
 
-
 SUPPORTED_GENERATION_PROFILE_TYPES = {
     ProfileType.CIRCLE,
     ProfileType.RECTANGLE,
@@ -545,9 +614,7 @@ def _apply_authoritative_shape_resolution(
     before = interface.model_dump()
     outer_contour = interface.traced_outer_contour
     has_trace = outer_contour is not None and len(outer_contour.points) >= 4
-    trace_is_closed = bool(
-        has_trace and outer_contour is not None and outer_contour.is_closed
-    )
+    trace_is_closed = bool(has_trace and outer_contour is not None and outer_contour.is_closed)
     original_profile_type = interface.profile_type
     if (
         repair_reason
@@ -626,10 +693,12 @@ def _apply_authoritative_shape_resolution(
             )
 
     interface.resolved_dimensions = _resolved_dimension_map(interface)
+    _ensure_calibration_boundary(interface)
     if repair_reason and before != interface.model_dump():
         interface.resolution_repaired_at = current_iso_timestamp()
         interface.resolution_repair_reason = repair_reason
     return before != interface.model_dump()
+
 
 class ProjectService:
     """Service layer enforcing canonical schema revision rules and workflow state invariants."""
@@ -661,9 +730,12 @@ class ProjectService:
 
         repaired = False
         for interface in (project.interface_a, project.interface_b):
-            repaired = _apply_authoritative_shape_resolution(
-                interface, repair_reason="loaded_project_shape_resolution_normalization"
-            ) or repaired
+            repaired = (
+                _apply_authoritative_shape_resolution(
+                    interface, repair_reason="loaded_project_shape_resolution_normalization"
+                )
+                or repaired
+            )
         if repaired:
             project.current_schema_revision += 1
             self._mark_current_model_stale_if_exists(project)
@@ -671,6 +743,7 @@ class ProjectService:
             project = self.repository.save(project)
 
         return project
+
     def _mark_current_model_stale_if_exists(self, project: Project) -> None:
         """Mark current model revision as stale if it exists."""
         if project.current_model_revision is not None:
@@ -1098,6 +1171,7 @@ class ProjectService:
         result.resolution_confidence = target_interface.resolution_confidence
         result.resolution_reason = target_interface.resolution_reason
         result.resolved_dimensions = target_interface.resolved_dimensions
+        result.calibration_boundary = target_interface.calibration_boundary
         result.profile_type = target_interface.profile_type
         result.candidate_dimensions = target_interface.dimensions
 
@@ -1235,6 +1309,7 @@ class ProjectService:
 
         if patch.traced_outer_contour is not None:
             target_interface.traced_outer_contour = patch.traced_outer_contour
+            target_interface.calibration_boundary = None
         if patch.traced_hole_contours is not None:
             target_interface.traced_hole_contours = patch.traced_hole_contours
         if patch.scale_calibration is not None:

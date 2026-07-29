@@ -132,7 +132,7 @@ class Dimension(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critical: bool = True
     feature_ref: Optional[str] = None  # e.g. 'outer_contour', 'region_1', 'bore'
-    source_annotation: Optional[str] = None  # e.g. '40', 'ÃƒÆ’Ã‹Å“16', 'R5'
+    source_annotation: Optional[str] = None  # e.g. '40', 'diameter16', 'R5'
     consistency_state: str = "valid"  # 'valid', 'conflict', 'unmapped', 'recalculated'
 
 
@@ -188,6 +188,17 @@ class TracedContour(BaseModel):
         self.point_count = len(self.points)
 
 
+class CalibrationBoundary(BaseModel):
+    """Backend-owned boundary shared by rendering, snapping, and calibration."""
+
+    coordinate_space: str = "canonical_profile_v1"
+    points: List[Point2D] = Field(default_factory=list)
+    is_closed: bool = True
+    fitted_width: Optional[float] = None
+    fitted_height: Optional[float] = None
+    fitted_diameter: Optional[float] = None
+    fitted_corner_radius: Optional[float] = None
+
 class Interface(BaseModel):
     """Canonical representation of an adapter interface definition."""
 
@@ -214,6 +225,7 @@ class Interface(BaseModel):
     complex_reason: Optional[str] = None
     traced_outer_contour: Optional[TracedContour] = None
     traced_hole_contours: List[TracedContour] = Field(default_factory=list)
+    calibration_boundary: Optional[CalibrationBoundary] = None
     scale_calibration: Optional[ScaleCalibration] = None
     # 'exact_trace_ready', 'trace_requires_correction', 'simplified_envelope_only'
     verification_status: str = "pending_review"
@@ -541,6 +553,7 @@ class AnalysisResult(BaseModel):
     analysis_provider_name: Optional[str] = None  # 'mock', 'gemini', etc.
     traced_outer_contour: Optional[TracedContour] = None
     traced_hole_contours: List[TracedContour] = Field(default_factory=list)
+    calibration_boundary: Optional[CalibrationBoundary] = None
     scale_calibration: Optional[ScaleCalibration] = None
     is_complex: bool = False
     complex_reason: Optional[str] = None

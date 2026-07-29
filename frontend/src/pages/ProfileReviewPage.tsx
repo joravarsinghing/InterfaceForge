@@ -765,7 +765,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <SvgProfileViewer
               profileType={effectiveProfileType}
               dimensions={dimensions}
-              points={targetInterface?.traced_outer_contour?.points ?? targetInterface?.profile_points}
+              calibrationBoundary={targetInterface?.calibration_boundary}
+              calibrationConfirmed={scaleCalibration.confirmed}
               calibrationMode={calibrationMode}
               calibrationPointA={calibrationPointA}
               calibrationPointB={calibrationPointB}
@@ -821,7 +822,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={() => setCalibrationMode(!calibrationMode)}
+                onClick={() => { setCalibrationDraftError(null); setCalibrationMode(!calibrationMode); }}
               >
                 {calibrationMode ? 'Stop Calibrating' : 'Calibrate'}
               </button>

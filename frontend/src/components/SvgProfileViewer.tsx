@@ -1,9 +1,11 @@
 import React from 'react';
-import { Dimension, Point2D, ProfileType } from '../types/schema';
+import { CalibrationBoundary, Dimension, Point2D, ProfileType } from '../types/schema';
 
 interface SvgProfileViewerProps {
   profileType: ProfileType;
   dimensions: Dimension[];
+  calibrationBoundary?: CalibrationBoundary | null;
+  calibrationConfirmed?: boolean;
   points?: Point2D[];
   width?: number;
   height?: number;
@@ -27,58 +29,6 @@ function finitePoint(point: Point2D): boolean {
 function getDimension(dimensions: Dimension[], ids: string[], fallback: number): number {
   const match = dimensions.find((dim) => ids.includes(dim.id) && Number.isFinite(dim.value) && dim.value > 0);
   return match ? match.value : fallback;
-}
-
-function primitiveBoundaryPoints(profileType: ProfileType, dimensions: Dimension[], points: Point2D[] = []): Point2D[] {
-  const finitePoints = points.filter(finitePoint);
-  const pointBounds = finitePoints.length >= 4 ? boundsFor(finitePoints) : null;
-
-  const outerDiameter = getDimension(dimensions, ['outer_diameter', 'diameter'], 50);
-  const rectWidth = pointBounds ? pointBounds.maxX - pointBounds.minX : getDimension(dimensions, ['width', 'overall_width'], 60);
-  const rectHeight = pointBounds ? pointBounds.maxY - pointBounds.minY : getDimension(dimensions, ['height', 'overall_height'], 40);
-  const centerX = pointBounds ? (pointBounds.minX + pointBounds.maxX) / 2 : 0;
-  const centerY = pointBounds ? (pointBounds.minY + pointBounds.maxY) / 2 : 0;
-  const circleDiameter = pointBounds ? (rectWidth + rectHeight) / 2 : outerDiameter;
-  const cornerRadius = Math.min(
-    pointBounds ? Math.min(rectWidth, rectHeight) * 0.12 : getDimension(dimensions, ['corner_radius'], 5),
-    rectWidth / 2,
-    rectHeight / 2
-  );
-
-  if (profileType === 'circle') {
-    const radius = circleDiameter / 2;
-    return Array.from({ length: 64 }, (_, i) => {
-      const angle = (2 * Math.PI * i) / 64;
-      return { x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle) };
-    });
-  }
-
-  const halfW = rectWidth / 2;
-  const halfH = rectHeight / 2;
-  if (profileType === 'rectangle' || cornerRadius <= 0) {
-    return [
-      { x: centerX - halfW, y: centerY - halfH },
-      { x: centerX + halfW, y: centerY - halfH },
-      { x: centerX + halfW, y: centerY + halfH },
-      { x: centerX - halfW, y: centerY + halfH },
-    ];
-  }
-
-  const centers = [
-    { x: centerX + halfW - cornerRadius, y: centerY + halfH - cornerRadius, start: 0, end: Math.PI / 2 },
-    { x: centerX - halfW + cornerRadius, y: centerY + halfH - cornerRadius, start: Math.PI / 2, end: Math.PI },
-    { x: centerX - halfW + cornerRadius, y: centerY - halfH + cornerRadius, start: Math.PI, end: (3 * Math.PI) / 2 },
-    { x: centerX + halfW - cornerRadius, y: centerY - halfH + cornerRadius, start: (3 * Math.PI) / 2, end: 2 * Math.PI },
-  ];
-  return centers.flatMap((center) =>
-    Array.from({ length: 9 }, (_, i) => {
-      const angle = center.start + ((center.end - center.start) * i) / 8;
-      return {
-        x: center.x + cornerRadius * Math.cos(angle),
-        y: center.y + cornerRadius * Math.sin(angle),
-      };
-    })
-  );
 }
 
 function boundsFor(points: Point2D[]): Bounds {
@@ -138,6 +88,8 @@ function pathData(points: Point2D[]): string {
 export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
   profileType,
   dimensions,
+  calibrationBoundary = null,
+  calibrationConfirmed = false,
   points = [],
   width = 360,
   height = 280,
@@ -146,17 +98,18 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
   calibrationPointB = null,
   onCalibrationPick,
 }) => {
-  const boundaryPoints = primitiveBoundaryPoints(profileType, dimensions, points);
+  const boundaryPoints = calibrationBoundary?.points?.filter(finitePoint).length ? calibrationBoundary.points.filter(finitePoint) : points.filter(finitePoint);
   const bounds = paddedBounds(boundsFor(boundaryPoints));
   const viewBoxWidth = bounds.maxX - bounds.minX;
   const viewBoxHeight = bounds.maxY - bounds.minY;
   const markerA = calibrationPointA && finitePoint(calibrationPointA) ? calibrationPointA : null;
   const markerB = calibrationPointB && finitePoint(calibrationPointB) ? calibrationPointB : null;
 
-  const outerDiameter = getDimension(dimensions, ['outer_diameter', 'diameter'], 50);
-  const rectWidth = getDimension(dimensions, ['width', 'overall_width'], 60);
-  const rectHeight = getDimension(dimensions, ['height', 'overall_height'], 40);
-  const cornerRadius = getDimension(dimensions, ['corner_radius'], 5);
+  const outerDiameter = calibrationBoundary?.fitted_diameter ?? getDimension(dimensions, ['outer_diameter', 'diameter'], 0);
+  const rectWidth = calibrationBoundary?.fitted_width ?? getDimension(dimensions, ['width', 'overall_width'], 0);
+  const rectHeight = calibrationBoundary?.fitted_height ?? getDimension(dimensions, ['height', 'overall_height'], 0);
+  const cornerRadius = calibrationBoundary?.fitted_corner_radius ?? getDimension(dimensions, ['corner_radius'], 0);
+  const dimensionSuffix = calibrationConfirmed ? ' mm' : ' (provisional)';
 
   const handleClick = (event: React.MouseEvent<SVGSVGElement>) => {
     if (!calibrationMode || !onCalibrationPick) return;
@@ -205,19 +158,19 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
 
         {profileType === 'circle' ? (
           <text x="0" y={bounds.minY + 18} fill="#f0883e" fontSize="10" fontWeight="bold" textAnchor="middle">
-            {outerDiameter} mm
+            {outerDiameter}{dimensionSuffix}
           </text>
         ) : (
           <>
             <text x="0" y={bounds.minY + 18} fill="#f0883e" fontSize="10" fontWeight="bold" textAnchor="middle">
-              W: {rectWidth} mm
+              W: {rectWidth}{dimensionSuffix}
             </text>
             <text x={bounds.maxX - 8} y="4" fill="#f0883e" fontSize="10" fontWeight="bold" textAnchor="end">
-              H: {rectHeight} mm
+              H: {rectHeight}{dimensionSuffix}
             </text>
             {profileType === 'rounded_rectangle' && (
               <text x="0" y={bounds.maxY - 10} fill="#79c0ff" fontSize="9" textAnchor="middle">
-                r: {cornerRadius} mm
+                r: {cornerRadius}{dimensionSuffix}
               </text>
             )}
           </>

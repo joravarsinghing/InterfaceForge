@@ -73,7 +73,6 @@ def setup_traced(client: TestClient) -> tuple[str, dict[str, str]]:
     return pid, headers
 
 
-
 def confirm_supported_rectangle_promotion(
     client: TestClient, pid: str, headers: dict[str, str]
 ) -> None:
@@ -86,6 +85,7 @@ def confirm_supported_rectangle_promotion(
         headers=headers,
     )
     assert res.status_code == 200, res.json()
+
 
 def test_snap_projects_click_to_nearest_trace_segment(client: TestClient) -> None:
     pid, headers = setup_traced(client)
@@ -512,3 +512,45 @@ def test_primitive_calibration_supports_interface_b(client: TestClient) -> None:
     )
     assert res.status_code == 200, res.json()
     assert res.json()["data"]["point"] == {"x": 0.0, "y": -20.0}
+
+
+def test_resolved_primitive_boundary_is_shared_by_hydration_and_snap(client: TestClient) -> None:
+    for profile_type in ("circle", "rounded_rectangle"):
+        pid, headers = setup_primitive(client, profile_type)
+        project = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
+        boundary = project["interface_a"]["calibration_boundary"]
+        assert boundary["coordinate_space"] == "canonical_profile_v1"
+        assert boundary["is_closed"] is True
+        assert boundary["points"]
+        assert boundary["fitted_width"] > 0
+        assert boundary["fitted_height"] > 0
+        for point in boundary["points"]:
+            response = client.post(
+                f"/api/projects/{pid}/interfaces/interface_a/scale/snap",
+                json={"point": point},
+                headers=headers,
+            )
+            assert response.status_code == 200, response.json()
+            assert response.json()["data"]["point"] == point
+
+
+def test_resolved_primitive_boundary_survives_calibration_refresh(client: TestClient) -> None:
+    pid, headers = setup_primitive(client, "rounded_rectangle")
+    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"][
+        "calibration_boundary"
+    ]
+    response = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
+        json={
+            "point_a": before["points"][0],
+            "point_b": before["points"][8],
+            "real_distance_mm": 40,
+            "confirmed": True,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.json()
+    after = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"]
+    assert after["calibration_boundary"] == before
+    assert after["scale_calibration"]["point_a"] == before["points"][0]
+    assert after["scale_calibration"]["point_b"] == before["points"][8]
