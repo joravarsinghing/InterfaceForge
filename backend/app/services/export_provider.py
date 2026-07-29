@@ -431,8 +431,15 @@ def validate_step_signature(file_bytes: bytes) -> bool:
 
 
 def validate_kcl_signature(file_bytes: bytes) -> bool:
-    """Validate non-empty KCL source code."""
-    return bool(file_bytes and len(file_bytes.strip()) > 0)
+    """Validate KCL source with the installed Zoo KCL parser."""
+    if not file_bytes or len(file_bytes.strip()) == 0:
+        return False
+    try:
+        import kcl  # type: ignore[import-not-found]
+        kcl.parse_code(file_bytes.decode("utf-8"))
+        return True
+    except Exception:
+        return False
 
 
 def validate_artifact_content(format_name: str, file_bytes: bytes) -> bool:

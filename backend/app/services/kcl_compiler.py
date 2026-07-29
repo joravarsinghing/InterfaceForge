@@ -23,6 +23,30 @@ from app.services.profile_geometry import fitted_profile_size
 
 COMPILER_VERSION = "1.0.0"
 
+def _validate_generated_kcl(kcl_code: str) -> Optional[ValidationIssue]:
+    """Validate complete KCL with the installed Zoo KCL parser."""
+    try:
+        import kcl  # type: ignore[import-not-found]
+    except Exception as exc:
+        return ValidationIssue(
+            id="IF-KCL-006",
+            message=f"Installed Zoo KCL parser is unavailable: {exc}",
+            field="kcl_code",
+            recovery_steps=["Install the supported zoo-kcl tooling for the backend runtime."],
+        )
+
+    try:
+        kcl.parse_code(kcl_code)
+    except Exception as exc:
+        detail = str(exc).replace("\r", " ").replace("\n", " ")
+        return ValidationIssue(
+            id="IF-KCL-005",
+            message=f"Generated KCL failed Zoo parser validation: {detail}",
+            field="kcl_code",
+            recovery_steps=["Fix the generated KCL syntax and retry model generation."],
+        )
+    return None
+
 
 class KCLCompileResult(BaseModel):
     """Result container for KCL compilation output."""
@@ -115,7 +139,7 @@ def _generate_sketch_kcl(
     if p_type == ProfileType.CIRCLE:
         eff = fitted_profile_size(iface, clearance, wall_thickness, outer=is_outer)
         radius = eff.width / 2.0
-        lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
+        lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
         lines.append(
             f"  |> circle(center = [{offset_x:.3f}, {offset_y:.3f}], radius = {radius:.3f})"
         )
@@ -126,7 +150,7 @@ def _generate_sketch_kcl(
         half_h = eff.height / 2.0
 
         if p_type == ProfileType.RECTANGLE:
-            lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
+            lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
             lines.append(
                 f"  |> startProfileAt([{offset_x - half_w:.3f}, {offset_y - half_h:.3f}], %)"
             )
@@ -138,7 +162,7 @@ def _generate_sketch_kcl(
         elif p_type == ProfileType.ROUNDED_RECTANGLE:
             r = eff.corner_radius or _get_dim_val(iface, "corner_radius", 5.0)
             r = min(r, half_w * 0.8, half_h * 0.8)  # prevent over-filleting
-            lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
+            lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
             lines.append(
                 f"  |> startProfileAt([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)"
             )
@@ -275,49 +299,49 @@ def compile_project_to_kcl(
         "@settings(defaultLengthUnit = mm)",
         "",
         "// --- Interface A Parameters ---",
-        f'const interface_a_type = "{if_a.profile_type.value}"',
+        f'interface_a_type = "{if_a.profile_type.value}"',
     ]
 
     if if_a.profile_type == ProfileType.CIRCLE:
         outer_a = _get_dim_val(if_a, "outer_diameter", 50.0)
-        kcl_lines.append(f"const interface_a_outer_diameter_mm = {outer_a:.3f}")
+        kcl_lines.append(f"interface_a_outer_diameter_mm = {outer_a:.3f}")
     else:
         w_a = _get_dim_val(if_a, "width", 50.0)
         h_a = _get_dim_val(if_a, "height", 50.0)
-        kcl_lines.append(f"const interface_a_width_mm = {w_a:.3f}")
-        kcl_lines.append(f"const interface_a_height_mm = {h_a:.3f}")
+        kcl_lines.append(f"interface_a_width_mm = {w_a:.3f}")
+        kcl_lines.append(f"interface_a_height_mm = {h_a:.3f}")
         if if_a.profile_type == ProfileType.ROUNDED_RECTANGLE:
             r_a = _get_dim_val(if_a, "corner_radius", 5.0)
-            kcl_lines.append(f"const interface_a_corner_radius_mm = {r_a:.3f}")
+            kcl_lines.append(f"interface_a_corner_radius_mm = {r_a:.3f}")
 
-    kcl_lines.append(f"const interface_a_clearance_mm = {mfg.clearance_a_mm:.3f}")
+    kcl_lines.append(f"interface_a_clearance_mm = {mfg.clearance_a_mm:.3f}")
     kcl_lines.append("")
 
     kcl_lines.append("// --- Interface B Parameters ---")
-    kcl_lines.append(f'const interface_b_type = "{if_b.profile_type.value}"')
+    kcl_lines.append(f'interface_b_type = "{if_b.profile_type.value}"')
 
     if if_b.profile_type == ProfileType.CIRCLE:
         outer_b = _get_dim_val(if_b, "outer_diameter", 34.5)
-        kcl_lines.append(f"const interface_b_outer_diameter_mm = {outer_b:.3f}")
+        kcl_lines.append(f"interface_b_outer_diameter_mm = {outer_b:.3f}")
     else:
         w_b = _get_dim_val(if_b, "width", 50.0)
         h_b = _get_dim_val(if_b, "height", 50.0)
-        kcl_lines.append(f"const interface_b_width_mm = {w_b:.3f}")
-        kcl_lines.append(f"const interface_b_height_mm = {h_b:.3f}")
+        kcl_lines.append(f"interface_b_width_mm = {w_b:.3f}")
+        kcl_lines.append(f"interface_b_height_mm = {h_b:.3f}")
         if if_b.profile_type == ProfileType.ROUNDED_RECTANGLE:
             r_b = _get_dim_val(if_b, "corner_radius", 5.0)
-            kcl_lines.append(f"const interface_b_corner_radius_mm = {r_b:.3f}")
+            kcl_lines.append(f"interface_b_corner_radius_mm = {r_b:.3f}")
 
-    kcl_lines.append(f"const interface_b_clearance_mm = {mfg.clearance_b_mm:.3f}")
+    kcl_lines.append(f"interface_b_clearance_mm = {mfg.clearance_b_mm:.3f}")
     kcl_lines.append("")
 
     kcl_lines.append("// --- Connection & Manufacturing Parameters ---")
-    kcl_lines.append(f'const connection_mode = "{conn.mode.value}"')
-    kcl_lines.append(f"const transition_length_mm = {conn.length_mm:.3f}")
-    kcl_lines.append(f"const wall_thickness_mm = {mfg.wall_thickness_mm:.3f}")
-    kcl_lines.append(f"const offset_x_mm = {conn.offset_x_mm:.3f}")
-    kcl_lines.append(f"const offset_y_mm = {conn.offset_y_mm:.3f}")
-    kcl_lines.append(f"const angle_deg = {conn.angle_deg:.3f}")
+    kcl_lines.append(f'connection_mode = "{conn.mode.value}"')
+    kcl_lines.append(f"transition_length_mm = {conn.length_mm:.3f}")
+    kcl_lines.append(f"wall_thickness_mm = {mfg.wall_thickness_mm:.3f}")
+    kcl_lines.append(f"offset_x_mm = {conn.offset_x_mm:.3f}")
+    kcl_lines.append(f"offset_y_mm = {conn.offset_y_mm:.3f}")
+    kcl_lines.append(f"angle_deg = {conn.angle_deg:.3f}")
     kcl_lines.append("")
 
     # Construction geometry planes and sketches
@@ -332,12 +356,12 @@ def compile_project_to_kcl(
             f"origin = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}, {conn.length_mm:.3f}]"
         )
         top_axes = f"xAxis = [1.0, 0.0, 0.0], yAxis = [0.0, {cos_a:.5f}, {sin_a:.5f}]"
-        kcl_lines.append(f"const top_plane = plane({top_orig}, {top_axes})")
+        kcl_lines.append(f"top_plane = plane({top_orig}, {top_axes})")
         top_plane_var = "top_plane"
         top_offset_x = 0.0
         top_offset_y = 0.0
     else:
-        kcl_lines.append(f"const top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
+        kcl_lines.append(f"top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
         top_plane_var = "top_plane"
         top_offset_x = conn.offset_x_mm
         top_offset_y = conn.offset_y_mm
@@ -362,7 +386,7 @@ def compile_project_to_kcl(
         )
     )
     kcl_lines.append("")
-    kcl_lines.append("const outer_solid = loft([sketch_outer_a, sketch_outer_b])")
+    kcl_lines.append("outer_solid = loft([sketch_outer_a, sketch_outer_b])")
 
     kcl_lines.append("")
     kcl_lines.append("// Inner Profiles")
@@ -384,13 +408,22 @@ def compile_project_to_kcl(
         )
     )
     kcl_lines.append("")
-    kcl_lines.append("const inner_void = loft([sketch_inner_a, sketch_inner_b])")
+    kcl_lines.append("inner_void = loft([sketch_inner_a, sketch_inner_b])")
     kcl_lines.append("")
-    kcl_lines.append("const adapter_model = subtract(outer_solid, tools = [inner_void])")
+    kcl_lines.append("adapter_model = subtract(outer_solid, tools = [inner_void])")
     kcl_lines.append("")
 
     kcl_code = "\n".join(kcl_lines)
 
+    parser_issue = _validate_generated_kcl(kcl_code)
+    if parser_issue:
+        return KCLCompileResult(
+            success=False,
+            schema_revision=project.current_schema_revision,
+            schema_version=project.schema_version,
+            errors=[parser_issue],
+            warnings=conn_val.warnings,
+        )
     # Compute deterministic SHA256 hash
     kcl_bytes = kcl_code.encode("utf-8")
     kcl_hash = hashlib.sha256(kcl_bytes).hexdigest()
@@ -405,7 +438,7 @@ def compile_project_to_kcl(
     )
     filepath = os.path.join(artifacts_dir, filename)
 
-    with open(filepath, "w", encoding="utf-8") as f:
+    with open(filepath, "w", encoding="utf-8", newline="") as f:
         f.write(kcl_code)
 
     artifact_ref = f"artifacts/{filename}"

@@ -140,7 +140,7 @@ def test_kcl_parameter_mapping_angled():
     sin_a = math.sin(rad)
 
     assert "angle_deg = 25.000" in code
-    assert "const top_plane = plane(" in code
+    assert "top_plane = plane(" in code
     assert f"yAxis = [0.0, {cos_a:.5f}, {sin_a:.5f}]" in code
 
 

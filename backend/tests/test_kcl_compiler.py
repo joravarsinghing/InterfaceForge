@@ -133,11 +133,11 @@ def test_circular_coaxial_compilation(tmp_path):
     assert result.schema_revision == 3
     assert result.kcl_code is not None
     assert "@settings(defaultLengthUnit = mm)" in result.kcl_code
-    assert "const interface_a_outer_diameter_mm = 50.000" in result.kcl_code
-    assert "const interface_b_outer_diameter_mm = 34.500" in result.kcl_code
-    assert "const transition_length_mm = 40.000" in result.kcl_code
-    assert "const wall_thickness_mm = 2.400" in result.kcl_code
-    assert "const adapter_model = subtract(outer_solid, tools = [inner_void])" in result.kcl_code
+    assert "interface_a_outer_diameter_mm = 50.000" in result.kcl_code
+    assert "interface_b_outer_diameter_mm = 34.500" in result.kcl_code
+    assert "transition_length_mm = 40.000" in result.kcl_code
+    assert "wall_thickness_mm = 2.400" in result.kcl_code
+    assert "adapter_model = subtract(outer_solid, tools = [inner_void])" in result.kcl_code
 
     assert result.artifact_ref is not None
     assert result.artifact_ref.startswith("artifacts/kcl_")
@@ -155,10 +155,10 @@ def test_rectangular_coaxial_compilation(tmp_path):
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert "const interface_a_width_mm = 60.000" in result.kcl_code
-    assert "const interface_a_height_mm = 40.000" in result.kcl_code
-    assert "const interface_b_width_mm = 50.000" in result.kcl_code
-    assert "const interface_b_corner_radius_mm = 4.000" in result.kcl_code
+    assert "interface_a_width_mm = 60.000" in result.kcl_code
+    assert "interface_a_height_mm = 40.000" in result.kcl_code
+    assert "interface_b_width_mm = 50.000" in result.kcl_code
+    assert "interface_b_corner_radius_mm = 4.000" in result.kcl_code
     assert "tangentialArcTo" in result.kcl_code
     assert "startProfileAt" in result.kcl_code
 
@@ -172,9 +172,9 @@ def test_circular_offset_compilation(tmp_path):
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert 'const connection_mode = "offset"' in result.kcl_code
-    assert "const offset_x_mm = 15.000" in result.kcl_code
-    assert "const offset_y_mm = 5.000" in result.kcl_code
+    assert 'connection_mode = "offset"' in result.kcl_code
+    assert "offset_x_mm = 15.000" in result.kcl_code
+    assert "offset_y_mm = 5.000" in result.kcl_code
     assert "center = [15.000, 5.000]" in result.kcl_code
 
 
@@ -188,9 +188,9 @@ def test_angled_compilation(tmp_path):
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert 'const connection_mode = "angled"' in result.kcl_code
-    assert "const angle_deg = 15.000" in result.kcl_code
-    assert "const top_plane = plane(origin =" in result.kcl_code
+    assert 'connection_mode = "angled"' in result.kcl_code
+    assert "angle_deg = 15.000" in result.kcl_code
+    assert "top_plane = plane(origin =" in result.kcl_code
 
 
 def test_invalid_unsupported_profile(tmp_path):

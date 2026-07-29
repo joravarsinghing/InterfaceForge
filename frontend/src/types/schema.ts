@@ -219,7 +219,8 @@ export interface FormatExportDetail {
   size_bytes?: number | null;
   error_id?: string | null;
   error_message?: string | null;
-  updated_at?: string | null;
+  zoo_model_id?: string | null;
+  kcl_hash?: string | null;  updated_at?: string | null;
 }
 
 export interface ExportStatusResponse {

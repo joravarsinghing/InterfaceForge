@@ -679,6 +679,15 @@ def download_export_artifact(
     )
 
 
+@router.get("/{project_id}/kcl", response_model=StandardResponse)
+def read_current_kcl(
+    project_id: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Read the exact KCL artifact attached to the current model revision."""
+    service = get_service()
+    return {"success": True, "data": service.read_current_kcl(project_id, x_project_token)}
+
 @router.get("/{project_id}/kcl/readiness", response_model=StandardResponse)
 def validate_kcl_readiness(
     project_id: str,

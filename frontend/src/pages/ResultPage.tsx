@@ -1,7 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project, ModelRevision, AgentProposalResult } from '../types/schema';
-import { getExportDownloadUrl, proposeRevision, confirmRevision } from '../services/api';
+import {
+  fetchCurrentKcl,
+  fetchExportStatus,
+  generateExports,
+  getExportDownloadUrl,
+  proposeRevision,
+  confirmRevision,
+  retryFormatExport,
+} from '../services/api';
 
 interface ResultPageProps {
   project: Project | null;
@@ -18,6 +26,29 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   const [showKclCode, setShowKclCode] = useState(false);
   const [copiedKcl, setCopiedKcl] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [kclArtifact, setKclArtifact] = useState<{ text: string; kcl_hash: string } | null>(null);
+  const [exportStatus, setExportStatus] = useState<import('../types/schema').ExportStatusResponse | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [generatingFormats, setGeneratingFormats] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!project) return () => { cancelled = true; };
+    Promise.all([
+      fetchExportStatus(project.project_id, project.project_token),
+      fetchCurrentKcl(project.project_id, project.project_token),
+    ]).then(([status, kcl]) => {
+      if (!cancelled) {
+        setExportStatus(status);
+        setKclArtifact({ text: kcl.text, kcl_hash: kcl.kcl_hash });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) setExportError(err instanceof Error ? err.message : 'Failed to load export status.');
+    });
+    return () => { cancelled = true; };
+  }, [project]);
+
+
 
   // Model Revision Panel State (Stage S9 Bounded Zoo Agent Revisions)
   const [revisionPrompt, setRevisionPrompt] = useState('');
@@ -61,43 +92,64 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   const conn = project?.connection;
   const mfg = project?.manufacturing;
 
-  // Mock KCL snippet fallback
-  const mockKclSnippet = `// InterfaceForge Generated KCL Code
-// Schema Version: ${project.schema_version} | Schema Revision: ${project.current_schema_revision}
-// Interface A: ${interfaceA.profile_type} | Interface B: ${interfaceB.profile_type}
-// Connection Mode: ${conn.mode} | Length: ${conn.length_mm}mm
 
-fn create_adapter() {
-  const profile_a = sketch(on = 'XY')
-    |> circle(radius = ${(interfaceA.dimensions[0]?.value || 50) / 2})
 
-  const profile_b = sketch(on = offsetPlane('XY', offset = ${conn.length_mm}))
-    |> circle(radius = ${(interfaceB.dimensions[0]?.value || 40) / 2})
-
-  const adapter_solid = loft([profile_a, profile_b])
-    |> shell(thickness = ${mfg.wall_thickness_mm})
-
-  return adapter_solid
-}
-
-export create_adapter()`;
-
-  const handleCopyKcl = () => {
-    navigator.clipboard.writeText(mockKclSnippet);
+  const handleCopyKcl = async () => {
+    if (!kclArtifact?.text) return;
+    await navigator.clipboard.writeText(kclArtifact.text);
     setCopiedKcl(true);
     setTimeout(() => setCopiedKcl(false), 2000);
   };
 
   const handleDownloadKcl = () => {
-    const blob = new Blob([mockKclSnippet], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `interface_adapter_rev${currentRevNumber || 1}.kcl`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (exportStatus?.formats.kcl?.status !== 'ready') return;
+    window.open(getExportDownloadUrl(project.project_id, 'kcl', project.project_token), '_blank', 'noopener,noreferrer');
   };
 
+  const refreshExportStatus = async () => {
+    const status = await fetchExportStatus(project.project_id, project.project_token);
+    setExportStatus(status);
+    return status;
+  };
+
+  const handleExport = async (format: string) => {
+    const detail = exportStatus?.formats[format];
+    if (detail?.status === 'ready') {
+      window.open(getExportDownloadUrl(project.project_id, format, project.project_token), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setExportError(null);
+    setGeneratingFormats((current) => new Set(current).add(format));
+    try {
+      if (detail?.status === 'failed') {
+        await retryFormatExport(project.project_id, format, project.project_token);
+      } else {
+        await generateExports(project.project_id, [format], project.project_token);
+      }
+      await refreshExportStatus();
+    } catch (err: unknown) {
+      setExportError(err instanceof Error ? err.message : `Failed to generate ${format.toUpperCase()}.`);
+      try { await refreshExportStatus(); } catch { /* preserve the backend error */ }
+    } finally {
+      setGeneratingFormats((current) => {
+        const next = new Set(current);
+        next.delete(format);
+        return next;
+      });
+    }
+  };
+
+  const renderExportAction = (format: string, label: string) => {
+    const detail = exportStatus?.formats[format];
+    const isGenerating = generatingFormats.has(format) || detail?.status === 'preparing';
+    const statusLabel = isGenerating ? 'Generating' : detail?.status === 'failed' ? 'Failed' : detail?.status === 'ready' ? 'Ready' : 'Not generated';
+    const statusColor = detail?.status === 'failed' ? '#f85149' : detail?.status === 'ready' ? '#3fb950' : '#8b949e';
+    if (detail?.status === 'ready') {
+      return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm" onClick={() => handleExport(format)} style={{ width: '100%' }}>Download {label}</button></div>;
+    }
+    const actionLabel = isGenerating ? `Generating ${label}` : detail?.status === 'failed' ? `Retry ${label}` : `Generate ${label}`;
+    return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm" disabled={isGenerating || isStale} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isStale ? 0.5 : 1 }}>{actionLabel}</button></div>;
+  };
   // Stage S9 Revision Handlers
   const handleProposeRevision = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,7 +549,7 @@ export create_adapter()`;
         {showKclCode && (
           <div style={{ marginTop: '1rem' }}>
             <pre style={{ background: '#0d1117', border: '1px solid #30363d', padding: '1rem', borderRadius: '6px', color: '#79c0ff', fontSize: '0.85rem', overflowX: 'auto', maxHeight: '300px' }}>
-              <code>{mockKclSnippet}</code>
+              <code>{kclArtifact?.text || "KCL artifact is not available."}</code>
             </pre>
           </div>
         )}
@@ -524,6 +576,17 @@ export create_adapter()`;
           </div>
         </div>
 
+        {exportError && (
+          <div role="alert" style={{ background: "rgba(248, 81, 73, 0.15)", borderLeft: "4px solid #f85149", padding: "0.75rem 1rem", borderRadius: "6px", marginBottom: "1rem", color: "#f0f6fc" }}>
+            {exportError}
+          </div>
+        )}
+        {project.provider_mode === 'mock' && (
+          <div role="note" style={{ background: "rgba(210, 153, 34, 0.15)", borderLeft: "4px solid #d29922", padding: "0.75rem 1rem", borderRadius: "6px", marginBottom: "1rem", color: "#f0f6fc" }}>
+            Mock/offline artifacts only. STL, STEP, and KCL are not Zoo-authoritative production exports.
+          </div>
+        )}
+
         {isStale && (
           <div className="export-notice-banner" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.25rem' }}>
             <strong style={{ color: '#d29922', fontSize: '0.95rem' }}>
@@ -548,16 +611,7 @@ export create_adapter()`;
               </p>
             </div>
             <div>
-              <a
-                href={getExportDownloadUrl(project.project_id, 'stl', project.project_token)}
-                download={`interfaceforge_adapter_rev${currentRevNumber || 1}.stl`}
-                className={`btn btn-primary btn-sm ${isStale ? 'disabled' : ''}`}
-                style={{ width: '100%', textDecoration: 'none', display: 'inline-block', textAlign: 'center', pointerEvents: isStale ? 'none' : 'auto', opacity: isStale ? 0.5 : 1 }}
-                target="_blank"
-                rel="noreferrer"
-              >
-                  Download STL (.stl)
-              </a>
+              {renderExportAction('stl', 'STL (.stl)')}
             </div>
           </div>
 
@@ -573,16 +627,7 @@ export create_adapter()`;
               </p>
             </div>
             <div>
-              <a
-                href={getExportDownloadUrl(project.project_id, 'step', project.project_token)}
-                download={`interfaceforge_adapter_rev${currentRevNumber || 1}.step`}
-                className={`btn btn-primary btn-sm ${isStale ? 'disabled' : ''}`}
-                style={{ width: '100%', textDecoration: 'none', display: 'inline-block', textAlign: 'center', pointerEvents: isStale ? 'none' : 'auto', opacity: isStale ? 0.5 : 1 }}
-                target="_blank"
-                rel="noreferrer"
-              >
-                  Download STEP (.step)
-              </a>
+              {renderExportAction('step', 'STEP (.step)')}
             </div>
           </div>
 
@@ -598,16 +643,7 @@ export create_adapter()`;
               </p>
             </div>
             <div>
-              <a
-                href={getExportDownloadUrl(project.project_id, 'kcl', project.project_token)}
-                download={`interfaceforge_adapter_rev${currentRevNumber || 1}.kcl`}
-                className="btn btn-primary btn-sm"
-                style={{ width: '100%', textDecoration: 'none', display: 'inline-block', textAlign: 'center' }}
-                target="_blank"
-                rel="noreferrer"
-              >
-                  Download KCL (.kcl)
-              </a>
+              {renderExportAction('kcl', 'KCL (.kcl)')}
             </div>
           </div>
         </div>

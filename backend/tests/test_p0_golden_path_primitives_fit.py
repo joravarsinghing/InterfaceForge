@@ -289,8 +289,8 @@ def test_all_four_fit_combinations_validate_and_compile(tmp_path) -> None:
             assert validation.is_valid is True, (mode_a, mode_b, validation.blocking_errors)
             result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
             assert result.success is True
-            assert 'const interface_a_type = "circle"' in result.kcl_code
-            assert 'const interface_b_type = "rounded_rectangle"' in result.kcl_code
+            assert 'interface_a_type = "circle"' in result.kcl_code
+            assert 'interface_b_type = "rounded_rectangle"' in result.kcl_code
 
 
 def test_clearance_formulas_for_fit_modes() -> None:

@@ -1,4 +1,4 @@
-﻿"""Project service layer managing domain workflow state transitions and schema invariants."""
+"""Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
 import logging
@@ -1926,11 +1926,24 @@ class ProjectService:
 
         now = current_iso_timestamp()
         target_rev.status = ModelRevisionStatus.CURRENT
-        target_rev.kcl_artifact_ref = req.kcl_artifact_ref
-        target_rev.preview_artifact_ref = req.preview_artifact_ref
-        target_rev.volume_cm3 = req.volume_cm3
-        target_rev.zoo_model_id = req.zoo_model_id
-        target_rev.kcl_hash = req.kcl_hash
+        if req.kcl_artifact_ref:
+            target_rev.kcl_artifact_ref = req.kcl_artifact_ref
+        if req.preview_artifact_ref:
+            target_rev.preview_artifact_ref = req.preview_artifact_ref
+        if req.volume_cm3 is not None:
+            target_rev.volume_cm3 = req.volume_cm3
+        if req.zoo_model_id:
+            target_rev.zoo_model_id = req.zoo_model_id
+        if req.kcl_hash:
+            target_rev.kcl_hash = req.kcl_hash
+        if target_rev.kcl_artifact_ref and os.path.exists(target_rev.kcl_artifact_ref):
+            with open(target_rev.kcl_artifact_ref, "rb") as kcl_file:
+                kcl_bytes = kcl_file.read()
+            if not validate_artifact_content("kcl", kcl_bytes):
+                raise ExportArtifactNotFoundError(
+                    "Model cannot become current with invalid KCL artifact."
+                )
+            target_rev.kcl_hash = __import__("hashlib").sha256(kcl_bytes).hexdigest()
         target_rev.warnings = req.warnings
 
         # Set current and last known good model revision
@@ -2036,22 +2049,27 @@ class ProjectService:
 
         requested_formats = [f.lower() for f in (formats or ["stl", "step", "kcl"])]
 
-        # Extract KCL code for export compilation
-        kcl_code = ""
-        if current_rev.kcl_artifact_ref and os.path.exists(current_rev.kcl_artifact_ref):
-            with open(current_rev.kcl_artifact_ref, "r", encoding="utf-8") as f:
-                kcl_code = f.read()
-        else:
-            compile_res = compile_project_to_kcl(project)
-            kcl_code = compile_res.kcl_code or ""
+        # Exports must use the exact KCL artifact already attached to this revision.
+        if not current_rev.kcl_artifact_ref or not os.path.exists(current_rev.kcl_artifact_ref):
+            raise ExportArtifactNotFoundError(
+                "Current revision KCL artifact is missing. Regenerate the model first."
+            )
+        with open(current_rev.kcl_artifact_ref, "rb") as kcl_file:
+            kcl_bytes = kcl_file.read()
+        if not validate_artifact_content("kcl", kcl_bytes):
+            raise ExportArtifactNotFoundError(
+                "Current revision KCL artifact failed parser validation."
+            )
 
         import hashlib
-
-        computed_kcl_hash = (
-            hashlib.sha256(kcl_code.encode("utf-8")).hexdigest() if kcl_code else "kcl_empty"
-        )
-        effective_kcl_hash = current_rev.kcl_hash or computed_kcl_hash
-        current_rev.kcl_hash = effective_kcl_hash
+        computed_kcl_hash = hashlib.sha256(kcl_bytes).hexdigest()
+        if not current_rev.kcl_hash or current_rev.kcl_hash != computed_kcl_hash:
+            raise ExportArtifactNotFoundError(
+                "Current revision KCL artifact hash does not match lineage."
+            )
+        kcl_code = kcl_bytes.decode("utf-8")
+        effective_kcl_hash = current_rev.kcl_hash
+        current_rev.exports.kcl = current_rev.kcl_artifact_ref
 
         export_prov = provider or get_export_provider(
             project.provider_mode.value
@@ -2081,7 +2099,12 @@ class ProjectService:
             ref = getattr(current_rev.exports, fmt, None)
             if fmt == "kcl" and not ref:
                 ref = current_rev.kcl_artifact_ref
-            if ref and os.path.exists(ref) and os.path.getsize(ref) > 0:
+            lineage_ok = fmt == "kcl" or (
+                current_rev.kcl_hash
+                and f"_rev{project.current_model_revision}_" in os.path.basename(ref or "")
+                and current_rev.kcl_hash[:8] in os.path.basename(ref or "")
+            )
+            if ref and lineage_ok and os.path.exists(ref) and os.path.getsize(ref) > 0:
                 format_details[fmt] = FormatExportDetail(
                     format=fmt,
                     status=ExportFormatStatus.READY,
@@ -2117,7 +2140,7 @@ class ProjectService:
                 kcl_hash=effective_kcl_hash,
             )
 
-            if res.success and res.artifact_ref:
+            if res.success and res.artifact_ref and res.kcl_hash == effective_kcl_hash:
                 any_success = True
                 setattr(current_rev.exports, fmt, res.artifact_ref)
                 format_details[fmt] = FormatExportDetail(
@@ -2182,7 +2205,20 @@ class ProjectService:
             ref = getattr(current_rev.exports, fmt, None)
             if fmt == "kcl" and not ref:
                 ref = current_rev.kcl_artifact_ref
-            if ref and os.path.exists(ref) and os.path.getsize(ref) > 0:
+            lineage_ok = fmt == "kcl" or (
+                current_rev.kcl_hash
+                and f"_rev{project.current_model_revision}_" in os.path.basename(ref or "")
+                and current_rev.kcl_hash[:8] in os.path.basename(ref or "")
+            )
+            artifact_valid = bool(ref and os.path.exists(ref) and os.path.getsize(ref) > 0)
+            if artifact_valid and fmt == "kcl" and ref:
+                with open(ref, "rb") as kcl_file:
+                    kcl_bytes = kcl_file.read()
+                artifact_valid = (
+                    validate_artifact_content("kcl", kcl_bytes)
+                    and current_rev.kcl_hash == __import__("hashlib").sha256(kcl_bytes).hexdigest()
+                )
+            if ref and lineage_ok and artifact_valid:
                 format_details[fmt] = FormatExportDetail(
                     format=fmt,
                     status=ExportFormatStatus.READY,
@@ -2242,7 +2278,12 @@ class ProjectService:
         if fmt == "kcl" and not ref:
             ref = current_rev.kcl_artifact_ref
 
-        if not ref or not os.path.exists(ref) or os.path.getsize(ref) == 0:
+        lineage_ok = fmt == "kcl" or (
+            current_rev.kcl_hash
+            and f"_rev{project.current_model_revision}_" in os.path.basename(ref or "")
+            and current_rev.kcl_hash[:8] in os.path.basename(ref or "")
+        )
+        if not ref or not lineage_ok or not os.path.exists(ref) or os.path.getsize(ref) == 0:
             raise ExportArtifactNotFoundError(
                 f"Export artifact for '{fmt}' was not found or is empty. Generate export first."
             )
@@ -2269,6 +2310,44 @@ class ProjectService:
         download_name = f"interfaceforge_adapter_rev{project.current_model_revision}.{fmt}"
         return ref, download_name, mime_types.get(fmt, "application/octet-stream")
 
+    def read_current_kcl(
+        self, project_id: str, project_token: Optional[str] = None
+    ) -> dict[str, object]:
+        """Return the exact validated KCL bytes attached to the current revision."""
+        project = self._verify_project_and_token(project_id, project_token)
+        if project.current_model_revision is None:
+            raise StaleModelOperationError("Current model revision is missing.")
+        current_rev = next(
+            (
+                rev
+                for rev in project.model_revisions
+                if rev.model_revision == project.current_model_revision
+            ),
+            None,
+        )
+        if not current_rev or current_rev.status != ModelRevisionStatus.CURRENT:
+            raise StaleModelOperationError("Cannot read KCL for a stale or missing model.")
+        ref = current_rev.kcl_artifact_ref or current_rev.exports.kcl
+        if not ref or not os.path.exists(ref) or os.path.getsize(ref) == 0:
+            raise ExportArtifactNotFoundError("Current revision KCL artifact is missing or empty.")
+        with open(ref, "rb") as artifact_file:
+            content = artifact_file.read()
+        actual_hash = __import__("hashlib").sha256(content).hexdigest()
+        if not current_rev.kcl_hash or actual_hash != current_rev.kcl_hash:
+            raise ExportArtifactNotFoundError(
+                "Current revision KCL artifact hash does not match lineage."
+            )
+        try:
+            resolve_path_within("artifacts", ref)
+        except ValueError:
+            raise InvalidProjectTokenError()
+        return {
+            "text": content.decode("utf-8"),
+            "artifact_ref": ref,
+            "schema_revision": current_rev.schema_revision,
+            "model_revision": current_rev.model_revision,
+            "kcl_hash": actual_hash,
+        }
     def validate_kcl_readiness(
         self, project_id: str, project_token: Optional[str] = None
     ) -> ConnectionValidationResult:

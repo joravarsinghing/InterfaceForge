@@ -723,6 +723,25 @@ export async function retryFormatExport(
   return json.data;
 }
 
+export interface CurrentKclArtifact {
+  text: string;
+  artifact_ref: string;
+  schema_revision: number;
+  model_revision: number;
+  kcl_hash: string;
+}
+
+export async function fetchCurrentKcl(
+  projectId: string,
+  projectToken?: string
+): Promise<CurrentKclArtifact> {
+  const headers: Record<string, string> = {};
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(`${BACKEND_BASE_URL}/api/projects/${projectId}/kcl`, { headers });
+  const json: APIEnvelope<CurrentKclArtifact> = await response.json();
+  if (!json.success) throw new Error(`[${json.error.id}] ${json.error.message}`);
+  return json.data;
+}
 export function getExportDownloadUrl(
   projectId: string,
   formatName: string,
