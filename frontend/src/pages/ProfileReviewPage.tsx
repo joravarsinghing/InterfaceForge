@@ -710,7 +710,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => navigate(isInterfaceB ? '/step2' : '/step1')}
+              onClick={() => navigate(isInterfaceB ? '/step2?replace=1' : '/step1?replace=1')}
             >
               Replace Image
             </button>
@@ -1216,7 +1216,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={() => navigate(isInterfaceB ? '/step2' : '/step1')}
+          onClick={() => navigate(isInterfaceB ? '/step2?replace=1' : '/step1?replace=1')}
         >
           Replace Image
         </button>

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, ChangeEvent, DragEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ImageGuidance } from '../components/ImageGuidance';
 import { uploadInterfaceImage, analyzeInterfaceImage, fetchProject } from '../services/api';
 import { getInterfaceStepPath } from '../services/workflow';
@@ -19,21 +19,23 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   onAnalysisComplete,
   onProjectUpdate,
 }) => {
+  const location = useLocation();
   const navigate = useNavigate();
+  const isReplaceMode = new URLSearchParams(location.search).get('replace') === '1';
 
   const isInterfaceB = interfaceId === 'interface_b';
   const interfaceName = isInterfaceB ? 'Interface B' : 'Interface A';
   const isPrerequisiteMet = !isInterfaceB || (project?.interface_a?.approved ?? false);
 
   useEffect(() => {
-    if (!project || !isPrerequisiteMet) return;
+    if (!project || !isPrerequisiteMet || isReplaceMode) return;
 
     const resolvedPath = getInterfaceStepPath(project, interfaceId);
     const uploadPath = isInterfaceB ? '/step2' : '/step1';
     if (resolvedPath !== uploadPath) {
       navigate(resolvedPath, { replace: true });
     }
-  }, [interfaceId, isInterfaceB, isPrerequisiteMet, navigate, project]);
+  }, [interfaceId, isInterfaceB, isPrerequisiteMet, isReplaceMode, navigate, project]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
