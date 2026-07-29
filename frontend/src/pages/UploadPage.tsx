@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect, ChangeEvent, DragEvent } from 'react';
+import React, { useState, useEffect, ChangeEvent, DragEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ImageGuidance } from '../components/ImageGuidance';
+import { ImageGuidance, PreferredInput } from '../components/ImageGuidance';
 import { uploadInterfaceImage, analyzeInterfaceImage, fetchProject } from '../services/api';
 import { getInterfaceStepPath } from '../services/workflow';
 import { AnalysisResult, Project } from '../types/schema';
@@ -44,14 +44,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   const [loadingText, setLoadingText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  // Optional known measurement for post-trace scale calibration (ADR-001, FR-004)
-  const [knownMeasurementValue, setKnownMeasurementValue] = useState<string>('');
-  const [knownMeasurementDimension, setKnownMeasurementDimension] = useState<string>('overall_width');
 
-  const handleKnownMeasurement = useCallback((value: string, dimension: string) => {
-    setKnownMeasurementValue(value);
-    setKnownMeasurementDimension(dimension);
-  }, []);
 
   const handleFileSelect = (file: File) => {
     setError(null);
@@ -111,15 +104,11 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 
     try {
       // 1. Upload image
-      const parsedKnownMeasurement = parseFloat(knownMeasurementValue);
       await uploadInterfaceImage(
         project.project_id,
         interfaceId,
         selectedFile,
         project.project_token,
-        Number.isFinite(parsedKnownMeasurement) && parsedKnownMeasurement > 0
-          ? { type: knownMeasurementDimension, value: parsedKnownMeasurement, unit: 'mm' }
-          : undefined
       );
 
       // 2. Run analysis
@@ -249,6 +238,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
           <p>{loadingText}</p>
         </div>
       ) : (
+        <>
         <div className="upload-layout">
           <div className="upload-main">
             {!selectedFile ? (
@@ -334,20 +324,6 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                 </div>
 
                 <div className="confirm-section">
-                  {knownMeasurementValue && (
-                    <p
-                      className="known-measurement-summary"
-                      data-testid="known-measurement-summary"
-                      aria-label={`Known measurement: ${knownMeasurementValue} mm ${knownMeasurementDimension}`}
-                    >
-                        Known measurement noted:{' '}
-                      - <strong>{knownMeasurementValue} mm</strong>{' '}
-                      <span className="known-measurement-dim">
-                        ({knownMeasurementDimension.replace(/_/g, ' ')})
-                      </span>{' '}
-                        scale will be confirmed after the trace.
-                    </p>
-                  )}
                   <button
                     type="button"
                     className="btn btn-primary btn-large"
@@ -362,11 +338,12 @@ export const UploadPage: React.FC<UploadPageProps> = ({
             )}
           </div>
 
-          <ImageGuidance
-            selectedFile={selectedFile}
-            onKnownMeasurement={handleKnownMeasurement}
-          />
+          <div className="preferred-input-panel image-guidance-panel">
+            <PreferredInput />
+          </div>
         </div>
+        <ImageGuidance selectedFile={selectedFile} includePreferredInput={false} />
+        </>
       )}
 
       {analysisResult && (

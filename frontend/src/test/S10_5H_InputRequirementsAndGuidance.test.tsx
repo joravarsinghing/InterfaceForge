@@ -268,76 +268,17 @@ describe('S10.5H-03: Quality status badge renders after file selection', () => {
   });
 });
 
-// S10.5H-04: Known-measurement field
-
-describe('S10.5H-04: Known measurement field', () => {
-  it('renders the Known Measurement optional field', () => {
+// S10.5H-04: Known measurement UI removed
+describe('S10.5H-04: Known measurement UI removed', () => {
+  it('does not render the removed Known Measurement section', () => {
     render(
       <MemoryRouter>
         <UploadPage interfaceId="interface_a" project={mockProject} />
       </MemoryRouter>
     );
 
-    expect(screen.getByText(/Known Measurement/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Known measurement value in millimetres/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Known dimension type/i)).toBeInTheDocument();
-  });
-
-  it('shows dimension type options in select', () => {
-    render(
-      <MemoryRouter>
-        <UploadPage interfaceId="interface_a" project={mockProject} />
-      </MemoryRouter>
-    );
-
-    const select = screen.getByLabelText(/Known dimension type/i) as HTMLSelectElement;
-    const options = Array.from(select.options).map((o) => o.value);
-    expect(options).toContain('overall_width');
-    expect(options).toContain('overall_height');
-    expect(options).toContain('hole_diameter');
-    expect(options).toContain('reference_distance');
-  });
-
-  it('shows scale confirmation note when a value is entered', () => {
-    render(
-      <MemoryRouter>
-        <UploadPage interfaceId="interface_a" project={mockProject} />
-      </MemoryRouter>
-    );
-
-    // Select a file so the preview card (with confirm section) shows
-    const file = new File(['data'.repeat(200)], 'profile.png', { type: 'image/png' });
-    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
-
-    // Enter a known measurement in the guidance panel
-    const measureInput = screen.getByLabelText(/Known measurement value in millimetres/i);
-    fireEvent.change(measureInput, { target: { value: '40' } });
-
-    // Confirm section should show the captured measurement via data-testid
-    const summary = screen.getByTestId('known-measurement-summary');
-    expect(summary).toBeInTheDocument();
-    expect(summary.textContent).toMatch(/40 mm/i);
-    expect(summary.textContent).toMatch(/scale will be confirmed after the trace/i);
-  });
-
-  it('scale confirmation note says "scale will be confirmed" not manufacturing-ready', () => {
-    render(
-      <MemoryRouter>
-        <UploadPage interfaceId="interface_a" project={mockProject} />
-      </MemoryRouter>
-    );
-
-    const file = new File(['data'.repeat(200)], 'profile.png', { type: 'image/png' });
-    fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
-
-    const measureInput = screen.getByLabelText(/Known measurement value in millimetres/i);
-    fireEvent.change(measureInput, { target: { value: '25' } });
-
-    const summary = screen.getByTestId('known-measurement-summary');
-    // Must NOT say "manufacturing-ready" before scale is confirmed
-    expect(summary.textContent).not.toMatch(/manufacturing.?ready/i);
-    // Must explicitly mention confirmation is pending
-    expect(summary.textContent).toMatch(/confirmed after the trace/i);
+    expect(screen.queryByText(/Known Measurement/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Known measurement value in millimetres/i)).not.toBeInTheDocument();
   });
 });
 
@@ -385,10 +326,10 @@ describe('S10.5H-06: Interface A and B guidance consistency', () => {
       </MemoryRouter>
     );
 
-    // Preferred Input + Image Guidance + Known Measurement should all be present
+    // Preferred Input and Image Guidance should be present; Known Measurement is removed
     expect(screen.getByText('Preferred Input')).toBeInTheDocument();
     expect(screen.getByText('Image Guidance')).toBeInTheDocument();
-    expect(screen.getAllByText(/Known Measurement/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Known Measurement/i)).not.toBeInTheDocument();
 
     unmount();
 
@@ -400,7 +341,7 @@ describe('S10.5H-06: Interface A and B guidance consistency', () => {
 
     expect(screen.getByText('Preferred Input')).toBeInTheDocument();
     expect(screen.getByText('Image Guidance')).toBeInTheDocument();
-    expect(screen.getAllByText(/Known Measurement/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Known Measurement/i)).not.toBeInTheDocument();
   });
 });
 
@@ -429,23 +370,4 @@ describe('S10.5H-07: ImageGuidance standalone rendering', () => {
     expect(allMatches.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('calls onKnownMeasurement when value changes', () => {
-    const onMeasurement = vi.fn();
-    render(<ImageGuidance onKnownMeasurement={onMeasurement} />);
-
-    const input = screen.getByLabelText(/Known measurement value in millimetres/i);
-    fireEvent.change(input, { target: { value: '40' } });
-
-    expect(onMeasurement).toHaveBeenCalledWith('40', 'overall_width');
-  });
-
-  it('calls onKnownMeasurement with updated dimension when select changes', () => {
-    const onMeasurement = vi.fn();
-    render(<ImageGuidance onKnownMeasurement={onMeasurement} />);
-
-    const select = screen.getByLabelText(/Known dimension type/i);
-    fireEvent.change(select, { target: { value: 'hole_diameter' } });
-
-    expect(onMeasurement).toHaveBeenCalledWith('', 'hole_diameter');
-  });
 });

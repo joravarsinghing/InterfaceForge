@@ -176,8 +176,7 @@ describe('UploadPage Component', () => {
         'proj-123',
         'interface_a',
         file,
-        'tok-123',
-        undefined
+        'tok-123'
       );
       expect(apiModule.analyzeInterfaceImage).toHaveBeenCalledWith(
         'proj-123',
@@ -188,7 +187,7 @@ describe('UploadPage Component', () => {
     });
   });
 
-  it('sends known measurement metadata with upload for scale review', async () => {
+  it('uploads without removed known measurement metadata controls', async () => {
     vi.mocked(apiModule.uploadInterfaceImage).mockResolvedValue({
       artifact_ref: 'artifacts/uploads/upload_test.png',
       original_filename: 'test_circle.png',
@@ -217,8 +216,6 @@ describe('UploadPage Component', () => {
 
     const file = new File(['fake-png-content'], 'test_circle.png', { type: 'image/png' });
     fireEvent.change(screen.getByLabelText('Choose Image File'), { target: { files: [file] } });
-    fireEvent.change(screen.getByLabelText('Known dimension type'), { target: { value: 'hole_diameter' } });
-    fireEvent.change(screen.getByLabelText('Known measurement value in millimetres'), { target: { value: '12.5' } });
     fireEvent.click(screen.getByText('Use This Image and Analyze'));
 
     await waitFor(() => {
@@ -226,12 +223,10 @@ describe('UploadPage Component', () => {
         'proj-123',
         'interface_a',
         file,
-        'tok-123',
-        { type: 'hole_diameter', value: 12.5, unit: 'mm' }
+        'tok-123'
       );
     });
   });
-
   it('displays error banner when upload fails', async () => {
     vi.mocked(apiModule.uploadInterfaceImage).mockRejectedValue(
       new Error('[IF-FILE-400] Unsupported image format')
