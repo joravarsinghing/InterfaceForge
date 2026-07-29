@@ -1,4 +1,4 @@
-"""Stage S10.5A Backend Unit & Integration Tests — OpenCV Profile Tracing."""
+﻿"""Stage S10.5A Backend Unit & Integration Tests â€” OpenCV Profile Tracing."""
 
 import hashlib
 import os
@@ -42,7 +42,7 @@ class TestS105AOpenCVProfileTracing:
 
     def test_drawing_a_opencv_contour_extraction(self):
         """Drawing A produces non-convex outer contour and inner contours."""
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         assert os.path.exists(path)
 
         with open(path, "rb") as f:
@@ -70,7 +70,7 @@ class TestS105AOpenCVProfileTracing:
 
     def test_drawing_b_opencv_contour_extraction(self):
         """Drawing B produces non-convex outer contour and corner screw holes."""
-        path = get_sample_path("samples/manual_qa/interface_b_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_b_original.jpg")
         assert os.path.exists(path)
 
         with open(path, "rb") as f:
@@ -91,7 +91,7 @@ class TestS105AOpenCVProfileTracing:
 
     def test_real_overlay_contains_source_image(self):
         """Real overlay SVG contains embedded original source image layer."""
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 
@@ -150,7 +150,7 @@ class TestS105AOpenCVProfileTracing:
         pid = data["project_id"]
         token = data["project_token"]
 
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 

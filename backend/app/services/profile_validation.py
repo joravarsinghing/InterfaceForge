@@ -9,6 +9,20 @@ from app.models.schema import DimensionProvenance, Interface, Point2D, ProfileTy
 MAX_TRACED_POINTS = 2000
 MIN_TRACED_OUTER_POINTS = 4
 MAX_SEGMENT_COMPARISONS = 250_000
+PRIMITIVE_DIMENSION_IDS = {
+    ProfileType.CIRCLE: ("outer_diameter", "diameter"),
+    ProfileType.RECTANGLE: ("width", "height"),
+    ProfileType.ROUNDED_RECTANGLE: ("width", "height", "corner_radius"),
+}
+
+
+def _is_legacy_unmapped_dimension_id(dim_id: str) -> bool:
+    return dim_id.startswith("custom_dim_") or dim_id.startswith("unmapped_")
+
+
+def _is_generation_dimension(interface: Interface, dim_id: str) -> bool:
+    allowed = PRIMITIVE_DIMENSION_IDS.get(interface.profile_type, ())
+    return dim_id in allowed
 
 
 def _validate_contour(
@@ -197,8 +211,14 @@ def _validate_traced_profile(
     scale_warnings = validate_scale_and_dimensions(interface)
     warnings.extend(scale_warnings)
 
-    # Dimension validation for traced profiles
+    # Dimension validation for traced profiles. Unmapped legacy/custom rows are compatibility data only.
     for dim in interface.dimensions:
+        if (
+            dim.feature_ref is None
+            or dim.consistency_state == "unmapped"
+            or _is_legacy_unmapped_dimension_id(dim.id)
+        ):
+            continue
         if not math.isfinite(dim.value) or dim.value < 0:
             errors.append(
                 f"Dimension '{dim.label}' must be a non-negative finite value (got {dim.value})."
@@ -231,40 +251,36 @@ def _validate_primitive_profile(
             "Supported types are: circle, rectangle, rounded_rectangle."
         )
 
-    # 2. Positive finite dimension values and confidence ranges
-    known_dimensions_count = 0
-    for dim in interface.dimensions:
-        # Check finite & positive value
+    # 2. Positive finite generation dimensions. Legacy unmapped/custom dimensions
+    # are retained for compatibility, but they do not satisfy or block approval.
+    generation_dims = {
+        dim.id: dim
+        for dim in interface.dimensions
+        if _is_generation_dimension(interface, dim.id)
+        and dim.consistency_state != "unmapped"
+        and not _is_legacy_unmapped_dimension_id(dim.id)
+    }
+    required_groups = PRIMITIVE_DIMENSION_IDS.get(interface.profile_type, ())
+    if interface.profile_type == ProfileType.CIRCLE:
+        if not any(dim_id in generation_dims for dim_id in required_groups):
+            errors.append("Circle profile requires a derived diameter dimension.")
+    else:
+        for dim_id in required_groups:
+            if dim_id not in generation_dims:
+                errors.append(f"{interface.profile_type.value} profile requires derived dimension '{dim_id}'.")
+
+    for dim in generation_dims.values():
         if not math.isfinite(dim.value) or dim.value <= 0:
             errors.append(
                 f"Dimension '{dim.label}' must be a positive finite value (got {dim.value})."
             )
-
-        # Check valid confidence range [0.0, 1.0]
         if not math.isfinite(dim.confidence) or dim.confidence < 0.0 or dim.confidence > 1.0:
             errors.append(
                 f"Dimension '{dim.label}' confidence must be between 0.0 and 1.0 "
                 f"(got {dim.confidence})."
             )
-
-        # Count known dimensions (not UNRESOLVED, positive finite value)
-        if (
-            dim.provenance != DimensionProvenance.UNRESOLVED
-            and math.isfinite(dim.value)
-            and dim.value > 0
-        ):
-            known_dimensions_count += 1
-
-        # Check unresolved critical dimensions
         if dim.critical and dim.provenance == DimensionProvenance.UNRESOLVED:
             errors.append(f"Critical dimension '{dim.label}' is unresolved.")
-
-    # 3. Minimum two known dimensions
-    if known_dimensions_count < 2:
-        errors.append(
-            f"Profile requires at least two known dimensions (found {known_dimensions_count})."
-        )
-
     # 4. Basic point validity
     if interface.profile_points:
         for i, pt in enumerate(interface.profile_points):

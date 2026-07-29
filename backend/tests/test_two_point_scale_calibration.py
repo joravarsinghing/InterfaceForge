@@ -223,3 +223,44 @@ def test_reselection_and_real_distance_edit_invalidate_existing_approval(client:
     data = changed.json()["data"]
     assert data["interface_a"]["approved"] is False
     assert data["interface_a"]["scale_calibration"]["confirmed"] is False
+
+
+def test_legacy_unmapped_dimensions_do_not_block_or_drive_approval(client: TestClient) -> None:
+    pid, headers = setup_traced(client)
+    client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json={
+            **traced_payload(False),
+            "dimensions": [
+                *traced_payload(False)["dimensions"],
+                {
+                    "id": "custom_dim_1",
+                    "label": "Custom Dimension 1",
+                    "value": 0,
+                    "unit": "mm",
+                    "provenance": "unresolved",
+                    "confidence": 1.0,
+                    "critical": True,
+                    "feature_ref": None,
+                    "consistency_state": "unmapped",
+                },
+            ],
+        },
+        headers=headers,
+    )
+    confirmed = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
+        json={
+            "point_a": {"x": 0, "y": 0},
+            "point_b": {"x": 100, "y": 0},
+            "real_distance_mm": 40,
+            "confirmed": True,
+        },
+        headers=headers,
+    )
+    assert confirmed.status_code == 200
+    approved = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
+    assert approved.status_code == 200, approved.json()
+    dims = {d["id"]: d for d in approved.json()["data"]["interface_a"]["dimensions"]}
+    assert dims["overall_width"]["value"] == 40.0
+    assert dims["custom_dim_1"]["feature_ref"] is None

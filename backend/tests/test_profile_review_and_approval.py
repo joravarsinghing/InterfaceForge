@@ -71,8 +71,8 @@ def test_supported_profiles_validation_and_approval(client: TestClient) -> None:
     assert appr_b.json()["data"]["state"] == WorkflowState.INTERFACES_APPROVED
 
 
-def test_fewer_than_two_known_dimensions_rejection(client: TestClient) -> None:
-    """Test interface with fewer than two known dimensions fails validation and approval."""
+def test_missing_derived_generation_dimension_rejection(client: TestClient) -> None:
+    """Test missing derived generation dimensions fail validation and approval."""
     res = client.post("/api/projects")
     p_id = res.json()["data"]["project_id"]
     token = res.json()["data"]["project_token"]
@@ -89,17 +89,52 @@ def test_fewer_than_two_known_dimensions_rejection(client: TestClient) -> None:
         headers=headers,
     )
 
-    # Patch Interface A to have only 1 dimension in total
+    trace_patch = client.patch(
+        f"/api/projects/{p_id}/interfaces/interface_a",
+        json={
+            "traced_outer_contour": {
+                "id": "outer_contour",
+                "points": [
+                    {"x": 0, "y": 0},
+                    {"x": 100, "y": 0},
+                    {"x": 100, "y": 100},
+                    {"x": 0, "y": 100},
+                ],
+                "is_closed": True,
+                "classification": "outer_contour",
+                "decision": "include",
+                "provenance": "analysis",
+                "confidence": 1.0,
+            }
+        },
+        headers=headers,
+    )
+    assert trace_patch.status_code == 200
+
+    calibration = client.post(
+        f"/api/projects/{p_id}/interfaces/interface_a/scale/calibrate",
+        json={
+            "point_a": {"x": 0, "y": 0},
+            "point_b": {"x": 100, "y": 0},
+            "real_distance_mm": 50,
+            "confirmed": True,
+        },
+        headers=headers,
+    )
+    assert calibration.status_code == 200, calibration.json()
+
+    # Simulate a legacy/stale saved primitive that has calibration but no derived diameter.
     patch_payload = {
         "dimensions": [
             {
-                "id": "outer_diameter",
-                "label": "Outer Diameter",
-                "value": 50.0,
+                "id": "wall_thickness",
+                "label": "Wall Thickness",
+                "value": 5.0,
                 "unit": "mm",
                 "provenance": DimensionProvenance.IMAGE_EXTRACTED,
                 "confidence": 0.95,
-                "critical": True,
+                "critical": False,
+                "feature_ref": "wall",
             }
         ]
     }
@@ -110,17 +145,15 @@ def test_fewer_than_two_known_dimensions_rejection(client: TestClient) -> None:
     )
     assert patch_res.status_code == 200
     warnings = patch_res.json()["data"]["interface_a"]["validation"]["warnings"]
-    assert any("at least two known dimensions" in w for w in warnings)
+    assert any("requires a derived diameter dimension" in w for w in warnings)
 
-    # Approval attempt should fail with IF-APPROVAL-400
     appr_res = client.post(
         f"/api/projects/{p_id}/interfaces/interface_a/approve",
         headers=headers,
     )
     assert appr_res.status_code == 400
     assert appr_res.json()["error"]["id"] == "IF-APPROVAL-400"
-    assert "at least two known dimensions" in appr_res.json()["error"]["message"]
-
+    assert "Scale calibration must be confirmed" in appr_res.json()["error"]["message"]
 
 def test_zero_or_negative_values_rejection(client: TestClient) -> None:
     """Test non-positive or non-finite dimension values fail validation and approval."""

@@ -1,5 +1,5 @@
-"""
-Focused tests for Stage S10.5G.1 — Gemini Annotation Mask Coordinate Pipeline.
+﻿"""
+Focused tests for Stage S10.5G.1 â€” Gemini Annotation Mask Coordinate Pipeline.
 
 Tests cover:
 - coordinate order conversion (ymin/xmin/ymax/xmax)
@@ -59,14 +59,14 @@ def synthetic_profile_img():
 @pytest.fixture
 def interface_b_img():
     """Load real Interface B original image, skip if not present."""
-    p = REPO_ROOT / "samples" / "manual_qa" / "interface_b_original.jpg"
+    p = REPO_ROOT / "samples" / "test_fixtures" / "s10_interface_b_original.jpg"
     if not p.exists():
         pytest.skip(f"interface_b_original.jpg not found at {p}")
     return cv2.imread(str(p))
 
 
 # ---------------------------------------------------------------------------
-# 1. Coordinate Order Conversion — ymin, xmin, ymax, xmax
+# 1. Coordinate Order Conversion â€” ymin, xmin, ymax, xmax
 # ---------------------------------------------------------------------------
 
 
@@ -148,7 +148,7 @@ class TestNormalizedCoordinateScaling:
 class TestCropOffsetRestoration:
     def test_crop_accepted_when_fully_contains_profile(self):
         """Crop box that fully contains the protected profile extent is accepted."""
-        # Protected bbox (40, 50, 660, 750) — profile extent
+        # Protected bbox (40, 50, 660, 750) â€” profile extent
         is_valid, final_box, reason = validate_crop_box(
             proposed_crop_pixel_box=(10, 20, 700, 800),
             protected_pixel_box=(40, 50, 660, 750),
@@ -193,7 +193,7 @@ class TestCropOffsetRestoration:
             margin_px=20,
         )
         assert is_valid is False
-        # Fallback should be based on protected_pixel_box ± margin
+        # Fallback should be based on protected_pixel_box Â± margin
         fy1, fx1, fy2, fx2 = fallback_box
         assert fy1 <= 50  # above profile top
         assert fx1 <= 50  # left of profile left
@@ -281,7 +281,7 @@ class TestProtectedGeometryOverlapRejection:
     def test_region_with_zero_solid_profile_overlap_is_accepted(self, synthetic_profile_img):
         """Annotation region in pure background area (no profile pixels) is accepted."""
         h, w, _ = synthetic_profile_img.shape
-        # Top-left corner (background) — no profile body here
+        # Top-left corner (background) â€” no profile body here
         annotation_regions = [[0.0, 0.0, 0.05, 0.1]]
         _, _, _, _, meta = safer_annotation_masking(
             synthetic_profile_img, annotation_regions, crop_box_raw=None
@@ -292,12 +292,12 @@ class TestProtectedGeometryOverlapRejection:
     def test_thin_dimension_line_crossing_profile_boundary_is_accepted(self, synthetic_profile_img):
         """Extension lines straddling the profile boundary survive the erosion-based check."""
         h, w, _ = synthetic_profile_img.shape
-        # Draw a thin 1px line from background into profile top (y≈250) to simulate extension line
+        # Draw a thin 1px line from background into profile top (yâ‰ˆ250) to simulate extension line
         line_img = synthetic_profile_img.copy()
         cv2.line(line_img, (300, 230), (300, 260), (0, 0, 0), 1)
 
         # Annotation region that straddles the profile top
-        # profile top ≈ y=250, so [0.27..0.32] covers y=216..256
+        # profile top â‰ˆ y=250, so [0.27..0.32] covers y=216..256
         annotation_regions = [
             {"label": "ext_line", "category": "extension_lines", "box": [0.27, 0.35, 0.34, 0.45]}
         ]
@@ -498,7 +498,7 @@ class TestTwoRunDeterminism:
         _, mask_a, _, _, _ = safer_annotation_masking(interface_b_img, regions_a, None)
         _, mask_b, _, _, _ = safer_annotation_masking(interface_b_img, regions_b, None)
 
-        # The masks should differ — different regions applied
+        # The masks should differ â€” different regions applied
         assert not np.array_equal(mask_a, mask_b), "Different regions must produce different masks"
 
 

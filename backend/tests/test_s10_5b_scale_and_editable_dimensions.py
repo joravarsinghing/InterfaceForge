@@ -1,4 +1,4 @@
-"""Stage S10.5B Backend Unit & Integration Tests — Scale Calibration and Editable Dimensions."""
+﻿"""Stage S10.5B Backend Unit & Integration Tests â€” Scale Calibration and Editable Dimensions."""
 
 import math
 import os
@@ -45,7 +45,7 @@ class TestS105BScaleAndEditableDimensions:
         pid = data["project_id"]
         token = data["project_token"]
 
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 
@@ -78,7 +78,7 @@ class TestS105BScaleAndEditableDimensions:
         pid = data["project_id"]
         token = data["project_token"]
 
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 
@@ -316,7 +316,7 @@ class TestS105BScaleAndEditableDimensions:
         pid = data["project_id"]
         token = data["project_token"]
 
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 

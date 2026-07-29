@@ -1,4 +1,4 @@
-"""Stage S10.5E Backend Unit & Integration Tests — High-Fidelity Profile Tracing & Arc Fitting."""
+﻿"""Stage S10.5E Backend Unit & Integration Tests â€” High-Fidelity Profile Tracing & Arc Fitting."""
 
 import os
 
@@ -27,7 +27,7 @@ class TestS105EHighFidelityTracing:
 
     def test_adaptive_simplification_path(self):
         """Verify adaptive simplification preserves high detail at corners."""
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 
@@ -43,7 +43,7 @@ class TestS105EHighFidelityTracing:
 
     def test_circle_fitting_on_circular_holes(self):
         """Verify circular holes are accurately detected and fitted with exact circle primitives."""
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 
@@ -62,7 +62,7 @@ class TestS105EHighFidelityTracing:
 
     def test_preservation_of_narrow_slot_openings(self):
         """Verify small slots and flange lips are preserved without over-simplification."""
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 
@@ -79,7 +79,7 @@ class TestS105EHighFidelityTracing:
 
     def test_fidelity_metrics_computation(self):
         """Verify calculation of Hausdorff max deviation and mean deviation metrics."""
-        path = get_sample_path("samples/manual_qa/interface_a_original.jpg")
+        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
         with open(path, "rb") as f:
             img_bytes = f.read()
 

@@ -13,7 +13,6 @@ import {
 } from '../services/api';
 import {
   Dimension,
-  DimensionProvenance,
   InterfaceDefinition,
   ProfileType,
   Project,
@@ -111,67 +110,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     setImageError(false);
   }, [targetInterface]);
 
-  // Dimension editing handlers
-  const handleDimensionValueChange = (index: number, valStr: string) => {
-    const val = parseFloat(valStr);
-    const updated = [...dimensions];
-    updated[index] = {
-      ...updated[index],
-      value: isNaN(val) ? 0 : val,
-    };
-    setDimensions(updated);
-    if (scaleCalibration.confirmed) {
-      setScaleCalibration({ ...scaleCalibration, confirmed: false });
-    }
-  };
-
-  const handleProvenanceChange = (
-    index: number,
-    prov: DimensionProvenance
-  ) => {
-    const updated = [...dimensions];
-    updated[index] = {
-      ...updated[index],
-      provenance: prov,
-    };
-    setDimensions(updated);
-  };
-
-  const handleConfidenceChange = (index: number, confStr: string) => {
-    const conf = parseFloat(confStr);
-    const updated = [...dimensions];
-    updated[index] = {
-      ...updated[index],
-      confidence: isNaN(conf) ? 0 : Math.max(0, Math.min(1, conf)),
-    };
-    setDimensions(updated);
-  };
-
-  const handleCriticalToggle = (index: number, isCritical: boolean) => {
-    const updated = [...dimensions];
-    updated[index] = {
-      ...updated[index],
-      critical: isCritical,
-    };
-    setDimensions(updated);
-  };
-
-  const handleAddDimension = () => {
-    const newDim: Dimension = {
-      id: `custom_dim_${dimensions.length + 1}`,
-      label: `Custom Dimension ${dimensions.length + 1}`,
-      value: 10.0,
-      unit: 'mm',
-      provenance: 'user_entered',
-      confidence: 1.0,
-      critical: false,
-    };
-    setDimensions([...dimensions, newDim]);
-  };
-
-  const handleRemoveDimension = (index: number) => {
-    setDimensions(dimensions.filter((_, idx) => idx !== index));
-  };
 
   // Inner Region Decision Handler
   const handleRegionDecisionChange = async (regionId: string, decision: 'include' | 'ignore' | 'unsure') => {
@@ -346,84 +284,54 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   // Structural Validation Summary Calculation
   const isTracedProfile = profileType === 'traced_closed';
-  const hasStoredScaleCalibration = targetInterface?.scale_calibration != null;
-  const requiresScaleConfirmation = hasStoredScaleCalibration || isTracedProfile;
-  const knownCount = dimensions.filter(
-    (d) => d.provenance !== 'unresolved' && d.value > 0 && isFinite(d.value)
-  ).length;
+  const visibleDimensionIds =
+    profileType === 'circle'
+      ? ['outer_diameter', 'diameter']
+      : profileType === 'rectangle'
+      ? ['width', 'height']
+      : profileType === 'rounded_rectangle'
+      ? ['width', 'height', 'corner_radius']
+      : ['overall_width', 'overall_height'];
+  const displayDimensions = scaleCalibration.confirmed
+    ? visibleDimensionIds
+        .map((id) => dimensions.find((dim) => dim.id === id && Number.isFinite(dim.value) && dim.value > 0))
+        .filter((dim, index, arr): dim is Dimension => Boolean(dim) && arr.findIndex((other) => other?.id === dim?.id) === index)
+    : [];
+  const legacyDimensions = dimensions.filter(
+    (dim) => !visibleDimensionIds.includes(dim.id) || !dim.feature_ref || dim.consistency_state === 'unmapped'
+  );
+  const requiresScaleConfirmation = true;
 
   const validationErrors: string[] = [];
 
-  // For traced profiles: contour presence checks
-  if (isTracedProfile) {
-    const hasOuterContour =
-      targetInterface?.traced_outer_contour != null &&
-      (targetInterface.traced_outer_contour.points?.length ?? 0) >= 4;
-    if (!hasOuterContour) {
-      validationErrors.push(
-        'Traced profile requires a valid outer contour with at least 4 points.'
-      );
-    }
-  } else {
-    // Primitive profiles need at least 2 known dimensions
-    if (knownCount < 2) {
-      validationErrors.push(
-        `At least two known dimensions are required (found ${knownCount}).`
-      );
-    }
-  }
-
-  if (requiresScaleConfirmation && !scaleCalibration.confirmed) {
+  if (!targetInterface?.traced_outer_contour) {
     validationErrors.push(
-      'Scale calibration is unconfirmed. Visible confirmation required before profile approval.'
+      'Calibration requires traced edge data. Replace the image or re-run analysis before approval.'
     );
   }
 
-  dimensions.forEach((d) => {
-    if (!isFinite(d.value) || d.value < 0) {
-      validationErrors.push(`Dimension "${d.label}" must be a non-negative finite value.`);
-    }
-    if (!isFinite(d.confidence) || d.confidence < 0 || d.confidence > 1) {
-      validationErrors.push(`Dimension "${d.label}" confidence must be between 0.0 and 1.0.`);
-    }
-    if (d.critical && d.provenance === 'unresolved') {
-      validationErrors.push(`Critical dimension "${d.label}" is unresolved.`);
+  if (!scaleCalibration.confirmed || scaleCalibration.method !== 'two_point_trace') {
+    validationErrors.push(
+      'Two-point calibration must be confirmed before profile approval.'
+    );
+  }
+
+  if (displayDimensions.length < visibleDimensionIds.filter((id) => id !== 'diameter').length) {
+    validationErrors.push('Derived profile dimensions are not ready yet. Confirm calibration first.');
+  }
+
+  displayDimensions.forEach((d) => {
+    if (!isFinite(d.value) || d.value <= 0) {
+      validationErrors.push(`Dimension "${d.label}" must be a positive finite value.`);
     }
   });
 
   if (isInterfaceB && !project?.interface_a?.approved) {
     validationErrors.push('Prerequisite: Interface A must be approved first.');
   }
-
   const isFormValid = validationErrors.length === 0;
 
   // Actions
-  const handleUpdateProfile = async () => {
-    if (!project) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const updatedProject = await patchInterface(
-        project.project_id,
-        interfaceId,
-        {
-          profile_type: profileType,
-          dimensions,
-          scale_calibration: hasStoredScaleCalibration ? scaleCalibration : undefined,
-          primitive_fallback_active: primitiveFallbackActive,
-        },
-        project.project_token
-      );
-      setLoading(false);
-      if (onProjectUpdate) {
-        onProjectUpdate(updatedProject);
-      }
-    } catch (err: unknown) {
-      setLoading(false);
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
-    }
-  };
-
   const handleApprove = async () => {
     if (!project) return;
     setLoading(true);
@@ -435,7 +343,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         interfaceId,
         {
           profile_type: profileType,
-          dimensions,
+          primitive_fallback_active: primitiveFallbackActive,
         },
         project.project_token
       );
@@ -457,20 +365,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     } catch (err: unknown) {
       setLoading(false);
       setError(err instanceof Error ? err.message : 'Failed to approve interface');
-    }
-  };
-
-  const getProvenanceBadge = (provenance: DimensionProvenance) => {
-    switch (provenance) {
-      case 'user_entered':
-        return { text: 'User Entered', icon: 'User', className: 'badge-user' };
-      case 'image_extracted':
-        return { text: 'Image Extracted', icon: 'Image', className: 'badge-extracted' };
-      case 'system_inferred':
-        return { text: 'System Inferred', icon: 'System', className: 'badge-inferred' };
-      case 'unresolved':
-      default:
-        return { text: 'Unresolved', icon: 'Open', className: 'badge-unresolved' };
     }
   };
 
@@ -500,7 +394,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       <header className="page-header" style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">{interfaceName} - Profile Review & Approval</h1>
         <p className="page-subtitle">
-          Review extracted SVG profile, edit parameters, and confirm approval.
+          Review the cleaned profile, calibrate it, and approve it before generation.
         </p>
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
           <span
@@ -797,7 +691,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               className="btn btn-secondary"
               onClick={() => navigate(isInterfaceB ? '/step2' : '/step1')}
             >
-              Upload Better Image
+              Replace Image
             </button>
           </div>
         </div>
@@ -833,6 +727,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               profileType={profileType}
               dimensions={dimensions}
               points={targetInterface?.profile_points}
+              calibrationPointA={calibrationPointA}
+              calibrationPointB={calibrationPointB}
             />
           )}
         </div>
@@ -895,6 +791,27 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               </div>
             </>
           )}
+          {targetInterface?.scale_calibration && (
+            <>
+              <div>
+                <strong style={{ color: '#c9d1d9' }}>Pixel distance</strong>
+                <br />
+                {(targetInterface.scale_calibration.pixel_distance || 0).toFixed(2)} px
+              </div>
+              <div>
+                <strong style={{ color: '#c9d1d9' }}>Scale factor</strong>
+                <br />
+                {(targetInterface.scale_calibration.scale_factor || 0).toFixed(6)} mm/px
+              </div>
+              {targetInterface.scale_calibration.source !== 'user_calibration' && (
+                <div>
+                  <strong style={{ color: '#c9d1d9' }}>Legacy calibration source</strong>
+                  <br />
+                  {targetInterface.scale_calibration.source}
+                </div>
+              )}
+            </>
+          )}
           {targetInterface?.generation_unsupported && (
             <div style={{ gridColumn: '1 / -1', color: '#d29922' }}>
               <strong>Generation limitation</strong>
@@ -904,147 +821,87 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           )}
         </div>
       </details>
-      {/* S10.4 Scale Confirmation Panel */}
-      {requiresScaleConfirmation && (
-        <section
-          className="scale-confirmation-card"
+      <section
+        className="calibration-card"
+        aria-labelledby="calibration-heading"
+        style={{
+          background: '#161b22',
+          border: `1px solid ${scaleCalibration.confirmed ? '#238636' : '#9e6a03'}`,
+          borderRadius: '8px',
+          padding: '1.25rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        <header
           style={{
-            background: '#161b22',
-            border: `1px solid ${scaleCalibration.confirmed ? '#238636' : '#9e6a03'}`,
-            borderRadius: '8px',
-            padding: '1.25rem',
-            marginBottom: '1.5rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            marginBottom: '0.75rem',
           }}
         >
-          <header
+          <h2 id="calibration-heading" style={{ fontSize: '1.1rem', margin: 0 }}>
+            Calibration
+          </h2>
+          <span
+            id="scale-confirmation-status"
+            className="badge"
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '0.75rem',
+              padding: '0.2rem 0.6rem',
+              borderRadius: '12px',
+              fontSize: '0.8rem',
+              background: scaleCalibration.confirmed ? '#238636' : '#9e6a03',
+              color: '#ffffff',
             }}
           >
-            <h2 style={{ fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}> Millimetre Scale Calibration
-              <span
-                id="scale-confirmation-status"
-                className="badge"
-                style={{
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: '12px',
-                  fontSize: '0.8rem',
-                  background: scaleCalibration.confirmed ? '#238636' : '#9e6a03',
-                  color: '#ffffff',
-                }}
+            {scaleCalibration.confirmed ? 'Calibration confirmed' : 'Calibration needed'}
+          </span>
+        </header>
+
+        <p style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '1rem' }}>
+          Pick two points on the traced edge, enter the real distance between them, then confirm calibration.
+        </p>
+
+        {targetInterface?.traced_outer_contour ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setCalibrationMode(!calibrationMode)}
               >
-                {scaleCalibration.confirmed ? 'Scale confirmed' : 'Scale unconfirmed'}
-              </span>
-            </h2>
-            <div style={{ fontSize: '0.85rem', color: '#8b949e' }}>
-              Source: <strong>{scaleCalibration.source}</strong> ({scaleCalibration.reference_dimension || 'overall_width'})
+                {calibrationMode ? 'Stop Calibrating' : 'Calibrate'}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={handleResetCalibration}>
+                {scaleCalibration.confirmed ? 'Recalibrate' : 'Reset Calibration'}
+              </button>
             </div>
-          </header>
 
-          <p style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Trace scale is currently set from <strong>{scaleCalibration.real_distance_mm} mm</strong>.
-            Confirm or adjust calibration before approving this profile.
-          </p>
-
-          {isTracedProfile && (
-            <div
-              style={{
-                background: '#0d1117',
-                border: '1px solid #30363d',
-                borderRadius: '6px',
-                padding: '0.9rem 1rem',
-                marginBottom: '0.9rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                <strong>Two-point SVG calibration</strong>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setCalibrationMode(!calibrationMode)}
-                >
-                  {calibrationMode ? 'Exit Calibrate Scale' : 'Calibrate Scale'}
-                </button>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem', fontSize: '0.85rem', color: '#c9d1d9' }}>
-                <div>A: {calibrationPointA ? `${calibrationPointA.x.toFixed(2)}, ${calibrationPointA.y.toFixed(2)}` : 'not selected'}</div>
-                <div>B: {calibrationPointB ? `${calibrationPointB.x.toFixed(2)}, ${calibrationPointB.y.toFixed(2)}` : 'not selected'}</div>
-                <div>Pixel distance: <strong>{(scaleCalibration.pixel_distance || 0).toFixed(2)} px</strong></div>
-                <div>Scale factor: <strong>{(scaleCalibration.scale_factor || (scaleCalibration.pixel_distance > 0 ? scaleCalibration.real_distance_mm / scaleCalibration.pixel_distance : 0)).toFixed(6)} mm/px</strong></div>
-              </div>
-              {calibrationDraftError && (
-                <p role="alert" style={{ color: '#f85149', margin: '0.6rem 0 0 0', fontSize: '0.85rem' }}>
-                  {calibrationDraftError}
-                </p>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={handleResetCalibration}>
-                  Reset Calibration
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={!calibrationPointA || !calibrationPointB || !Number.isFinite(parseFloat(customRealMm)) || parseFloat(customRealMm) <= 0}
-                  onClick={() => handleConfirmScale(parseFloat(customRealMm))}
-                >
-                  Confirm Two-point Scale
-                </button>
-              </div>
-              <p style={{ color: '#8b949e', margin: '0.65rem 0 0 0', fontSize: '0.8rem' }}>
-                Click the trace to select A, then B. Each click snaps to the nearest traced segment. Reset to reselect.
-              </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem', fontSize: '0.85rem', color: '#c9d1d9', marginBottom: '0.75rem' }}>
+              <div>A: {calibrationPointA ? `${calibrationPointA.x.toFixed(2)}, ${calibrationPointA.y.toFixed(2)}` : 'not selected'}</div>
+              <div>B: {calibrationPointB ? `${calibrationPointB.x.toFixed(2)}, ${calibrationPointB.y.toFixed(2)}` : 'not selected'}</div>
             </div>
-          )}
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              flexWrap: 'wrap',
-              background: '#0d1117',
-              padding: '0.75rem 1rem',
-              borderRadius: '6px',
-              border: '1px solid #21262d',
-            }}
-          >
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => handleConfirmScale(scaleCalibration.real_distance_mm)}
-              style={{
-                background: scaleCalibration.confirmed ? '#238636' : '#1f6feb',
-                color: '#ffffff',
-                border: 'none',
-                fontWeight: 600,
-              }}
-            >
-              {scaleCalibration.confirmed ? `Scale confirmed (${scaleCalibration.real_distance_mm} mm)` : `Confirm Scale (${scaleCalibration.real_distance_mm} mm)`}
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label htmlFor="custom-scale-input" style={{ fontSize: '0.85rem', color: '#8b949e' }}>
-                Or enter real distance (mm):
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <label htmlFor="calibration-distance-input" style={{ fontSize: '0.85rem', color: '#8b949e' }}>
+                Real distance in mm
               </label>
               <input
-                id="custom-scale-input"
+                id="calibration-distance-input"
                 type="number"
                 step="0.5"
-                min="1"
+                min="0.1"
                 value={customRealMm}
                 onChange={(e) => {
                   setCustomRealMm(e.target.value);
                   setScaleCalibration({ ...scaleCalibration, real_distance_mm: parseFloat(e.target.value) || 0, confirmed: false });
                 }}
                 style={{
-                  width: '90px',
+                  width: '110px',
                   padding: '0.25rem 0.5rem',
-                  background: '#161b22',
+                  background: '#0d1117',
                   color: '#c9d1d9',
                   border: '1px solid #30363d',
                   borderRadius: '4px',
@@ -1052,16 +909,29 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               />
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-primary btn-sm"
+                disabled={!calibrationPointA || !calibrationPointB || !Number.isFinite(parseFloat(customRealMm)) || parseFloat(customRealMm) <= 0}
                 onClick={() => handleConfirmScale(parseFloat(customRealMm))}
               >
-                Update & Confirm
+                Confirm Calibration
               </button>
             </div>
-          </div>
-        </section>
-      )}
 
+            {calibrationDraftError && (
+              <p role="alert" style={{ color: '#f85149', margin: '0.6rem 0 0 0', fontSize: '0.85rem' }}>
+                {calibrationDraftError}
+              </p>
+            )}
+            <p style={{ color: '#8b949e', margin: '0.65rem 0 0 0', fontSize: '0.8rem' }}>
+              Each click snaps to the nearest valid trace segment. Changing points or distance requires approval again.
+            </p>
+          </>
+        ) : (
+          <p style={{ color: '#f0b72f', margin: 0 }}>
+            Calibration needs traced edge data. Replace the image or re-run analysis to calibrate this profile.
+          </p>
+        )}
+      </section>
       {/* S10.4 Internal Negative Regions Review Panel */}
       {isTracedProfile && (
         <section
@@ -1236,9 +1106,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         </section>
       )}
 
-      {/* Dimension Editing Table */}
       <section
-        className="dimensions-editor-card"
+        className="dimensions-summary-card"
+        aria-labelledby="dimensions-summary-heading"
         style={{
           background: '#161b22',
           border: '1px solid #30363d',
@@ -1247,255 +1117,32 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           marginBottom: '1.5rem',
         }}
       >
-        <header
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}
-        >
-          <h2>Interface Dimensions</h2>
-          {(!targetInterface?.approved || isEditing) && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleAddDimension}
-            >
-              + Add Dimension Parameter
-            </button>
-          )}
-        </header>
-
-        {dimensions.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table
-              className="dimensions-table"
-              style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}
-            >
-              <thead>
-                <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e' }}>
-                  <th style={{ padding: '0.5rem' }}>Parameter</th>
-                  <th style={{ padding: '0.5rem' }}>Value</th>
-                  <th style={{ padding: '0.5rem' }}>Unit</th>
-                  <th style={{ padding: '0.5rem' }}>Feature Mapping</th>
-                  <th style={{ padding: '0.5rem' }}>Consistency</th>
-                  <th style={{ padding: '0.5rem' }}>Provenance</th>
-                  <th style={{ padding: '0.5rem' }}>Confidence</th>
-                  <th style={{ padding: '0.5rem' }}>Critical</th>
-                  {(!targetInterface?.approved || isEditing) && (
-                    <th style={{ padding: '0.5rem' }}>Action</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {dimensions.map((dim, idx) => {
-                  const badge = getProvenanceBadge(dim.provenance);
-                  const isHovered = highlightFeatureId === dim.feature_ref;
-                  const cState = dim.consistency_state || (dim.feature_ref ? 'valid' : 'unmapped');
-
-                  return (
-                    <tr
-                      key={dim.id || idx}
-                      onMouseEnter={() => setHighlightFeatureId(dim.feature_ref || null)}
-                      onMouseLeave={() => setHighlightFeatureId(null)}
-                      style={{
-                        borderBottom: '1px solid #21262d',
-                        background: isHovered ? '#21262d' : 'transparent',
-                        transition: 'background 0.15s ease',
-                      }}
-                    >
-                      <td style={{ padding: '0.5rem' }}>
-                        <strong>{dim.label}</strong>
-                        {dim.source_annotation && (
-                          <span style={{ fontSize: '0.75rem', color: '#8b949e', marginLeft: '0.5rem' }}>
-                            (&quot;{dim.source_annotation}&quot;)
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          step="0.1"
-                          aria-label={`Value for ${dim.label}`}
-                          value={dim.value}
-                          disabled={targetInterface?.approved && !isEditing}
-                          onChange={(e) =>
-                            handleDimensionValueChange(idx, e.target.value)
-                          }
-                          style={{
-                            width: '90px',
-                            padding: '0.25rem 0.5rem',
-                            background: '#0d1117',
-                            color: '#c9d1d9',
-                            border: `1px solid ${cState === 'conflict' ? '#f85149' : '#30363d'}`,
-                            borderRadius: '4px',
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>{dim.unit}</td>
-                      <td style={{ padding: '0.5rem' }}>
-                        {dim.feature_ref ? (
-                          <span
-                            className="badge"
-                            style={{
-                              fontSize: '0.75rem',
-                              padding: '0.15rem 0.5rem',
-                              background: '#1f6feb',
-                              color: '#ffffff',
-                              borderRadius: '4px',
-                            }}
-                          > Mapped to {dim.feature_ref} </span>
-                        ) : (
-                          <span
-                            className="badge"
-                            style={{
-                              fontSize: '0.75rem',
-                              padding: '0.15rem 0.5rem',
-                              background: '#9e6a03',
-                              color: '#ffffff',
-                              borderRadius: '4px',
-                            }}
-                          > Detected annotation - not mapped to geometry </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <span
-                          className="badge"
-                          style={{
-                            fontSize: '0.75rem',
-                            padding: '0.15rem 0.5rem',
-                            borderRadius: '4px',
-                            background:
-                              cState === 'conflict'
-                                ? '#da3633'
-                                : cState === 'recalculated'
-                                ? '#1f6feb'
-                                : cState === 'unmapped'
-                                ? '#9e6a03'
-                                : '#238636',
-                            color: '#ffffff',
-                          }}
-                        >
-                          {cState === 'conflict'
-                            ? 'Conflict'
-                            : cState === 'recalculated'
-                            ? 'Recalculated'
-                            : cState === 'unmapped'
-                            ? 'Unmapped'
-                            : 'Valid'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        {(!targetInterface?.approved || isEditing) ? (
-                          <select
-                            aria-label={`Provenance for ${dim.label}`}
-                            value={dim.provenance}
-                            onChange={(e) =>
-                              handleProvenanceChange(
-                                idx,
-                                e.target.value as DimensionProvenance
-                              )
-                            }
-                            style={{
-                              padding: '0.25rem 0.5rem',
-                              background: '#0d1117',
-                              color: '#c9d1d9',
-                              border: '1px solid #30363d',
-                              borderRadius: '4px',
-                            }}
-                          >
-                            <option value="user_entered">User Entered</option>
-                            <option value="image_extracted">Image Extracted</option>
-                            <option value="system_inferred">System Inferred</option>
-                            <option value="unresolved">Unresolved</option>
-                          </select>
-                        ) : (
-                          <span className={`provenance-badge ${badge.className}`}>
-                            <span aria-hidden="true">{badge.icon}</span>{' '}
-                            <span>{badge.text}</span>
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          aria-label={`Confidence for ${dim.label}`}
-                          value={dim.confidence}
-                          disabled={targetInterface?.approved && !isEditing}
-                          onChange={(e) =>
-                            handleConfidenceChange(idx, e.target.value)
-                          }
-                          style={{
-                            width: '70px',
-                            padding: '0.25rem 0.5rem',
-                            background: '#0d1117',
-                            color: '#c9d1d9',
-                            border: '1px solid #30363d',
-                            borderRadius: '4px',
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <input
-                          type="checkbox"
-                          aria-label={`Critical flag for ${dim.label}`}
-                          checked={dim.critical}
-                          disabled={targetInterface?.approved && !isEditing}
-                          onChange={(e) =>
-                            handleCriticalToggle(idx, e.target.checked)
-                          }
-                        />
-                      </td>
-                      {(!targetInterface?.approved || isEditing) && (
-                        <td style={{ padding: '0.5rem' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ color: '#f85149' }}
-                            onClick={() => handleRemoveDimension(idx)}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <h2 id="dimensions-summary-heading">Interface Dimensions</h2>
+        {displayDimensions.length > 0 ? (
+          <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.8rem', margin: '1rem 0 0 0' }}>
+            {displayDimensions.map((dim) => (
+              <div key={dim.id} style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: '6px', padding: '0.75rem' }}>
+                <dt style={{ color: '#8b949e', fontSize: '0.85rem' }}>{dim.label}</dt>
+                <dd style={{ color: '#f0f6fc', fontWeight: 700, margin: '0.25rem 0 0 0' }}>
+                  {dim.value.toFixed(2)} {dim.unit}
+                </dd>
+              </div>
+            ))}
+          </dl>
         ) : (
-          <p className="empty-notice">No dimension parameters defined.</p>
+          <p className="empty-notice">Confirm calibration to show derived dimensions.</p>
         )}
-
-        {/* Accessibility Provenance Legend */}
-        <div
-          className="provenance-legend"
-          style={{
-            marginTop: '1rem',
-            paddingTop: '0.75rem',
-            borderTop: '1px solid #21262d',
-            fontSize: '0.85rem',
-            color: '#8b949e',
-            display: 'flex',
-            gap: '1.5rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          <span>
-            <strong>Legend:</strong>
-          </span>
-          <span>User: User Entered</span>
-          <span>Image: Image Extracted</span>
-          <span>System: System Inferred</span>
-          <span>Open: Unresolved</span>
-        </div>
+        {legacyDimensions.length > 0 && (
+          <details style={{ marginTop: '1rem', color: '#8b949e' }}>
+            <summary style={{ cursor: 'pointer' }}>Legacy unmapped dimensions</summary>
+            <ul style={{ marginTop: '0.5rem' }}>
+              {legacyDimensions.map((dim) => (
+                <li key={dim.id}>{dim.label}: stored for compatibility, not used for generation</li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
-
       {/* Validation Summary Panel */}
       <section
         className="validation-summary-card"
@@ -1555,7 +1202,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           className="btn btn-secondary"
           onClick={() => navigate(isInterfaceB ? '/step2' : '/step1')}
         >
-          Re-upload Image
+          Replace Image
         </button>
 
         <div style={{ display: 'flex', gap: '1rem' }}>
@@ -1578,14 +1225,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             </>
           ) : (
             <>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={loading}
-                onClick={handleUpdateProfile}
-              >
-                Update Profile
-              </button>
               <button
                 type="button"
                 className="btn btn-primary"

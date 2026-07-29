@@ -7,6 +7,8 @@ interface SvgProfileViewerProps {
   points?: Point2D[];
   width?: number;
   height?: number;
+  calibrationPointA?: Point2D | null;
+  calibrationPointB?: Point2D | null;
 }
 
 export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
@@ -15,6 +17,8 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
   points = [],
   width = 360,
   height = 280,
+  calibrationPointA = null,
+  calibrationPointB = null,
 }) => {
   // Extract dimension values with defaults
   const outerDiameterDim = dimensions.find(
@@ -43,6 +47,15 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
     cornerRadius * scale,
     Math.min(scaledWidth, scaledHeight) / 2
   );
+
+  const markerA =
+    calibrationPointA && Number.isFinite(calibrationPointA.x) && Number.isFinite(calibrationPointA.y)
+      ? { x: calibrationPointA.x * scale, y: calibrationPointA.y * scale }
+      : null;
+  const markerB =
+    calibrationPointB && Number.isFinite(calibrationPointB.x) && Number.isFinite(calibrationPointB.y)
+      ? { x: calibrationPointB.x * scale, y: calibrationPointB.y * scale }
+      : null;
 
   return (
     <div className="svg-profile-viewer" style={{ textAlign: 'center' }}>
@@ -212,6 +225,31 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
               fill="#a5d6ff"
             />
           ))}
+
+        {markerA && markerB && (
+          <line
+            x1={markerA.x}
+            y1={markerA.y}
+            x2={markerB.x}
+            y2={markerB.y}
+            stroke="#f0f6fc"
+            strokeWidth="1.6"
+            strokeDasharray="5 3"
+            pointerEvents="none"
+          />
+        )}
+        {markerA && (
+          <g pointerEvents="none">
+            <circle cx={markerA.x} cy={markerA.y} r="5" fill="#f85149" stroke="#ffffff" strokeWidth="1.5" />
+            <text x={markerA.x + 8} y={markerA.y - 8} fill="#ffffff" fontSize="11">A</text>
+          </g>
+        )}
+        {markerB && (
+          <g pointerEvents="none">
+            <circle cx={markerB.x} cy={markerB.y} r="5" fill="#3fb950" stroke="#ffffff" strokeWidth="1.5" />
+            <text x={markerB.x + 8} y={markerB.y - 8} fill="#ffffff" fontSize="11">B</text>
+          </g>
+        )}
 
         {/* Center Point */}
         <circle cx="0" cy="0" r="3" fill="#f0883e" />

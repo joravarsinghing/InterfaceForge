@@ -1,9 +1,9 @@
-"""Interface B Annotation Masking Tests for Stage S10.5G.
+﻿"""Interface B Annotation Masking Tests for Stage S10.5G.
 
 Verifies:
 - Annotation-mask application (dimension text, lines, leaders, center marks)
 - Dimension-line removal without degrading physical profile boundary
-- Hole center-mark removal resulting in clean 360° circular screw holes
+- Hole center-mark removal resulting in clean 360Â° circular screw holes
 - Preservation of crossed profile edges (top channel, bottom wall, side flanges)
 - Zero false cuts in final extracted contour
 - Regression of existing high-fidelity trace
@@ -22,7 +22,7 @@ from app.services.opencv_tracer import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-INTERFACE_B_PATH = REPO_ROOT / "samples" / "manual_qa" / "interface_b_original.jpg"
+INTERFACE_B_PATH = REPO_ROOT / "samples" / "test_fixtures" / "s10_interface_b_original.jpg"
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def interface_b_masked_data():
     for cx, cy in hole_centers:
         cv2.circle(mask, (cx, cy), 18, 255, -1)
 
-    # Diagonal Ø4.2 leader line and text polygon
+    # Diagonal Ã˜4.2 leader line and text polygon
     leader_poly = np.array(
         [[300, 440], [365, 440], [365, 485], [290, 525], [285, 525], [285, 510], [300, 475]],
         dtype=np.int32,

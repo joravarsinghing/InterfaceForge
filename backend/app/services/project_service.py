@@ -1,8 +1,8 @@
 """Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
-import math
 import logging
+import math
 import os
 import secrets
 import uuid
@@ -45,12 +45,12 @@ from app.models.schema import (
     ModelRevisionStatus,
     ModelSucceedRequest,
     Point2D,
-    ProviderMode,
-    ProviderModeStatus,
     ProfileType,
     ProfileValidation,
     Project,
     ProjectPatchRequest,
+    ProviderMode,
+    ProviderModeStatus,
     ScaleCalibration,
     ScaleSnapResponse,
     TwoPointScaleCalibrationRequest,
@@ -70,8 +70,11 @@ from app.services.export_provider import (
     validate_artifact_content,
 )
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
+from app.services.profile_geometry import (
+    classify_primitive_candidate,
+    set_calibrated_primitive_dimensions,
+)
 from app.services.profile_validation import validate_interface_profile
-from app.services.profile_geometry import classify_primitive_from_points, set_calibrated_primitive_dimensions
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +91,7 @@ def _profile_geometry_fingerprint(interface: Interface) -> tuple:
     outer = interface.traced_outer_contour
     holes = interface.traced_hole_contours or []
 
-    def pts_key(points):
+    def pts_key(points: list[Point2D]) -> tuple[tuple[float, float], ...]:
         return tuple((round(p.x, 6), round(p.y, 6)) for p in points)
 
     return (
@@ -304,7 +307,9 @@ def _upsert_scaled_dimension(
         label=label,
         value=round(value, 4),
         unit="mm",
-        provenance=DimensionProvenance.USER_ENTERED if prev and prev.provenance == DimensionProvenance.USER_ENTERED else DimensionProvenance.SYSTEM_INFERRED,
+        provenance=DimensionProvenance.USER_ENTERED
+        if prev and prev.provenance == DimensionProvenance.USER_ENTERED
+        else DimensionProvenance.SYSTEM_INFERRED,
         confidence=1.0,
         critical=True,
         feature_ref=feature_ref,
@@ -322,7 +327,11 @@ def _update_derived_dimensions_from_scale(interface: Interface, scale_factor: fl
         interface, "overall_width", "Overall Width", (max_x - min_x) * scale_factor, "outer_contour"
     )
     _upsert_scaled_dimension(
-        interface, "overall_height", "Overall Height", (max_y - min_y) * scale_factor, "outer_contour"
+        interface,
+        "overall_height",
+        "Overall Height",
+        (max_y - min_y) * scale_factor,
+        "outer_contour",
     )
 
 
@@ -397,12 +406,22 @@ class ProjectService:
     ) -> ProviderModeStatus:
         """Return provider state for a requested mode without exposing credentials."""
         live_available = bool(settings.zoo_api_token)
-        effective = ProviderMode.LIVE if selected == ProviderMode.LIVE and live_available else ProviderMode.MOCK
-        analysis_provider = "gemini" if effective == ProviderMode.LIVE and settings.gemini_api_key else "mock"
+        effective = (
+            ProviderMode.LIVE
+            if selected == ProviderMode.LIVE and live_available
+            else ProviderMode.MOCK
+        )
+        analysis_provider = (
+            "gemini" if effective == ProviderMode.LIVE and settings.gemini_api_key else "mock"
+        )
         if effective == ProviderMode.LIVE:
-            message = "Live Zoo providers are active for future generation, export, and Agent requests."
+            message = (
+                "Live Zoo providers are active for future generation, export, and Agent requests."
+            )
         elif selected == ProviderMode.LIVE:
-            message = "Live mode is unavailable because required backend credentials are not configured."
+            message = (
+                "Live mode is unavailable because required backend credentials are not configured."
+            )
         else:
             message = "Mock / offline providers are active for this project."
         return ProviderModeStatus(
@@ -759,15 +778,30 @@ class ProjectService:
         if result.traced_outer_contour is not None:
             target_interface.traced_outer_contour = result.traced_outer_contour
             target_interface.traced_hole_contours = result.traced_hole_contours
-            detected_primitive = None if result.is_complex else classify_primitive_from_points(result.traced_outer_contour.points)
-            if detected_primitive is not None:
-                target_interface.profile_type = detected_primitive
-                target_interface.verification_status = "primitive_detected_pending_scale_confirmation"
+            primitive_candidate = (
+                None
+                if result.is_complex
+                else classify_primitive_candidate(result.traced_outer_contour.points)
+            )
+            if primitive_candidate is not None:
+                target_interface.profile_type = primitive_candidate.profile_type
+                target_interface.verification_status = "primitive_detected_pending_confirmation"
                 target_interface.primitive_fallback_active = True
-                target_interface.primitive_fallback_label = f"Detected {detected_primitive.value} primitive from trace"
+                target_interface.primitive_promotion_confirmed = False
+                target_interface.primitive_detection_confidence = primitive_candidate.confidence
+                target_interface.primitive_detection_reason = primitive_candidate.reason
+                target_interface.primitive_fallback_label = (
+                    f"Detected {primitive_candidate.profile_type.value} primitive "
+                    f"with confidence {primitive_candidate.confidence:.2f}"
+                )
                 target_interface.generation_unsupported = False
                 target_interface.generation_unsupported_reason = None
             else:
+                target_interface.profile_type = ProfileType.TRACED_CLOSED
+                target_interface.primitive_fallback_active = False
+                target_interface.primitive_promotion_confirmed = False
+                target_interface.primitive_detection_confidence = None
+                target_interface.primitive_detection_reason = None
                 target_interface.verification_status = "opencv_traced_pending_review"
                 target_interface.generation_unsupported = True
                 target_interface.generation_unsupported_reason = (
@@ -842,6 +876,9 @@ class ProjectService:
             and patch.verification_status is None
             and patch.primitive_fallback_active is None
             and patch.primitive_fallback_label is None
+            and patch.primitive_promotion_confirmed is None
+            and patch.primitive_detection_confidence is None
+            and patch.primitive_detection_reason is None
             and patch.approved is None
         )
 
@@ -882,15 +919,12 @@ class ProjectService:
                 and target_interface.traced_outer_contour
                 and (target_interface.analysis_image_ref or target_interface.cleaned_image_ref)
                 and os.path.exists(
-                    target_interface.analysis_image_ref
-                    or target_interface.cleaned_image_ref
-                    or ""
+                    target_interface.analysis_image_ref or target_interface.cleaned_image_ref or ""
                 )
             ):
                 try:
                     analysis_ref = (
-                        target_interface.analysis_image_ref
-                        or target_interface.cleaned_image_ref
+                        target_interface.analysis_image_ref or target_interface.cleaned_image_ref
                     )
                     if not analysis_ref:
                         raise FileNotFoundError("Analysis crop artifact is missing")
@@ -935,6 +969,12 @@ class ProjectService:
             target_interface.primitive_fallback_active = patch.primitive_fallback_active
         if patch.primitive_fallback_label is not None:
             target_interface.primitive_fallback_label = patch.primitive_fallback_label
+        if patch.primitive_promotion_confirmed is not None:
+            target_interface.primitive_promotion_confirmed = patch.primitive_promotion_confirmed
+        if patch.primitive_detection_confidence is not None:
+            target_interface.primitive_detection_confidence = patch.primitive_detection_confidence
+        if patch.primitive_detection_reason is not None:
+            target_interface.primitive_detection_reason = patch.primitive_detection_reason
         if patch.fit_mode is not None:
             target_interface.fit_mode = patch.fit_mode
 
@@ -962,8 +1002,10 @@ class ProjectService:
             patch.scale_calibration is not None and patch.scale_calibration.confirmed
         )
         if (
-            geometry_changed or (patch.dimensions is not None and measurement_changed)
-        ) and target_interface.scale_calibration and not explicit_scale_confirmation:
+            (geometry_changed or (patch.dimensions is not None and measurement_changed))
+            and target_interface.scale_calibration
+            and not explicit_scale_confirmation
+        ):
             target_interface.scale_calibration.confirmed = False
 
         severe_update_errors = [
@@ -1015,7 +1057,6 @@ class ProjectService:
         project.updated_at = current_iso_timestamp()
         return self.repository.save(project)
 
-
     def snap_scale_point(
         self,
         project_id: str,
@@ -1034,7 +1075,9 @@ class ProjectService:
                 "Interface A must be approved before Interface B can be modified.",
                 recovery_steps=["Approve Interface A first."],
             )
-        target_interface = project.interface_a if interface_id == "interface_a" else project.interface_b
+        target_interface = (
+            project.interface_a if interface_id == "interface_a" else project.interface_b
+        )
         if target_interface.traced_outer_contour is None:
             raise InvalidInterfaceApprovalError(
                 "Two-point scale calibration requires traced profile geometry.",
@@ -1174,7 +1217,10 @@ class ProjectService:
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
 
-        if target_interface.profile_type == ProfileType.TRACED_CLOSED and target_interface.scale_calibration is None:
+        if (
+            target_interface.profile_type == ProfileType.TRACED_CLOSED
+            and target_interface.scale_calibration is None
+        ):
             raise InvalidInterfaceApprovalError(
                 "Cannot approve interface: Scale calibration must be confirmed.",
                 recovery_steps=["Select two trace points and confirm the real-world distance."],
@@ -1197,6 +1243,32 @@ class ProjectService:
                 "Cannot approve interface: missing traced profile data.",
                 recovery_steps=["Re-run analysis or upload a cleaner interface image."],
             )
+
+        if (
+            target_interface.primitive_fallback_active
+            and not target_interface.primitive_promotion_confirmed
+        ):
+            raise InvalidInterfaceApprovalError(
+                "Cannot approve interface: detected primitive promotion must be confirmed.",
+                recovery_steps=["Review the detected primitive and confirm it before approval."],
+            )
+
+        if target_interface.profile_type == ProfileType.ROUNDED_RECTANGLE:
+            radius = next(
+                (dim for dim in target_interface.dimensions if dim.id == "corner_radius"),
+                None,
+            )
+            if radius is not None and (
+                radius.consistency_state == "requires_confirmation"
+                or (
+                    radius.provenance != DimensionProvenance.USER_ENTERED
+                    and radius.confidence < 0.75
+                )
+            ):
+                raise InvalidInterfaceApprovalError(
+                    "Cannot approve interface: inferred corner radius must be confirmed.",
+                    recovery_steps=["Confirm or edit the corner radius before approval."],
+                )
 
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         if not is_valid or errors:
@@ -1557,12 +1629,21 @@ class ProjectService:
         effective_kcl_hash = current_rev.kcl_hash or computed_kcl_hash
         current_rev.kcl_hash = effective_kcl_hash
 
-        export_prov = provider or get_export_provider(project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode))
+        export_prov = provider or get_export_provider(
+            project.provider_mode.value
+            if hasattr(project.provider_mode, "value")
+            else str(project.provider_mode)
+        )
         zoo_model_id_val = current_rev.zoo_model_id
         if (
             not zoo_model_id_val
             and isinstance(export_prov, get_export_provider("mock").__class__)
-            and (project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode)) == "mock"
+            and (
+                project.provider_mode.value
+                if hasattr(project.provider_mode, "value")
+                else str(project.provider_mode)
+            )
+            == "mock"
         ):
             zoo_model_id_val = f"mock_model_{project.project_id[:8]}"
 

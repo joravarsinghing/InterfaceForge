@@ -1,4 +1,4 @@
-"""Interface B High-Fidelity Tracing Regression Tests for Stage S10.5F.
+﻿"""Interface B High-Fidelity Tracing Regression Tests for Stage S10.5F.
 
 Verifies:
 - Narrow T-slot channel & mouth preservation on Interface B
@@ -22,7 +22,7 @@ from app.services.opencv_tracer import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-INTERFACE_B_PATH = REPO_ROOT / "samples" / "manual_qa" / "interface_b_original.jpg"
+INTERFACE_B_PATH = REPO_ROOT / "samples" / "test_fixtures" / "s10_interface_b_original.jpg"
 
 
 @pytest.fixture

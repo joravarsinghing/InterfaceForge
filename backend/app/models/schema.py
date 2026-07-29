@@ -203,8 +203,11 @@ class Interface(BaseModel):
     verification_status: str = "pending_review"
     primitive_fallback_active: bool = False
     primitive_fallback_label: Optional[str] = (
-        None  # 'Simplified envelope Ã¢â‚¬â€ not the exact cross-section'
+        None  # Detected primitive proposal or simplified fallback label for review.
     )
+    primitive_promotion_confirmed: bool = False
+    primitive_detection_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    primitive_detection_reason: Optional[str] = None
     analysis_provider_name: Optional[str] = None  # e.g. 'mock', 'gemini'
     generation_unsupported: bool = False  # True if downstream KCL cannot handle this profile yet
     generation_unsupported_reason: Optional[str] = None
@@ -350,6 +353,9 @@ class InterfacePatchRequest(BaseModel):
     verification_status: Optional[str] = None
     primitive_fallback_active: Optional[bool] = None
     primitive_fallback_label: Optional[str] = None
+    primitive_promotion_confirmed: Optional[bool] = None
+    primitive_detection_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    primitive_detection_reason: Optional[str] = None
     approved: Optional[bool] = None
     cleaned_image_ref: Optional[str] = None
     analysis_image_ref: Optional[str] = None

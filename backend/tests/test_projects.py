@@ -210,7 +210,31 @@ def test_schema_revision_increments_and_stale_behavior(client: TestClient) -> No
     # Invariant 5: Edit approved Interface A
     patch_resp = client.patch(
         f"/api/projects/{p_id}/interfaces/interface_a",
-        json={"profile_type": ProfileType.RECTANGLE},
+        json={
+            "profile_type": ProfileType.RECTANGLE,
+            "dimensions": [
+                {
+                    "id": "width",
+                    "label": "Width",
+                    "value": 50.0,
+                    "unit": "mm",
+                    "provenance": "system_inferred",
+                    "confidence": 1.0,
+                    "critical": True,
+                    "feature_ref": "outer_contour",
+                },
+                {
+                    "id": "height",
+                    "label": "Height",
+                    "value": 40.0,
+                    "unit": "mm",
+                    "provenance": "system_inferred",
+                    "confidence": 1.0,
+                    "critical": True,
+                    "feature_ref": "outer_contour",
+                },
+            ],
+        },
         headers=headers,
     )
     assert patch_resp.status_code == 200
@@ -220,7 +244,8 @@ def test_schema_revision_increments_and_stale_behavior(client: TestClient) -> No
     assert data["model_revisions"][0]["status"] == ModelRevisionStatus.STALE
 
     # Re-approve A & B and update connection to bring model to current again
-    client.post(f"/api/projects/{p_id}/interfaces/interface_a/approve", headers=headers)
+    reapprove_a = client.post(f"/api/projects/{p_id}/interfaces/interface_a/approve", headers=headers)
+    assert reapprove_a.status_code == 200
     client.put(
         f"/api/projects/{p_id}/connection",
         json={"mode": ConnectionMode.COAXIAL, "length_mm": 100.0},
@@ -264,7 +289,8 @@ def test_last_known_good_preservation(client: TestClient) -> None:
     token = proj["project_token"]
     headers = {"X-Project-Token": token}
 
-    client.post(f"/api/projects/{p_id}/interfaces/interface_a/approve", headers=headers)
+    reapprove_a = client.post(f"/api/projects/{p_id}/interfaces/interface_a/approve", headers=headers)
+    assert reapprove_a.status_code == 200
     client.post(f"/api/projects/{p_id}/interfaces/interface_b/approve", headers=headers)
     client.put(
         f"/api/projects/{p_id}/connection",

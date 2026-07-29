@@ -109,3 +109,21 @@ IF-EXPORT-001: Zoo-native export failed for 'stl'/'step': ZOO_ENGINE_ERROR: The 
 ```
 
 KCL export succeeded from the stored KCL artifact. STL/STEP were not replaced with mock or local geometry output for proof evidence.
+
+
+---
+
+## 7. 2026-07-29 Authoritative KCL Export Route Diagnostic
+
+Official Zoo documentation describes KCL execution/export through the `zoo-kcl` Python package and the `zoo kcl export` CLI. The safest InterfaceForge export architecture is to export from the exact stored KCL for the current model revision and verify the KCL SHA-256 against the revision hash before writing STL/STEP artifacts.
+
+Local diagnostic results in the current backend environment:
+
+```text
+zoo_token_configured=False
+kcl_package=False
+zoo --version -> command not found
+pip install zoo-kcl -> available releases require Python >=3.11
+```
+
+Because the backend currently declares Python >=3.10,<3.11, live KCL-native STL/STEP export cannot be proven in this venv without a runtime/tooling change. No local OBJ fallback or second WebSocket reconstruction is acceptable proof for live export.

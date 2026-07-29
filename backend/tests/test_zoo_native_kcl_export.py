@@ -1,17 +1,20 @@
 """Regression test suite for Stage S8.3 — Zoo-Native KCL Export.
 
-Verifies stored/executed KCL hash equality, native export command invocation,
-strict prohibition of OBJ conversion endpoints and local geometry reconstruction,
+Verifies stored/executed KCL hash equality, KCL-native export invocation,
+strict prohibition of OBJ conversion endpoints, WebSocket reconstruction,
+and local geometry reconstruction,
 error handling for missing or mismatched KCL artifacts, retry capability,
 legacy cache invalidation, and mock provider isolation.
 """
 
 import hashlib
-import json
 import struct
-from unittest.mock import AsyncMock, patch
+import sys
+import uuid
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-import msgpack
 import pytest
 
 from app.models.schema import (
@@ -132,100 +135,40 @@ def test_prohibit_local_obj_guard(approved_project: Project):
 
 
 @pytest.mark.asyncio
-async def test_obj_endpoint_prohibition_and_native_command(approved_project: Project):
-    """Verify ZooExportProvider issues WebSocket native export without calling OBJ endpoint."""
+async def test_obj_endpoint_prohibition_and_kcl_native_export(
+    approved_project: Project, monkeypatch
+):
+    """Verify live export uses exact KCL execution/export without rebuilding geometry."""
     provider = ZooExportProvider(
         api_token="test_zoo_token",
         api_base_url="https://zoo.example.invalid",
     )
     kcl_res = compile_project_to_kcl(approved_project)
     reset_local_obj_call_count()
-
-    mock_ws = AsyncMock()
     binary_stl_box = create_valid_binary_stl_box()
+    calls = []
 
-    msgpack_response_frame = msgpack.packb(
-        {
-            "success": True,
-            "resp": {
-                "type": "export",
-                "data": {"files": [{"name": "output.stl", "contents": binary_stl_box}]},
-            },
-        }
+    class FakeFileExportFormat:
+        Stl = "stl"
+        Step = "step"
+
+    async def fake_execute_code_and_export(kcl_code, export_format):
+        calls.append((kcl_code, export_format))
+        return [SimpleNamespace(contents=binary_stl_box, name="output.stl")]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "kcl",
+        SimpleNamespace(
+            FileExportFormat=FakeFileExportFormat,
+            execute_code_and_export=fake_execute_code_and_export,
+        ),
     )
 
-    last_cmd_type = None
-
-    async def mock_send(msg_str):
-        nonlocal last_cmd_type
-        try:
-            d = json.loads(msg_str)
-            last_cmd_type = d.get("cmd", {}).get("type")
-        except Exception:
-            pass
-
-    async def mock_recv():
-        if last_cmd_type == "export":
-            return msgpack_response_frame
-        if last_cmd_type == "start_path":
-            return json.dumps(
-                {
-                    "success": True,
-                    "request_id": "path_uuid",
-                    "resp": {
-                        "type": "modeling",
-                        "data": {"modeling_response": {"type": "start_path"}},
-                    },
-                }
-            )
-        if last_cmd_type == "scene_get_entity_ids":
-            return json.dumps(
-                {
-                    "success": True,
-                    "resp": {
-                        "type": "modeling",
-                        "data": {
-                            "modeling_response": {
-                                "type": "scene_get_entity_ids",
-                                "data": {"entity_ids": [["uuid_1", "uuid_2"]]},
-                            }
-                        },
-                    },
-                }
-            )
-        if last_cmd_type == "loft":
-            return json.dumps(
-                {
-                    "success": True,
-                    "resp": {
-                        "type": "modeling",
-                        "data": {
-                            "modeling_response": {
-                                "type": "loft",
-                                "data": {"solid_id": "solid_uuid"},
-                            }
-                        },
-                    },
-                }
-            )
-        return json.dumps(
-            {
-                "success": True,
-                "resp": {
-                    "type": "modeling",
-                    "data": {"modeling_response": {"type": last_cmd_type}},
-                },
-            }
-        )
-
-    mock_ws.send = AsyncMock(side_effect=mock_send)
-    mock_ws.recv = AsyncMock(side_effect=mock_recv)
-
     with patch("websockets.connect") as mock_connect:
-        mock_connect.return_value.__aenter__.return_value = mock_ws
         with patch("urllib.request.urlopen") as mock_urlopen:
             res = await provider.export_format(
-                project_id=approved_project.project_id,
+                project_id=f"{approved_project.project_id}_{uuid.uuid4().hex}",
                 model_revision=1,
                 format_name="stl",
                 kcl_code=kcl_res.kcl_code,
@@ -234,15 +177,63 @@ async def test_obj_endpoint_prohibition_and_native_command(approved_project: Pro
                 kcl_hash=kcl_res.kcl_hash,
             )
 
-            # Confirm HTTP REST urlopen was NEVER called
-            assert not mock_urlopen.called
-            # Confirm local OBJ generator was NEVER called
-            assert get_local_obj_call_count() == 0
+    assert calls == [(kcl_res.kcl_code, "stl")]
+    assert not mock_connect.called
+    assert not mock_urlopen.called
+    assert get_local_obj_call_count() == 0
+    assert res.success
+    assert res.format == "stl"
+    assert res.is_mock is False
+    assert res.facet_count == 12
+    assert res.geometry_hash == kcl_res.kcl_hash
+    assert res.kcl_hash == kcl_res.kcl_hash
+    assert res.zoo_model_id == "sess_nat_clean"
 
-            assert res.success
-            assert res.format == "stl"
-            assert res.is_mock is False
-            assert res.facet_count == 12
+
+@pytest.mark.asyncio
+async def test_kcl_native_export_uses_zoo_cli_when_python_package_missing(
+    approved_project: Project, monkeypatch, tmp_path
+):
+    """Verify the supported zoo CLI path is used when the kcl package is absent."""
+    provider = ZooExportProvider(
+        api_token="test_zoo_token",
+        api_base_url="https://zoo.example.invalid",
+    )
+    kcl_res = compile_project_to_kcl(approved_project)
+    binary_stl_box = create_valid_binary_stl_box()
+    reset_local_obj_call_count()
+
+    monkeypatch.setitem(sys.modules, "kcl", None)
+
+    def fake_run(cmd, input, stdout, stderr, check):
+        assert cmd[1:5] == ["kcl", "export", "--output-format=stl", "-"]
+        assert input == kcl_res.kcl_code.encode("utf-8")
+        output_dir = Path(cmd[-1])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "model.stl").write_bytes(binary_stl_box)
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("shutil.which", lambda name: "zoo" if name == "zoo" else None)
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    with patch("websockets.connect") as mock_connect:
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            res = await provider.export_format(
+                project_id=f"{approved_project.project_id}_{uuid.uuid4().hex}",
+                model_revision=1,
+                format_name="stl",
+                kcl_code=kcl_res.kcl_code,
+                project=approved_project,
+                zoo_model_id="cli_nat_clean",
+                kcl_hash=kcl_res.kcl_hash,
+            )
+
+    assert not mock_connect.called
+    assert not mock_urlopen.called
+    assert get_local_obj_call_count() == 0
+    assert res.success
+    assert res.geometry_hash == kcl_res.kcl_hash
+    assert res.zoo_model_id == "cli_nat_clean"
 
 
 @pytest.mark.asyncio
@@ -268,35 +259,44 @@ async def test_missing_zoo_model_id_blocks_export(approved_project: Project):
 
 
 @pytest.mark.asyncio
-async def test_zoo_native_export_failure_handling(approved_project: Project):
-    """Verify WebSocket engine error returns clear ExportResult failure envelope."""
+async def test_zoo_native_export_failure_handling(approved_project: Project, monkeypatch):
+    """Verify KCL-native export errors return clear ExportResult failure envelope."""
     provider = ZooExportProvider(
         api_token="test_zoo_token",
         api_base_url="https://zoo.example.invalid",
     )
     kcl_res = compile_project_to_kcl(approved_project)
 
-    mock_ws = AsyncMock()
-    mock_ws.recv.side_effect = [
-        '{"success": false, "errors": [{"message": "Zoo native export failed"}]}'
-    ]
-    mock_ws.send = AsyncMock()
+    class FakeFileExportFormat:
+        Stl = "stl"
+        Step = "step"
 
-    with patch("websockets.connect") as mock_connect:
-        mock_connect.return_value.__aenter__.return_value = mock_ws
-        res = await provider.export_format(
-            project_id=approved_project.project_id,
-            model_revision=1,
-            format_name="stl",
-            kcl_code=kcl_res.kcl_code,
-            project=approved_project,
-            zoo_model_id="err_sess_uncached_9999",
-            kcl_hash=kcl_res.kcl_hash,
-        )
+    async def fake_execute_code_and_export(_kcl_code, _export_format):
+        raise RuntimeError("Zoo native export failed")
 
-        assert not res.success
-        assert res.error_id == "IF-EXPORT-001"
-        assert "Zoo native export failed" in res.error_message
+    monkeypatch.setitem(
+        sys.modules,
+        "kcl",
+        SimpleNamespace(
+            FileExportFormat=FakeFileExportFormat,
+            execute_code_and_export=fake_execute_code_and_export,
+        ),
+    )
+
+    res = await provider.export_format(
+        project_id=approved_project.project_id,
+        model_revision=1,
+        format_name="stl",
+        kcl_code=kcl_res.kcl_code,
+        project=approved_project,
+        zoo_model_id="err_sess_uncached_9999",
+        kcl_hash=kcl_res.kcl_hash,
+    )
+
+    assert not res.success
+    assert res.error_id == "IF-EXPORT-001"
+    assert "Zoo KCL export failed" in res.error_message
+    assert "Zoo native export failed" in res.error_message
 
 
 @pytest.mark.asyncio

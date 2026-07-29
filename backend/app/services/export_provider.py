@@ -1,16 +1,16 @@
 import base64
 import hashlib
-import json
 import math
 import os
 import re
+import shutil
 import struct
-import uuid
+import subprocess
+import tempfile
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-import websockets
 from pydantic import BaseModel, Field
 
 try:
@@ -25,7 +25,6 @@ from app.services.geometry_generator import (
     get_geometry_hash,
     set_prohibit_local_obj,
 )
-from app.services.profile_geometry import fitted_profile_size
 
 
 def current_iso_timestamp() -> str:
@@ -952,348 +951,155 @@ class ZooExportProvider(ExportProvider):
                 is_mock=False,
             )
 
-        api_base_url = self.api_base_url or settings.zoo_api_base_url
-        ws_url = f"{api_base_url.replace('http', 'ws')}/ws/modeling/commands"
-        headers = {"Authorization": f"Bearer {token}"}
-
-        # Enforce prohibition guard against local generate_adapter_obj() per S8.3
-        set_prohibit_local_obj(True)
-
+        previous_token = os.environ.get("ZOO_API_TOKEN")
+        os.environ["ZOO_API_TOKEN"] = token
         try:
-            # Execute Zoo-native export via live Zoo Modeling WebSocket session
-            async with websockets.connect(ws_url, additional_headers=headers) as ws:
+            out_bytes: bytes | None = None
+            package_import_error: Exception | None = None
+            try:
+                import kcl  # type: ignore[import-not-found]
+            except Exception as exc:
+                package_import_error = exc
+            else:
+                export_format = (
+                    kcl.FileExportFormat.Stl if fmt == "stl" else kcl.FileExportFormat.Step
+                )
+                files = await kcl.execute_code_and_export(kcl_code, export_format)
+                if not files:
+                    raise ValueError(f"Zoo KCL export returned no files for '{fmt}'.")
 
-                async def send_cmd(cmd_dict: dict) -> Dict[str, Any]:
-                    c_id = str(uuid.uuid4())
-                    payload = {
-                        "type": "modeling_cmd_req",
-                        "cmd_id": c_id,
-                        "cmd": cmd_dict,
-                    }
-                    await ws.send(json.dumps(payload))
-
-                    while True:
-                        recv_msg = await ws.recv()
-                        if isinstance(recv_msg, bytes):
-                            if msgpack is not None:
-                                res_b = msgpack.unpackb(recv_msg, raw=False)
-                                return dict(res_b) if isinstance(res_b, dict) else {}
-                            obj, _ = unpack_msgpack(recv_msg)
-                            return dict(obj) if isinstance(obj, dict) else {}
-                        data = json.loads(recv_msg)
-                        r_type = data.get("resp", {}).get("type")
-                        if r_type in (
-                            "modeling_session_data",
-                            "ice_server_info",
-                            "metrics_request",
-                        ):
-                            continue
-                        if not data.get("success", True):
-                            errs = data.get("errors", [])
-                            err_msg = (
-                                errs[0].get("message", "Zoo Engine error")
-                                if errs
-                                else "Zoo Engine error"
-                            )
-                            raise RuntimeError(f"ZOO_ENGINE_ERROR: {err_msg}")
-                        if r_type == "modeling":
-                            return dict(data)
-                    return {}
-
-                # 1. Set Units
-                await send_cmd({"type": "set_scene_units", "unit": "mm"})
-
-                # Extract schema parameters
-                if_a_type = project.interface_a.profile_type.value if project else "circle"
-                if_b_type = project.interface_b.profile_type.value if project else "circle"
-
-                length_mm = project.connection.length_mm if project else 40.0
-                wall_mm = project.manufacturing.wall_thickness_mm if project else 2.4
-                clearance_a = project.manufacturing.clearance_a_mm if project else 0.0
-                clearance_b = project.manufacturing.clearance_b_mm if project else 0.0
-
-                offset_x = project.connection.offset_x_mm if project else 0.0
-                offset_y = project.connection.offset_y_mm if project else 0.0
-                angle_deg = project.connection.angle_deg if project else 0.0
-
-                if project:
-                    outer_a = fitted_profile_size(project.interface_a, clearance_a, wall_mm, outer=True)
-                    inner_a = fitted_profile_size(project.interface_a, clearance_a, wall_mm, outer=False)
-                    outer_b = fitted_profile_size(project.interface_b, clearance_b, wall_mm, outer=True)
-                    inner_b = fitted_profile_size(project.interface_b, clearance_b, wall_mm, outer=False)
-                    size_a_outer = outer_a.width
-                    size_a_inner = inner_a.width
-                    outer_w_a = outer_a.width
-                    outer_h_a = outer_a.height
-                    inner_w_a = inner_a.width
-                    inner_h_a = inner_a.height
-                    size_b_outer = outer_b.width
-                    size_b_inner = inner_b.width
-                    outer_w_b = outer_b.width
-                    outer_h_b = outer_b.height
-                    inner_w_b = inner_b.width
-                    inner_h_b = inner_b.height
+                first_file = files[0]
+                payload = getattr(first_file, "contents", None)
+                if isinstance(payload, str):
+                    out_bytes = base64.b64decode(payload)
+                elif isinstance(payload, list):
+                    out_bytes = bytes(payload)
+                elif isinstance(payload, bytes):
+                    out_bytes = payload
                 else:
-                    size_a_outer = 50.0
-                    size_a_inner = 45.2
-                    outer_w_a = 50.0
-                    outer_h_a = 50.0
-                    inner_w_a = 45.2
-                    inner_h_a = 45.2
-                    size_b_outer = 34.5
-                    size_b_inner = 29.7
-                    outer_w_b = 50.0
-                    outer_h_b = 50.0
-                    inner_w_b = 45.2
-                    inner_h_b = 45.2
-                # 2. Make plane A (Z=0)
-                await send_cmd(
-                    {
-                        "type": "make_plane",
-                        "origin": {"x": 0, "y": 0, "z": 0},
-                        "x_axis": {"x": 1, "y": 0, "z": 0},
-                        "y_axis": {"x": 0, "y": 1, "z": 0},
-                        "size": 100,
-                        "clobber": False,
-                        "hide": True,
-                    }
-                )
-
-                # 3. Make plane B (Z=length_mm, with offset and angle rotation)
-                rad_a = math.radians(angle_deg)
-                cos_a = math.cos(rad_a)
-                sin_a = math.sin(rad_a)
-
-                await send_cmd(
-                    {
-                        "type": "make_plane",
-                        "origin": {"x": offset_x, "y": offset_y, "z": length_mm},
-                        "x_axis": {"x": 1.0, "y": 0.0, "z": 0.0},
-                        "y_axis": {"x": 0.0, "y": cos_a, "z": sin_a},
-                        "size": 100,
-                        "clobber": False,
-                        "hide": True,
-                    }
-                )
-
-                r_plane = await send_cmd(
-                    {"type": "scene_get_entity_ids", "filter": ["plane"], "skip": 0, "take": 10}
-                )
-                plane_ids = (
-                    r_plane.get("resp", {})
-                    .get("data", {})
-                    .get("modeling_response", {})
-                    .get("data", {})
-                    .get("entity_ids", [[]])[0]
-                )
-                plane_a_id = plane_ids[0]
-                plane_b_id = plane_ids[1]
-
-                # 4. Construct outer and inner sketches
-                if if_a_type == "circle":
-                    path_outer_a = await _build_ngon_sketch(
-                        send_cmd, plane_a_id, size_a_outer / 2.0
-                    )
-                    path_inner_a = await _build_ngon_sketch(
-                        send_cmd, plane_a_id, size_a_inner / 2.0
-                    )
-                else:
-                    path_outer_a = await _build_rect_sketch(
-                        send_cmd, plane_a_id, outer_w_a, outer_h_a
-                    )
-                    path_inner_a = await _build_rect_sketch(
-                        send_cmd, plane_a_id, inner_w_a, inner_h_a
+                    raise ValueError(
+                        f"Zoo KCL export returned unsupported file payload for '{fmt}'."
                     )
 
-                if if_b_type == "circle":
-                    path_outer_b = await _build_ngon_sketch(
-                        send_cmd, plane_b_id, size_b_outer / 2.0
+            if out_bytes is None:
+                zoo_cli = shutil.which("zoo")
+                if zoo_cli is None:
+                    detail = (
+                        f"Could not import kcl: {redact_secrets(str(package_import_error), token)}"
+                        if package_import_error
+                        else "The kcl package is unavailable."
                     )
-                    path_inner_b = await _build_ngon_sketch(
-                        send_cmd, plane_b_id, size_b_inner / 2.0
-                    )
-                else:
-                    path_outer_b = await _build_rect_sketch(
-                        send_cmd, plane_b_id, outer_w_b, outer_h_b
-                    )
-                    path_inner_b = await _build_rect_sketch(
-                        send_cmd, plane_b_id, inner_w_b, inner_h_b
-                    )
-
-                # 5. Loft outer solid
-                r_loft_outer = await send_cmd(
-                    {
-                        "type": "loft",
-                        "section_ids": [path_outer_a, path_outer_b],
-                        "v_degree": 1,
-                        "bez_approximate_rational": False,
-                        "tolerance": 0.001,
-                    }
-                )
-                outer_solid_id = (
-                    r_loft_outer.get("resp", {})
-                    .get("data", {})
-                    .get("modeling_response", {})
-                    .get("data", {})
-                    .get("solid_id")
-                )
-
-                # 6. Loft inner solid
-                r_loft_inner = await send_cmd(
-                    {
-                        "type": "loft",
-                        "section_ids": [path_inner_a, path_inner_b],
-                        "v_degree": 1,
-                        "bez_approximate_rational": False,
-                        "tolerance": 0.001,
-                    }
-                )
-                inner_solid_id = (
-                    r_loft_inner.get("resp", {})
-                    .get("data", {})
-                    .get("modeling_response", {})
-                    .get("data", {})
-                    .get("solid_id")
-                )
-
-                # 7. Boolean subtract inner void from outer solid
-                if outer_solid_id and inner_solid_id:
-                    await send_cmd(
-                        {
-                            "type": "boolean_subtract",
-                            "target_ids": [outer_solid_id],
-                            "tool_ids": [inner_solid_id],
-                            "tolerance": 0.001,
-                        }
+                    return ExportResult(
+                        success=False,
+                        format=fmt,
+                        error_id="IF-EXPORT-006",
+                        error_message=(
+                            "Live export requires Zoo KCL execution/export tooling. "
+                            f"{detail}; zoo CLI was not found on PATH."
+                        ),
+                        recovery_steps=[
+                            "Install a Zoo KCL export tool compatible with the backend runtime.",
+                            "Use Python 3.11+ for zoo-kcl or install the zoo CLI.",
+                            "Retry export after dependency installation.",
+                        ],
+                        is_mock=False,
                     )
 
-                # 8. Retrieve solid3d entity IDs
-                r_solid = await send_cmd(
-                    {"type": "scene_get_entity_ids", "filter": ["solid3d"], "skip": 0, "take": 10}
-                )
-                solid_ids = (
-                    r_solid.get("resp", {})
-                    .get("data", {})
-                    .get("modeling_response", {})
-                    .get("data", {})
-                    .get("entity_ids", [[]])[0]
-                )
-
-                # 9. Issue Zoo-native export command
-                if fmt == "stl":
-                    export_cmd = {
-                        "type": "export",
-                        "entity_ids": solid_ids,
-                        "format": {
-                            "type": "stl",
-                            "coords": {
-                                "forward": {"axis": "y", "direction": "negative"},
-                                "up": {"axis": "z", "direction": "positive"},
-                            },
-                            "selection": {"type": "default_scene"},
-                            "storage": "binary",
-                            "units": "mm",
-                        },
-                    }
-                else:  # step
-                    export_cmd = {
-                        "type": "export",
-                        "entity_ids": solid_ids,
-                        "format": {
-                            "type": "step",
-                            "coords": {
-                                "forward": {"axis": "y", "direction": "negative"},
-                                "up": {"axis": "z", "direction": "positive"},
-                            },
-                            "selection": {"type": "default_scene"},
-                        },
-                    }
-
-                export_res = await send_cmd(export_cmd)
-
-                # Extract files payload from native export response
-                files_list = (
-                    export_res.get("resp", {})
-                    .get("data", {})
-                    .get("modeling_response", {})
-                    .get("data", {})
-                    .get("files", [])
-                )
-                if not files_list:
-                    files_list = export_res.get("resp", {}).get("data", {}).get("files", [])
-
-                out_bytes = None
-                for fitem in files_list:
-                    if isinstance(fitem, dict) and "contents" in fitem:
-                        c_val = fitem["contents"]
-                        if isinstance(c_val, bytes):
-                            out_bytes = c_val
-                        elif isinstance(c_val, str):
-                            out_bytes = base64.b64decode(c_val)
-                        elif isinstance(c_val, list):
-                            out_bytes = bytes(c_val)
-                        break
-
-                if not out_bytes:
-                    raise ValueError(f"Zoo-native export command returned no files for '{fmt}'.")
-
-                # Perform deep topology validation on returned file bytes
-                if fmt == "stl":
-                    stl_res = parse_and_validate_stl(out_bytes)
-                    if not stl_res["is_valid"]:
-                        raise ValueError(
-                            f"Zoo-native STL export failed geometry validation: {stl_res['error']}"
+                os.makedirs("artifacts", exist_ok=True)
+                with tempfile.TemporaryDirectory(
+                    prefix="zoo_kcl_export_", dir="artifacts"
+                ) as output_dir:
+                    completed = subprocess.run(
+                        [
+                            zoo_cli,
+                            "kcl",
+                            "export",
+                            f"--output-format={fmt}",
+                            "-",
+                            output_dir,
+                        ],
+                        input=kcl_code.encode("utf-8"),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        check=False,
+                    )
+                    if completed.returncode != 0:
+                        stderr = completed.stderr.decode("utf-8", errors="ignore")
+                        raise RuntimeError(
+                            "zoo kcl export failed: "
+                            f"{redact_secrets(stderr.strip(), token) or completed.returncode}"
                         )
-                elif fmt == "step":
-                    step_res = parse_and_validate_step(out_bytes)
-                    if not step_res["is_valid"]:
-                        raise ValueError(
-                            "Zoo-native STEP export failed geometry validation: "
-                            f"{step_res['error']}"
-                        )
+                    exported = [
+                        os.path.join(output_dir, name)
+                        for name in os.listdir(output_dir)
+                        if name.lower().endswith(f".{fmt}")
+                    ]
+                    if not exported:
+                        raise ValueError(f"zoo kcl export produced no '.{fmt}' file.")
+                    with open(exported[0], "rb") as exported_file:
+                        out_bytes = exported_file.read()
 
-                with open(artifact_path, "wb") as f_out:
-                    f_out.write(out_bytes)
+            if fmt == "stl":
+                stl_res = parse_and_validate_stl(out_bytes)
+                if not stl_res["is_valid"]:
+                    raise ValueError(
+                        f"Zoo KCL STL export failed geometry validation: {stl_res['error']}"
+                    )
+            else:
+                step_res = parse_and_validate_step(out_bytes)
+                if not step_res["is_valid"]:
+                    raise ValueError(
+                        f"Zoo KCL STEP export failed geometry validation: {step_res['error']}"
+                    )
 
-                stl_val = parse_and_validate_stl(out_bytes) if fmt == "stl" else {}
-                step_val = parse_and_validate_step(out_bytes) if fmt == "step" else {}
+            with open(artifact_path, "wb") as f_out:
+                f_out.write(out_bytes)
 
-                return ExportResult(
-                    success=True,
-                    format=fmt,
-                    artifact_ref=artifact_path,
-                    filename=f"interfaceforge_adapter_rev{model_revision}.{fmt}",
-                    size_bytes=len(out_bytes),
-                    facet_count=stl_val.get("facet_count"),
-                    entity_count=step_val.get("entity_count"),
-                    bounding_box=stl_val.get("bounding_box"),
-                    dimensions_mm=stl_val.get("dimensions_mm"),
-                    geometry_hash=effective_kcl_hash,
-                    zoo_model_id=zoo_model_id,
-                    kcl_hash=effective_kcl_hash,
-                    is_mock=False,
-                )
-
+            stl_val = parse_and_validate_stl(out_bytes) if fmt == "stl" else {}
+            step_val = parse_and_validate_step(out_bytes) if fmt == "step" else {}
+            return ExportResult(
+                success=True,
+                format=fmt,
+                artifact_ref=artifact_path,
+                filename=f"interfaceforge_adapter_rev{model_revision}.{fmt}",
+                size_bytes=len(out_bytes),
+                facet_count=stl_val.get("facet_count"),
+                entity_count=step_val.get("entity_count"),
+                bounding_box=stl_val.get("bounding_box"),
+                dimensions_mm=stl_val.get("dimensions_mm"),
+                geometry_hash=effective_kcl_hash,
+                zoo_model_id=zoo_model_id,
+                kcl_hash=effective_kcl_hash,
+                is_mock=False,
+            )
         except Exception as e:
             err_msg = redact_secrets(str(e), token)
             return ExportResult(
                 success=False,
                 format=fmt,
                 error_id="IF-EXPORT-001",
-                error_message=f"Zoo-native export failed for '{fmt}': {err_msg}",
+                error_message=f"Zoo KCL export failed for '{fmt}': {err_msg}",
                 recovery_steps=[
-                    "Verify Zoo Engine API service connection.",
+                    "Verify Zoo KCL execution/export service connection.",
                     "Retry export operation.",
                 ],
                 is_mock=False,
             )
         finally:
+            if previous_token is None:
+                os.environ.pop("ZOO_API_TOKEN", None)
+            else:
+                os.environ["ZOO_API_TOKEN"] = previous_token
             set_prohibit_local_obj(False)
 
 
 def get_export_provider(provider_mode: str | None = None) -> ExportProvider:
     """Factory function returning active ExportProvider based on configuration or project mode."""
-    provider_name = "zoo" if provider_mode == "live" and settings.zoo_api_token else settings.get_effective_export_provider()
+    provider_name = (
+        "zoo"
+        if provider_mode == "live" and settings.zoo_api_token
+        else settings.get_effective_export_provider()
+    )
     if provider_name == "zoo":
         return ZooExportProvider()
     return MockExportProvider()
