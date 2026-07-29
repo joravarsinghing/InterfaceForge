@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileReviewPage } from '../pages/ProfileReviewPage';
 import { Project } from '../types/schema';
+import profileReviewSource from '../pages/ProfileReviewPage.tsx?raw';
 import * as api from '../services/api';
 
 vi.mock('../services/api', async () => {
@@ -716,5 +717,14 @@ describe('Profile Review shape resolution regressions', () => {
     expect(screen.queryByRole('button', { name: /Use Rounded Rectangle/i })).not.toBeInTheDocument();
     expect(screen.getAllByText(/This outline is more complex than the shapes supported in this version/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
+  });
+});
+describe('Profile Review frontend authority contract', () => {
+  it('does not contain an independent shape classifier implementation', () => {
+    expect(profileReviewSource).not.toMatch(/classifyShapeCandidate/);
+    expect(profileReviewSource).not.toMatch(/cornerOffsets/);
+    expect(profileReviewSource).not.toMatch(/radiusRatio/);
+    expect(profileReviewSource).not.toMatch(/onSidesRatio/);
+    expect(profileReviewSource).not.toMatch(/nearCornerCount/);
   });
 });

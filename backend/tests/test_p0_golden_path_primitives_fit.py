@@ -504,7 +504,9 @@ def test_unsupported_traced_closed_cannot_be_approved_for_generation() -> None:
     )
     service.repository.save(project)
 
-    with pytest.raises(InvalidInterfaceApprovalError, match="more complex than the shapes supported"):
+    with pytest.raises(
+        InvalidInterfaceApprovalError, match="more complex than the shapes supported"
+    ):
         service.approve_interface(project.project_id, "interface_a", project.project_token)
 
 
@@ -586,4 +588,23 @@ def test_scale_snap_prefers_nearby_simplified_node_before_edge_projection() -> N
     )
 
     assert snapped.point == Point2D(x=0, y=0)
-    assert snapped.feature_id == "outer_contour"
+    assert snapped.feature_id == "canonical_primitive_boundary"
+
+def test_legacy_is_complex_true_does_not_block_supported_shape_resolution() -> None:
+    service = ProjectService()
+    project = service.create_project()
+    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
+    project.interface_a.is_complex = True
+    project.interface_a.traced_outer_contour = TracedContour(
+        id="outer_contour",
+        points=rounded_rect_points(),
+        classification="outer_contour",
+        provenance="analysis",
+    )
+    service.repository.save(project)
+
+    loaded = service.get_project(project.project_id, project.project_token)
+
+    assert loaded.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
+    assert loaded.interface_a.resolution_status.value == "resolved"
+    assert loaded.interface_a.is_complex is True

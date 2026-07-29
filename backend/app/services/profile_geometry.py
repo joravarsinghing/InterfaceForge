@@ -57,7 +57,11 @@ def primitive_boundary_points(
     finite_candidates = [
         p for p in (candidate_points or []) if math.isfinite(p.x) and math.isfinite(p.y)
     ]
-    if len(finite_candidates) >= 4:
+    if profile_type not in (
+        ProfileType.CIRCLE,
+        ProfileType.RECTANGLE,
+        ProfileType.ROUNDED_RECTANGLE,
+    ) and len(finite_candidates) >= 4:
         return finite_candidates
 
     temp = Interface(id="primitive_boundary", profile_type=profile_type, dimensions=dimensions)
@@ -352,7 +356,7 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
         and 0.03 <= radius_ratio <= 0.35
         and radius_spread <= 0.65
         and on_sides_ratio >= 0.55
-        and 2 <= sharp_corners <= 8
+        and sharp_corners <= 10
         and rounded_confidence >= 0.65
     ):
         return PrimitiveClassification(

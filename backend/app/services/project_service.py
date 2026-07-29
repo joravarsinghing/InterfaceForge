@@ -251,7 +251,7 @@ def _ensure_point_within_trace_bounds(interface: Interface, point: Point2D) -> N
             "Calibration point must use finite trace-space coordinates.",
             recovery_steps=["Select a point inside the traced SVG viewport."],
         )
-    bbox = _trace_bbox(interface)
+    bbox = _calibration_bbox(interface)
     if bbox is None:
         raise InvalidInterfaceApprovalError(
             "Cannot calibrate scale: traced geometry is missing.",
@@ -270,16 +270,109 @@ def _distance(a: Point2D, b: Point2D) -> float:
     return math.hypot(a.x - b.x, a.y - b.y)
 
 
+def _canonical_primitive_trace_points(interface: Interface) -> list[Point2D] | None:
+    if interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES:
+        return None
+    outer = interface.traced_outer_contour
+    if outer is None or len(outer.points) < 4:
+        return None
+    bbox = _trace_bbox(interface)
+    if bbox is None:
+        return None
+    min_x, max_x, min_y, max_y = bbox
+    width = max_x - min_x
+    height = max_y - min_y
+    if width <= 0 or height <= 0:
+        return None
+    cx = (min_x + max_x) / 2.0
+    cy = (min_y + max_y) / 2.0
+
+    if interface.profile_type == ProfileType.CIRCLE:
+        radius = (width + height) / 4.0
+        return [
+            Point2D(
+                x=round(cx + radius * math.cos(2.0 * math.pi * idx / 64), 4),
+                y=round(cy + radius * math.sin(2.0 * math.pi * idx / 64), 4),
+            )
+            for idx in range(64)
+        ]
+
+    if interface.profile_type == ProfileType.RECTANGLE:
+        return [
+            Point2D(x=min_x, y=min_y),
+            Point2D(x=max_x, y=min_y),
+            Point2D(x=max_x, y=max_y),
+            Point2D(x=min_x, y=max_y),
+        ]
+
+    classification = classify_primitive_candidate(outer.points)
+    radius_candidate = classification.corner_radius_px if classification else None
+    if (
+        radius_candidate is None
+        or not math.isfinite(radius_candidate)
+        or radius_candidate <= 0
+    ):
+        radius = min(width, height) * 0.12
+    else:
+        radius = float(radius_candidate)
+    radius = min(max(radius, 0.0), width / 2.0, height / 2.0)
+    if radius <= 0:
+        return [
+            Point2D(x=min_x, y=min_y),
+            Point2D(x=max_x, y=min_y),
+            Point2D(x=max_x, y=max_y),
+            Point2D(x=min_x, y=max_y),
+        ]
+
+    points: list[Point2D] = []
+    centers = [
+        (max_x - radius, max_y - radius, 0.0, math.pi / 2.0),
+        (min_x + radius, max_y - radius, math.pi / 2.0, math.pi),
+        (min_x + radius, min_y + radius, math.pi, 3.0 * math.pi / 2.0),
+        (max_x - radius, min_y + radius, 3.0 * math.pi / 2.0, 2.0 * math.pi),
+    ]
+    for corner_x, corner_y, start, end in centers:
+        for idx in range(9):
+            angle = start + (end - start) * idx / 8.0
+            points.append(
+                Point2D(
+                    x=round(corner_x + radius * math.cos(angle), 4),
+                    y=round(corner_y + radius * math.sin(angle), 4),
+                )
+            )
+    return points
+
+
+def _calibration_geometry_segments(interface: Interface) -> list[tuple[Point2D, Point2D, str]]:
+    canonical = _canonical_primitive_trace_points(interface)
+    if canonical and len(canonical) >= 4:
+        return [
+            (canonical[idx], canonical[(idx + 1) % len(canonical)], "canonical_primitive_boundary")
+            for idx in range(len(canonical))
+        ]
+    return _trace_geometry_segments(interface)
+
+
+def _calibration_bbox(interface: Interface) -> tuple[float, float, float, float] | None:
+    canonical = _canonical_primitive_trace_points(interface)
+    if canonical and len(canonical) >= 4:
+        return (
+            min(point.x for point in canonical),
+            max(point.x for point in canonical),
+            min(point.y for point in canonical),
+            max(point.y for point in canonical),
+        )
+    return _trace_bbox(interface)
 def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapResponse:
     _ensure_point_within_trace_bounds(interface, point)
-    segments = _trace_geometry_segments(interface)
+    segments = _calibration_geometry_segments(interface)
     if not segments:
         raise InvalidInterfaceApprovalError(
             "Cannot calibrate scale: no valid trace segments are available.",
             recovery_steps=["Re-run analysis or upload a cleaner interface image."],
         )
 
-    bbox = _trace_bbox(interface)
+    bbox = _calibration_bbox(interface)
     max_dim = 1.0
     if bbox is not None:
         min_x, max_x, min_y, max_y = bbox
@@ -288,17 +381,26 @@ def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapRespo
     edge_tolerance = max(4.0, max_dim * 0.08)
 
     best_node: tuple[float, Point2D, str] | None = None
-    contours = [interface.traced_outer_contour] if interface.traced_outer_contour else []
-    contours.extend(interface.traced_hole_contours or [])
-    for contour in contours:
-        if getattr(contour, "decision", "include") != "include":
-            continue
-        for idx, vertex in enumerate(contour.points or []):
+    canonical_nodes = _canonical_primitive_trace_points(interface)
+    if canonical_nodes:
+        for vertex in canonical_nodes:
             if not _finite_point(vertex):
                 continue
             dist = _distance(point, vertex)
             if best_node is None or dist < best_node[0]:
-                best_node = (dist, vertex, contour.id or "trace_geometry")
+                best_node = (dist, vertex, "canonical_primitive_boundary")
+    else:
+        contours = [interface.traced_outer_contour] if interface.traced_outer_contour else []
+        contours.extend(interface.traced_hole_contours or [])
+        for contour in contours:
+            if getattr(contour, "decision", "include") != "include":
+                continue
+            for idx, vertex in enumerate(contour.points or []):
+                if not _finite_point(vertex):
+                    continue
+                dist = _distance(point, vertex)
+                if best_node is None or dist < best_node[0]:
+                    best_node = (dist, vertex, contour.id or "trace_geometry")
     if best_node is not None and best_node[0] <= node_tolerance:
         return ScaleSnapResponse(
             point=best_node[1], distance_px=best_node[0], feature_id=best_node[2]
@@ -441,18 +543,23 @@ def _apply_authoritative_shape_resolution(
     interface: Interface, *, repair_reason: str | None = None
 ) -> bool:
     before = interface.model_dump()
-    has_trace = interface.traced_outer_contour is not None and len(interface.traced_outer_contour.points) >= 4
+    outer_contour = interface.traced_outer_contour
+    has_trace = outer_contour is not None and len(outer_contour.points) >= 4
     trace_is_closed = bool(
-        has_trace and interface.traced_outer_contour and interface.traced_outer_contour.is_closed
+        has_trace and outer_contour is not None and outer_contour.is_closed
     )
     original_profile_type = interface.profile_type
-    if repair_reason and not has_trace and original_profile_type in SUPPORTED_GENERATION_PROFILE_TYPES:
+    if (
+        repair_reason
+        and not has_trace
+        and original_profile_type in SUPPORTED_GENERATION_PROFILE_TYPES
+    ):
         return False
     interface.trace_profile_type = ProfileType.TRACED_CLOSED if has_trace else original_profile_type
 
     candidate = None
-    if has_trace and trace_is_closed and not interface.is_complex:
-        candidate = classify_primitive_candidate(interface.traced_outer_contour.points)
+    if has_trace and trace_is_closed and outer_contour is not None:
+        candidate = classify_primitive_candidate(outer_contour.points)
 
     if candidate and candidate.confidence >= AUTO_RESOLUTION_THRESHOLDS[candidate.profile_type]:
         interface.profile_type = candidate.profile_type
@@ -482,12 +589,16 @@ def _apply_authoritative_shape_resolution(
         interface.primitive_promotion_confirmed = False
         interface.verification_status = "shape_resolution_needs_confirmation"
         interface.generation_unsupported = True
-        interface.generation_unsupported_reason = "This outline needs shape confirmation before generation."
+        interface.generation_unsupported_reason = (
+            "This outline needs shape confirmation before generation."
+        )
     elif original_profile_type in SUPPORTED_GENERATION_PROFILE_TYPES and not has_trace:
         interface.resolved_profile_type = original_profile_type
         interface.resolution_status = ShapeResolutionStatus.RESOLVED
         interface.resolution_confidence = interface.primitive_detection_confidence or 1.0
-        interface.resolution_reason = interface.primitive_detection_reason or "provider_returned_supported_profile"
+        interface.resolution_reason = (
+            interface.primitive_detection_reason or "provider_returned_supported_profile"
+        )
         interface.trace_profile_type = original_profile_type
         interface.generation_unsupported = False
         interface.generation_unsupported_reason = None
@@ -496,7 +607,9 @@ def _apply_authoritative_shape_resolution(
         interface.resolved_profile_type = None
         interface.resolution_status = ShapeResolutionStatus.UNSUPPORTED
         interface.resolution_confidence = candidate.confidence if candidate else None
-        interface.resolution_reason = "Contour does not match a supported circle, rectangle, or rounded rectangle."
+        interface.resolution_reason = (
+            "Contour does not match a supported circle, rectangle, or rounded rectangle."
+        )
         interface.primitive_fallback_active = False
         interface.primitive_fallback_label = None
         interface.primitive_promotion_confirmed = False
@@ -504,9 +617,13 @@ def _apply_authoritative_shape_resolution(
         interface.primitive_detection_reason = None
         interface.verification_status = "shape_resolution_unsupported"
         interface.generation_unsupported = True
-        interface.generation_unsupported_reason = "This outline is more complex than the shapes supported in this version."
+        interface.generation_unsupported_reason = (
+            "This outline is more complex than the shapes supported in this version."
+        )
         if interface.scale_calibration and interface.scale_calibration.confirmed:
-            _update_derived_dimensions_from_scale(interface, interface.scale_calibration.scale_factor)
+            _update_derived_dimensions_from_scale(
+                interface, interface.scale_calibration.scale_factor
+            )
 
     interface.resolved_dimensions = _resolved_dimension_map(interface)
     if repair_reason and before != interface.model_dump():
@@ -1467,7 +1584,9 @@ class ProjectService:
                 message = "Cannot approve interface: shape resolution still needs confirmation."
             raise InvalidInterfaceApprovalError(
                 message,
-                recovery_steps=["Replace the image with a clean circle, rectangle, or rounded rectangle."],
+                recovery_steps=[
+                    "Replace the image with a clean circle, rectangle, or rounded rectangle."
+                ],
             )
 
         if target_interface.profile_type == ProfileType.ROUNDED_RECTANGLE:

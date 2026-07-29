@@ -98,7 +98,7 @@ def test_snap_projects_click_to_nearest_trace_segment(client: TestClient) -> Non
     data = res.json()["data"]
     assert data["point"] == {"x": 42.0, "y": 0.0}
     assert data["distance_px"] == 8.0
-    assert data["feature_id"] == "outer_contour"
+    assert data["feature_id"] == "canonical_primitive_boundary"
 
 
 def test_two_point_calibration_persists_and_hydrates_confirmed_scale(client: TestClient) -> None:
@@ -461,7 +461,7 @@ def test_primitive_snap_supports_circle_rectangle_and_rounded_rectangle(client: 
         assert res.status_code == 200, res.json()
         data = res.json()["data"]
         snapped = data["point"]
-        assert data["feature_id"] == "outer_contour"
+        assert data["feature_id"] == "canonical_primitive_boundary"
         assert data["distance_px"] <= 3.1
         assert abs(snapped["x"] - click["x"]) <= 3.1
         assert abs(snapped["y"] - click["y"]) <= 3.1

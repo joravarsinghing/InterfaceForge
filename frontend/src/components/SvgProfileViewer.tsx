@@ -31,18 +31,25 @@ function getDimension(dimensions: Dimension[], ids: string[], fallback: number):
 
 function primitiveBoundaryPoints(profileType: ProfileType, dimensions: Dimension[], points: Point2D[] = []): Point2D[] {
   const finitePoints = points.filter(finitePoint);
-  if (finitePoints.length >= 4) return finitePoints;
+  const pointBounds = finitePoints.length >= 4 ? boundsFor(finitePoints) : null;
 
   const outerDiameter = getDimension(dimensions, ['outer_diameter', 'diameter'], 50);
-  const rectWidth = getDimension(dimensions, ['width', 'overall_width'], 60);
-  const rectHeight = getDimension(dimensions, ['height', 'overall_height'], 40);
-  const cornerRadius = Math.min(getDimension(dimensions, ['corner_radius'], 5), rectWidth / 2, rectHeight / 2);
+  const rectWidth = pointBounds ? pointBounds.maxX - pointBounds.minX : getDimension(dimensions, ['width', 'overall_width'], 60);
+  const rectHeight = pointBounds ? pointBounds.maxY - pointBounds.minY : getDimension(dimensions, ['height', 'overall_height'], 40);
+  const centerX = pointBounds ? (pointBounds.minX + pointBounds.maxX) / 2 : 0;
+  const centerY = pointBounds ? (pointBounds.minY + pointBounds.maxY) / 2 : 0;
+  const circleDiameter = pointBounds ? (rectWidth + rectHeight) / 2 : outerDiameter;
+  const cornerRadius = Math.min(
+    pointBounds ? Math.min(rectWidth, rectHeight) * 0.12 : getDimension(dimensions, ['corner_radius'], 5),
+    rectWidth / 2,
+    rectHeight / 2
+  );
 
   if (profileType === 'circle') {
-    const radius = outerDiameter / 2;
+    const radius = circleDiameter / 2;
     return Array.from({ length: 64 }, (_, i) => {
       const angle = (2 * Math.PI * i) / 64;
-      return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
+      return { x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle) };
     });
   }
 
@@ -50,18 +57,18 @@ function primitiveBoundaryPoints(profileType: ProfileType, dimensions: Dimension
   const halfH = rectHeight / 2;
   if (profileType === 'rectangle' || cornerRadius <= 0) {
     return [
-      { x: -halfW, y: -halfH },
-      { x: halfW, y: -halfH },
-      { x: halfW, y: halfH },
-      { x: -halfW, y: halfH },
+      { x: centerX - halfW, y: centerY - halfH },
+      { x: centerX + halfW, y: centerY - halfH },
+      { x: centerX + halfW, y: centerY + halfH },
+      { x: centerX - halfW, y: centerY + halfH },
     ];
   }
 
   const centers = [
-    { x: halfW - cornerRadius, y: halfH - cornerRadius, start: 0, end: Math.PI / 2 },
-    { x: -halfW + cornerRadius, y: halfH - cornerRadius, start: Math.PI / 2, end: Math.PI },
-    { x: -halfW + cornerRadius, y: -halfH + cornerRadius, start: Math.PI, end: (3 * Math.PI) / 2 },
-    { x: halfW - cornerRadius, y: -halfH + cornerRadius, start: (3 * Math.PI) / 2, end: 2 * Math.PI },
+    { x: centerX + halfW - cornerRadius, y: centerY + halfH - cornerRadius, start: 0, end: Math.PI / 2 },
+    { x: centerX - halfW + cornerRadius, y: centerY + halfH - cornerRadius, start: Math.PI / 2, end: Math.PI },
+    { x: centerX - halfW + cornerRadius, y: centerY - halfH + cornerRadius, start: Math.PI, end: (3 * Math.PI) / 2 },
+    { x: centerX + halfW - cornerRadius, y: centerY - halfH + cornerRadius, start: (3 * Math.PI) / 2, end: 2 * Math.PI },
   ];
   return centers.flatMap((center) =>
     Array.from({ length: 9 }, (_, i) => {
