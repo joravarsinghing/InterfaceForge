@@ -187,7 +187,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   return (
     <div className="connection-config-page container" style={{ padding: '2rem 1rem' }}>
       <header className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>Step 3 — Guided Connection &amp; Manufacturing Configuration</h2>
+        <h2>Step 3 - Guided Connection &amp; Manufacturing Configuration</h2>
         <p style={{ color: '#8b949e' }}>
           Configure transition geometry, lateral offsets, inclination angle, wall thickness, and print clearances.
         </p>
@@ -211,13 +211,13 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       >
         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
           <div>
-            <strong style={{ color: '#3fb950' }}>[✓ APPROVED] Interface A:</strong>{' '}
+            <strong style={{ color: '#3fb950' }}>[OK] APPROVED Interface A:</strong>{' '}
             <span style={{ color: '#e6edf3' }}>
               {interfaceA?.profile_type?.toUpperCase() || 'CIRCLE'}
             </span>
           </div>
           <div>
-            <strong style={{ color: '#a371f7' }}>[✓ APPROVED] Interface B:</strong>{' '}
+            <strong style={{ color: '#a371f7' }}>[OK] APPROVED Interface B:</strong>{' '}
             <span style={{ color: '#e6edf3' }}>
               {interfaceB?.profile_type?.toUpperCase() || 'CIRCLE'}
             </span>
@@ -229,7 +229,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
           onClick={() => navigate('/step2/analysis')}
           style={{ cursor: 'pointer' }}
         >
-          ← Back to Profile Review
+            Back to Profile Review
         </button>
       </section>
 
@@ -246,20 +246,20 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 {
                   id: 'coaxial' as ConnectionMode,
                   title: 'Coaxial',
-                  icon: '🎯',
+                  icon: '',
                   desc: 'Straight axial connection sharing a common center axis.',
                 },
                 {
                   id: 'offset' as ConnectionMode,
                   title: 'Parallel Offset',
-                  icon: '↔️',
+                  icon: '',
                   desc: 'Parallel alignment with lateral X/Y offsets.',
                 },
                 {
                   id: 'angled' as ConnectionMode,
                   title: 'Limited Angle',
-                  icon: '📐',
-                  desc: 'Inclined transition angle (up to 45°) with optional offsets.',
+                  icon: '',
+                  desc: 'Inclined transition angle (up to 45 deg) with optional offsets.',
                 },
               ].map((modeCard) => {
                 const isSelected = connection.mode === modeCard.id;
@@ -284,7 +284,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                     }}
                   >
                     <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
-                      {modeCard.icon} {modeCard.title} {isSelected ? '✓' : ''}
+                      {modeCard.icon} {modeCard.title} {isSelected ? '' : ''}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#8b949e' }}>{modeCard.desc}</div>
                   </button>
@@ -336,7 +336,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               />
               {fieldErrorMap['length_mm'] && (
                 <span id="length_mm-error" style={{ color: '#f85149', fontSize: '0.85rem' }}>
-                  ⛔ {fieldErrorMap['length_mm']}
+                    {fieldErrorMap['length_mm']}
                 </span>
               )}
             </div>
@@ -369,7 +369,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 />
                 {fieldErrorMap['offset_x_mm'] && (
                   <span id="offset_x_mm-error" style={{ color: '#f85149', fontSize: '0.85rem' }}>
-                    ⛔ {fieldErrorMap['offset_x_mm']}
+                      {fieldErrorMap['offset_x_mm']}
                   </span>
                 )}
               </div>
@@ -403,7 +403,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 />
                 {fieldErrorMap['offset_y_mm'] && (
                   <span id="offset_y_mm-error" style={{ color: '#f85149', fontSize: '0.85rem' }}>
-                    ⛔ {fieldErrorMap['offset_y_mm']}
+                      {fieldErrorMap['offset_y_mm']}
                   </span>
                 )}
               </div>
@@ -416,7 +416,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                   htmlFor="angle_deg"
                   style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}
                 >
-                  Transition Angle (°):
+                  Transition Angle (deg):
                 </label>
                 <input
                   id="angle_deg"
@@ -439,7 +439,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 />
                 {fieldErrorMap['angle_deg'] && (
                   <span id="angle_deg-error" style={{ color: '#f85149', fontSize: '0.85rem' }}>
-                    ⛔ {fieldErrorMap['angle_deg']}
+                      {fieldErrorMap['angle_deg']}
                   </span>
                 )}
               </div>
@@ -476,7 +476,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               />
               {fieldErrorMap['wall_thickness_mm'] && (
                 <span id="wall_thickness_mm-error" style={{ color: '#f85149', fontSize: '0.85rem' }}>
-                  ⛔ {fieldErrorMap['wall_thickness_mm']}
+                    {fieldErrorMap['wall_thickness_mm']}
                 </span>
               )}
             </div>
@@ -632,7 +632,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                   border: isFormValid ? '1px solid #3fb950' : '1px solid #f85149',
                 }}
               >
-                {isFormValid ? '✓ VALID CONFIGURATION' : '⛔ ERRORS DETECTED'}
+                {isFormValid ? ' VALID CONFIGURATION' : ' ERRORS DETECTED'}
               </span>
             </div>
 
@@ -661,7 +661,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                   onClick={handleApplyRecommended}
                   style={{ marginTop: '0.5rem', cursor: 'pointer' }}
                 >
-                  💡 Apply Recommended Values
+                    Apply Recommended Values
                 </button>
               </div>
             )}
@@ -681,7 +681,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 <ul style={{ margin: '0.5rem 0 0 1.25rem', padding: 0, color: '#f0f6fc', fontSize: '0.9rem' }}>
                   {validationResult.warnings.map((warn) => (
                     <li key={warn.id}>
-                      <strong>⚠️ [{warn.id}]</strong> {warn.message}
+                      <strong> [{warn.id}]</strong> {warn.message}
                     </li>
                   ))}
                 </ul>
@@ -690,7 +690,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
 
             {saveError && (
               <div style={{ marginTop: '0.75rem', color: '#f85149', fontSize: '0.9rem' }}>
-                ⛔ {saveError}
+                  {saveError}
               </div>
             )}
 
@@ -709,7 +709,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                   opacity: isFormValid && !isSaving ? 1 : 0.6,
                 }}
               >
-                {isSaving ? 'Saving...' : 'Save Connection & Continue to Model Generation →'}
+                {isSaving ? 'Saving...' : 'Save Connection & Continue to Model Generation '}
               </button>
             </div>
           </div>

@@ -145,7 +145,7 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     expect(screen.getByRole('heading', { level: 2, name: /Generation Job \[job_test_123\]/i })).toBeInTheDocument();
     expect(screen.getAllByText(/SUCCEEDED/i)[0]).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: /Generated 3D Adapter Preview/i })).toBeInTheDocument();
-    expect(screen.getByText(/34.52 cm³/i)).toBeInTheDocument();
+    expect(screen.getByText(/34.52 cm3/i)).toBeInTheDocument();
   });
 
   it('handles service failure state, recovery steps, and retry trigger', async () => {

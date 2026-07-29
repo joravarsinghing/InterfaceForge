@@ -103,7 +103,7 @@ export const Connection2DViewer: React.FC<Connection2DViewerProps> = ({
         <title>Connection 2D Schematic Guide</title>
         <desc>
           Visualizes 2D cross-section elevation for transition length ({connection.length_mm} mm),
-          mode ({connection.mode}), X offset ({connection.offset_x_mm} mm), angle ({connection.angle_deg}°),
+          mode ({connection.mode}), X offset ({connection.offset_x_mm} mm), angle ({connection.angle_deg} deg),
           and wall thickness ({manufacturing.wall_thickness_mm} mm).
         </desc>
 
@@ -220,7 +220,7 @@ export const Connection2DViewer: React.FC<Connection2DViewerProps> = ({
               fontSize="11"
               textAnchor="middle"
             >
-              ΔX: {connection.offset_x_mm}mm
+              X: {connection.offset_x_mm}mm
             </text>
           </g>
         )}
@@ -235,7 +235,7 @@ export const Connection2DViewer: React.FC<Connection2DViewerProps> = ({
             textAnchor="middle"
             fontWeight="bold"
           >
-            Angle: {connection.angle_deg}°
+            Angle: {connection.angle_deg} deg
           </text>
         )}
 

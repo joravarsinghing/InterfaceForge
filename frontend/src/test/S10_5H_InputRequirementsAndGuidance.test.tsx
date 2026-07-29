@@ -1,16 +1,16 @@
 /**
- * S10.5H — Input Requirements and Honest Upload Guidance
- * Frontend Vitest Test Suite
- *
- * Verifies:
- * - Preferred input guidance renders on both Interface A and B upload screens
- * - Quality classification messages are shown after file selection
- * - Known-measurement field is present and functional
- * - Unsupported input warning renders
- * - Annotation-heavy input warning renders
- * - No manufacturing-ready claim before scale confirmation
- * - Interface A and B guidance consistency
- */
+  * S10.5H Input Requirements and Honest Upload Guidance
+  * Frontend Vitest Test Suite
+  *
+  * Verifies:
+  * - Preferred input guidance renders on both Interface A and B upload screens
+  * - Quality classification messages are shown after file selection
+  * - Known-measurement field is present and functional
+  * - Unsupported input warning renders
+  * - Annotation-heavy input warning renders
+  * - No manufacturing-ready claim before scale confirmation
+  * - Interface A and B guidance consistency
+  */
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -83,7 +83,7 @@ const mockProject: Project = {
   model_revisions: [],
 };
 
-// ─── S10.5H-01: Preferred input guidance renders ───────────────────────────────
+// S10.5H-01: Preferred input guidance renders
 
 describe('S10.5H-01: Preferred input guidance renders on upload screens', () => {
   it('shows Preferred Input section on Interface A upload screen', () => {
@@ -148,7 +148,7 @@ describe('S10.5H-01: Preferred input guidance renders on upload screens', () => 
       </MemoryRouter>
     );
     expect(screen.getByText(/Clean shaded profile/i)).toBeInTheDocument();
-    // 'Dimensioned drawing' appears in example label and checklist — use getAllByText
+    // 'Dimensioned drawing' appears in example label and checklist use getAllByText
     const dimMatches = screen.getAllByText(/Dimensioned drawing/i);
     expect(dimMatches.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Angled photo/i)).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe('S10.5H-01: Preferred input guidance renders on upload screens', () => 
   });
 });
 
-// ─── S10.5H-02: Quality classification messages ───────────────────────────────
+// S10.5H-02: Quality classification messages
 
 describe('S10.5H-02: Quality classification logic', () => {
   it('classifies a clean section file as recommended', () => {
@@ -185,7 +185,7 @@ describe('S10.5H-02: Quality classification logic', () => {
   });
 
   it('classifies a very small file as unsupported', () => {
-    // Use an empty array so the file has 0 bytes — well below the 500-byte threshold
+    // Use an empty array so the file has 0 bytes well below the 500-byte threshold
     const file = new File([], 'tiny.png', { type: 'image/png' });
     expect(classifyInputQuality(file)).toBe('unsupported');
   });
@@ -212,7 +212,7 @@ describe('S10.5H-02: Quality classification logic', () => {
   });
 });
 
-// ─── S10.5H-03: Quality badge renders in UI after file selection ───────────────
+// S10.5H-03: Quality badge renders in UI after file selection
 
 describe('S10.5H-03: Quality status badge renders after file selection', () => {
   it('shows quality badge after file with "section" in name is selected', () => {
@@ -228,7 +228,7 @@ describe('S10.5H-03: Quality status badge renders after file selection', () => {
 
     // Quality section heading should be visible
     expect(screen.getByText('Input Quality Status')).toBeInTheDocument();
-    // Recommended badge text — use getAllByText in case SVG contains overlap
+    // Recommended badge text use getAllByText in case SVG contains overlap
     const recommendedMatches = screen.getAllByText(/Recommended input/i);
     expect(recommendedMatches.length).toBeGreaterThanOrEqual(1);
   });
@@ -268,7 +268,7 @@ describe('S10.5H-03: Quality status badge renders after file selection', () => {
   });
 });
 
-// ─── S10.5H-04: Known-measurement field ───────────────────────────────────────
+// S10.5H-04: Known-measurement field
 
 describe('S10.5H-04: Known measurement field', () => {
   it('renders the Known Measurement optional field', () => {
@@ -320,7 +320,7 @@ describe('S10.5H-04: Known measurement field', () => {
     expect(summary.textContent).toMatch(/scale will be confirmed after the trace/i);
   });
 
-  it('scale confirmation note says "scale will be confirmed" — not manufacturing-ready', () => {
+  it('scale confirmation note says "scale will be confirmed" not manufacturing-ready', () => {
     render(
       <MemoryRouter>
         <UploadPage interfaceId="interface_a" project={mockProject} />
@@ -341,7 +341,7 @@ describe('S10.5H-04: Known measurement field', () => {
   });
 });
 
-// ─── S10.5H-05: No manufacturing-ready claim before scale confirmation ─────────
+// S10.5H-05: No manufacturing-ready claim before scale confirmation
 
 describe('S10.5H-05: No premature manufacturing-ready claims', () => {
   it('upload page does not claim manufacturing-ready status anywhere before analysis', () => {
@@ -370,7 +370,7 @@ describe('S10.5H-05: No premature manufacturing-ready claims', () => {
   });
 });
 
-// ─── S10.5H-06: Interface A and B consistency ─────────────────────────────────
+// S10.5H-06: Interface A and B consistency
 
 describe('S10.5H-06: Interface A and B guidance consistency', () => {
   it('both screens show the same guidance heading structure', () => {
@@ -404,7 +404,7 @@ describe('S10.5H-06: Interface A and B guidance consistency', () => {
   });
 });
 
-// ─── S10.5H-07: ImageGuidance standalone rendering ────────────────────────────
+// S10.5H-07: ImageGuidance standalone rendering
 
 describe('S10.5H-07: ImageGuidance standalone rendering', () => {
   it('renders without selectedFile prop (no quality badge shown)', () => {

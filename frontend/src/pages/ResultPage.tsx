@@ -70,13 +70,13 @@ export const ResultPage: React.FC<ResultPageProps> = ({
 fn create_adapter() {
   const profile_a = sketch(on = 'XY')
     |> circle(radius = ${(interfaceA.dimensions[0]?.value || 50) / 2})
-  
+
   const profile_b = sketch(on = offsetPlane('XY', offset = ${conn.length_mm}))
     |> circle(radius = ${(interfaceB.dimensions[0]?.value || 40) / 2})
-  
+
   const adapter_solid = loft([profile_a, profile_b])
     |> shell(thickness = ${mfg.wall_thickness_mm})
-    
+
   return adapter_solid
 }
 
@@ -193,13 +193,13 @@ export create_adapter()`;
         <div className="warning-banner" role="alert" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.5rem', color: '#f0f6fc' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
-              <strong style={{ color: '#d29922', fontSize: '1.05rem' }}>⚠️ Model Parameters Modified (STALE)</strong>
+              <strong style={{ color: '#d29922', fontSize: '1.05rem' }}> Model Parameters Modified (STALE)</strong>
               <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: '#c9d1d9' }}>
                 Upstream profile dimensions or connection settings were modified after model generation. The model displayed below may not reflect the latest schema revision.
               </p>
             </div>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/step4')}>
-              ⚡ Re-generate Model in Step 4
+                Re-generate Model in Step 4
             </button>
           </div>
         </div>
@@ -207,17 +207,17 @@ export create_adapter()`;
 
       {isFailedPreserved && (
         <div className="info-banner" role="alert" style={{ background: 'rgba(56, 139, 253, 0.15)', borderLeft: '4px solid #388bfd', padding: '1rem', borderRadius: '6px', marginBottom: '1.5rem', color: '#f0f6fc' }}>
-          <strong style={{ color: '#58a6ff', fontSize: '1.05rem' }}>ℹ️ Preserved Last-Known-Good Model (Revision {project.last_known_good_model_revision})</strong>
+          <strong style={{ color: '#58a6ff', fontSize: '1.05rem' }}> Preserved Last-Known-Good Model (Revision {project.last_known_good_model_revision})</strong>
           <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: '#c9d1d9' }}>
             Per <strong>ADR-005</strong>, the latest generation attempt encountered an error, so the previous successful model (Revision {project.last_known_good_model_revision}) is preserved as current.
           </p>
         </div>
       )}
 
-      {/* Stage S9 — Bounded Natural Language Model Revisions Panel */}
+      {/* Stage S9 Bounded Natural Language Model Revisions Panel */}
       <div className="card revision-panel" style={{ background: '#161b22', border: '1px solid #00e676', borderRadius: '8px', padding: '1.5rem', marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.2rem', marginTop: 0, marginBottom: '0.5rem', color: '#00e676', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span>🤖</span> Safe Model Revisions (Zoo Agent API)
+          <span>-</span> Safe Model Revisions (Zoo Agent API)
         </h2>
         <p style={{ fontSize: '0.88rem', color: '#c9d1d9', marginTop: 0, marginBottom: '1rem' }}>
           Request natural-language adjustments to transition length, lateral offsets, angle inclination, wall thickness, or clearances.
@@ -263,7 +263,7 @@ export create_adapter()`;
         {proposal && (
           <div className="proposal-review-box" style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', padding: '1.25rem', marginTop: '1rem' }}>
             <h3 style={{ margin: '0 0 0.5rem 0', color: '#58a6ff', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🔍</span> Proposed Parameter Revision Review
+              <span></span> Proposed Parameter Revision Review
             </h3>
             <p style={{ color: '#f0f6fc', fontSize: '0.92rem', marginBottom: '1rem' }}>
               <strong>Summary:</strong> {proposal.summary}
@@ -316,7 +316,7 @@ export create_adapter()`;
                     disabled={isConfirming}
                     style={{ background: '#00e676', color: '#0d1117', border: 'none', fontWeight: 'bold' }}
                   >
-                    {isConfirming ? 'Compiling & Generating 3D Model...' : '✓ Confirm & Regenerate 3D Model'}
+                    {isConfirming ? 'Compiling & Generating 3D Model...' : ' Confirm & Regenerate 3D Model'}
                   </button>
                 </div>
               </>
@@ -324,7 +324,7 @@ export create_adapter()`;
 
             {!proposal.is_valid && (
               <div style={{ background: 'rgba(248, 81, 73, 0.15)', borderLeft: '4px solid #f85149', padding: '0.75rem 1rem', borderRadius: '6px', marginTop: '0.5rem' }}>
-                <strong style={{ color: '#f85149', display: 'block', marginBottom: '0.25rem' }}>⛔ Revision Request Rejected by Safety &amp; Boundary Controls:</strong>
+                <strong style={{ color: '#f85149', display: 'block', marginBottom: '0.25rem' }}> Revision Request Rejected by Safety &amp; Boundary Controls:</strong>
                 <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#c9d1d9', fontSize: '0.88rem' }}>
                   {proposal.validation_errors.map((err, idx) => (
                     <li key={idx} style={{ marginBottom: '0.25rem' }}>
@@ -364,7 +364,7 @@ export create_adapter()`;
         {/* Left Column: 3D Model Preview Card */}
         <div className="card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.25rem' }}>
           <h2 style={{ fontSize: '1.1rem', marginTop: 0, marginBottom: '1rem', color: '#f0f6fc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>📦</span> 3D Geometry Preview
+            <span></span> 3D Geometry Preview
           </h2>
 
           <div className="preview-canvas-wrapper" style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
@@ -397,11 +397,11 @@ export create_adapter()`;
           <div className="preview-metadata-grid" style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
             <div style={{ background: '#0d1117', padding: '0.5rem', borderRadius: '4px', border: '1px solid #21262d' }}>
               <span style={{ color: '#8b949e', display: 'block' }}>Estimated Volume:</span>
-              <strong style={{ color: '#3fb950' }}>{activeRev?.volume_cm3 ? activeRev.volume_cm3.toFixed(2) : '38.45'} cm³</strong>
+              <strong style={{ color: '#3fb950' }}>{activeRev?.volume_cm3 ? activeRev.volume_cm3.toFixed(2) : '38.45'} cm3</strong>
             </div>
             <div style={{ background: '#0d1117', padding: '0.5rem', borderRadius: '4px', border: '1px solid #21262d' }}>
               <span style={{ color: '#8b949e', display: 'block' }}>Bounding Box:</span>
-              <strong style={{ color: '#c9d1d9' }}>60 × 60 × {conn.length_mm} mm</strong>
+              <strong style={{ color: '#c9d1d9' }}>60 - 60 - {conn.length_mm} mm</strong>
             </div>
           </div>
         </div>
@@ -409,7 +409,7 @@ export create_adapter()`;
         {/* Right Column: Physical & Fabrication Specifications */}
         <div className="card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.25rem' }}>
           <h2 style={{ fontSize: '1.1rem', marginTop: 0, marginBottom: '1rem', color: '#f0f6fc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>📋</span> Adapter Candidate Specifications
+            <span></span> Adapter Candidate Specifications
           </h2>
 
           <div className="spec-table" style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -417,7 +417,7 @@ export create_adapter()`;
             <div style={{ background: '#0d1117', padding: '0.75rem', borderRadius: '6px', border: '1px solid #21262d' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                 <strong style={{ color: '#58a6ff' }}>Interface A (Source Mating Face):</strong>
-                <span style={{ color: '#3fb950', fontSize: '0.8rem', fontWeight: 'bold' }}>✓ Approved</span>
+                <span style={{ color: '#3fb950', fontSize: '0.8rem', fontWeight: 'bold' }}> Approved</span>
               </div>
               <div style={{ color: '#c9d1d9' }}>
                 Profile: <strong>{interfaceA.profile_type}</strong> | Dimensions:{' '}
@@ -429,7 +429,7 @@ export create_adapter()`;
             <div style={{ background: '#0d1117', padding: '0.75rem', borderRadius: '6px', border: '1px solid #21262d' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                 <strong style={{ color: '#58a6ff' }}>Interface B (Target Mating Face):</strong>
-                <span style={{ color: '#3fb950', fontSize: '0.8rem', fontWeight: 'bold' }}>✓ Approved</span>
+                <span style={{ color: '#3fb950', fontSize: '0.8rem', fontWeight: 'bold' }}> Approved</span>
               </div>
               <div style={{ color: '#c9d1d9' }}>
                 Profile: <strong>{interfaceB.profile_type}</strong> | Dimensions:{' '}
@@ -441,7 +441,7 @@ export create_adapter()`;
             <div style={{ background: '#0d1117', padding: '0.75rem', borderRadius: '6px', border: '1px solid #21262d' }}>
               <strong style={{ color: '#d29922', display: 'block', marginBottom: '0.25rem' }}>Connection Parameters:</strong>
               <div style={{ color: '#c9d1d9' }}>
-                Mode: <strong>{conn.mode}</strong> | Length: <strong>{conn.length_mm} mm</strong> | Offsets: X={conn.offset_x_mm}mm, Y={conn.offset_y_mm}mm | Angle: {conn.angle_deg}°
+                Mode: <strong>{conn.mode}</strong> | Length: <strong>{conn.length_mm} mm</strong> | Offsets: X={conn.offset_x_mm}mm, Y={conn.offset_y_mm}mm | Angle: {conn.angle_deg} deg
               </div>
             </div>
 
@@ -460,7 +460,7 @@ export create_adapter()`;
       {activeRev?.warnings && activeRev.warnings.length > 0 && (
         <div className="card" style={{ background: '#161b22', border: '1px solid #d29922', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: '0 0 0.5rem 0', color: '#d29922', fontSize: '1rem' }}>
-            ⚠️ Model Warnings ({activeRev.warnings.length})
+              Model Warnings ({activeRev.warnings.length})
           </h3>
           <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#c9d1d9', fontSize: '0.9rem' }}>
             {activeRev.warnings.map((w, idx) => (
@@ -475,7 +475,7 @@ export create_adapter()`;
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.1rem', margin: 0, color: '#f0f6fc' }}>
-              📄 Deterministic KCL Code Artifact
+                Deterministic KCL Code Artifact
             </h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
               Deterministic KCL script compiled from the approved canonical project schema per ADR-001 &amp; ADR-002.
@@ -486,7 +486,7 @@ export create_adapter()`;
               {showKclCode ? 'Hide KCL Code' : 'View KCL Code'}
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyKcl}>
-              {copiedKcl ? '✓ Copied!' : 'Copy KCL'}
+              {copiedKcl ? ' Copied!' : 'Copy KCL'}
             </button>
             <button type="button" className="btn btn-primary btn-sm" onClick={handleDownloadKcl}>
               Download .kcl
@@ -508,7 +508,7 @@ export create_adapter()`;
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f0f6fc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🚀</span> CAD File Export
+              <span></span> CAD File Export
             </h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
               Download STL, STEP, and KCL artifacts from model revision #{currentRevNumber || 1}. Inspect exported files before manufacturing.
@@ -527,7 +527,7 @@ export create_adapter()`;
         {isStale && (
           <div className="export-notice-banner" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.25rem' }}>
             <strong style={{ color: '#d29922', fontSize: '0.95rem' }}>
-              ⚠️ Model is Stale — Export Blocked
+                Model is Stale Export Blocked
             </strong>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#c9d1d9' }}>
               Upstream parameters have changed since last generation. Re-generate the 3D model in Step 4 before exporting.
@@ -556,7 +556,7 @@ export create_adapter()`;
                 target="_blank"
                 rel="noreferrer"
               >
-                📥 Download STL (.stl)
+                  Download STL (.stl)
               </a>
             </div>
           </div>
@@ -581,7 +581,7 @@ export create_adapter()`;
                 target="_blank"
                 rel="noreferrer"
               >
-                📥 Download STEP (.step)
+                  Download STEP (.step)
               </a>
             </div>
           </div>
@@ -606,7 +606,7 @@ export create_adapter()`;
                 target="_blank"
                 rel="noreferrer"
               >
-                📥 Download KCL (.kcl)
+                  Download KCL (.kcl)
               </a>
             </div>
           </div>
@@ -616,10 +616,10 @@ export create_adapter()`;
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingTop: '1rem', borderTop: '1px solid #30363d' }}>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button type="button" className="btn btn-secondary" onClick={() => navigate('/step3')}>
-              ← Revise Parameters (Step 3)
+                Revise Parameters (Step 3)
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => navigate('/step4')}>
-              ⚡ Re-generate Model (Step 4)
+                Re-generate Model (Step 4)
             </button>
           </div>
 
@@ -636,7 +636,7 @@ export create_adapter()`;
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="modal-card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.5rem', maxWidth: '480px', width: '90%', color: '#f0f6fc' }}>
             <h3 style={{ marginTop: 0, color: '#f85149', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>⚠️</span> Restart Workflow?
+              <span></span> Restart Workflow?
             </h3>
             <p style={{ fontSize: '0.9rem', color: '#c9d1d9' }}>
               Are you sure you want to start a new project? Your current active project state will be reset in this browser session.

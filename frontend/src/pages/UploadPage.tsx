@@ -142,15 +142,15 @@ export const UploadPage: React.FC<UploadPageProps> = ({
       setAnalysisResult(result);
 
       // 3. Refresh project so App-level state reflects updated source_image_ref and
-      //    workflow state (interface_a_review_required) before navigation.
-      //    Without this, ProtectedRoute reads stale project where source_image_ref
-      //    is null and redirects back to /step1 instead of allowing /step1/analysis.
+      //  workflow state (interface_a_review_required) before navigation.
+      //  Without this, ProtectedRoute reads stale project where source_image_ref
+      //  is null and redirects back to /step1 instead of allowing /step1/analysis.
       setLoadingText('Refreshing project state...');
       let refreshedProject: Project | null = null;
       try {
         refreshedProject = await fetchProject(project.project_id, project.project_token);
       } catch (refreshErr: unknown) {
-        // Project refresh failed after successful analysis — show an inline error
+        // Project refresh failed after successful analysis show an inline error
         // so the user can retry without losing the selected image (ADR-013).
         if (import.meta.env.DEV) {
           console.error(
@@ -188,7 +188,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   if (!isPrerequisiteMet) {
     return (
       <div className="upload-page container">
-        <h1 className="page-title">{interfaceName} — Prerequisite Required</h1>
+        <h1 className="page-title">{interfaceName} - Prerequisite Required</h1>
         <div className="error-banner" role="alert">
           <h2>Prerequisite Step Incomplete</h2>
           <p>Interface A must be reviewed and approved before you can upload an image for Interface B.</p>
@@ -206,7 +206,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 
   return (
     <div className="upload-page container">
-      <h1 className="page-title">{interfaceName} — Upload Image or Sketch</h1>
+      <h1 className="page-title">{interfaceName} - Upload Image or Sketch</h1>
       <p className="page-subtitle">
         Capture the physical mating face that connects to the target product.
       </p>
@@ -221,14 +221,14 @@ export const UploadPage: React.FC<UploadPageProps> = ({
               className="btn btn-primary btn-sm"
               onClick={() => handleUploadAndAnalyze()}
             >
-              🔄 Retry Analysis
+                Retry Analysis
             </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => handleUploadAndAnalyze('mock')}
             >
-              ⚙️ Switch to Demo / Mock Profile
+                Switch to Demo / Mock Profile
             </button>
             <button
               type="button"
@@ -257,7 +257,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                 onDrop={handleDrop}
               >
                 <div className="dropzone-content">
-                  <div className="dropzone-icon" aria-hidden="true">📷</div>
+                  <div className="dropzone-icon" aria-hidden="true"></div>
                   <p className="dropzone-text">Drag &amp; drop your interface image here</p>
                   <p className="dropzone-or">or</p>
                   <label
@@ -338,12 +338,12 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                       data-testid="known-measurement-summary"
                       aria-label={`Known measurement: ${knownMeasurementValue} mm ${knownMeasurementDimension}`}
                     >
-                      📏 Known measurement noted:{' '}
-                      <strong>{knownMeasurementValue} mm</strong>{' '}
+                        Known measurement noted:{' '}
+                      - <strong>{knownMeasurementValue} mm</strong>{' '}
                       <span className="known-measurement-dim">
                         ({knownMeasurementDimension.replace(/_/g, ' ')})
                       </span>{' '}
-                      — scale will be confirmed after the trace.
+                        scale will be confirmed after the trace.
                     </p>
                   )}
                   <button
@@ -380,7 +380,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
           <p>
             Mode:{' '}
             <span className="badge" style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: analysisResult.provenance === 'image_extracted' ? '#1f6feb' : '#8b949e', color: '#fff' }}>
-              {analysisResult.provenance === 'image_extracted' ? '🤖 AI Vision Extracted' : '⚙️ Demo / Mock Profile'}
+              {analysisResult.provenance === 'image_extracted' ? '- AI Vision Extracted' : ' Demo / Mock Profile'}
             </span>
           </p>
         </div>
@@ -390,4 +390,3 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 };
 
 export default UploadPage;
-

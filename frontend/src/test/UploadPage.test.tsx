@@ -76,7 +76,7 @@ describe('UploadPage Component', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Interface A — Upload Image or Sketch')).toBeInTheDocument();
+    expect(screen.getByText('Interface A - Upload Image or Sketch')).toBeInTheDocument();
     expect(screen.getByText(/Drag & drop your interface image here/i)).toBeInTheDocument();
     expect(screen.getByText('Image Guidance')).toBeInTheDocument();
     expect(screen.getByText(/GOOD CAPTURE/i)).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('UploadPage Component', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Interface B — Prerequisite Required')).toBeInTheDocument();
+    expect(screen.getByText('Interface B - Prerequisite Required')).toBeInTheDocument();
     expect(screen.getByText(/Interface A must be reviewed and approved/i)).toBeInTheDocument();
   });
 
@@ -255,8 +255,8 @@ describe('UploadPage Component', () => {
   });
 });
 
-// ─── S10.1 Regression Suite: Interface A Analysis Navigation Fix ───────────────
-describe('S10.1 Regression: Analysis → Navigation', () => {
+// S10.1 Regression Suite: Interface A Analysis Navigation Fix
+describe('S10.1 Regression: Analysis Navigation', () => {
   const mockAnalysisResult = {
     profile_type: 'circle' as const,
     candidate_points: [],
@@ -348,7 +348,7 @@ describe('S10.1 Regression: Analysis → Navigation', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toBeInTheDocument();
     });
-    // Button is no longer in DOM while loading spinner is shown — verifying
+    // Button is no longer in DOM while loading spinner is shown verifying
     // it cannot be double-clicked (spinner replaces preview-card).
     expect(screen.queryByText('Use This Image and Analyze')).not.toBeInTheDocument();
   });
@@ -418,7 +418,7 @@ describe('S10.1 Regression: Analysis → Navigation', () => {
     fireEvent.click(screen.getByText('Use This Image and Analyze'));
 
     await waitFor(() => {
-      // Error shown inline — user is NOT silently dropped back to upload screen
+      // Error shown inline user is NOT silently dropped back to upload screen
       expect(
         screen.getByText(/Analysis succeeded but the project state could not be refreshed/i)
       ).toBeInTheDocument();
@@ -449,7 +449,7 @@ describe('S10.1 Regression: Analysis → Navigation', () => {
       ).toBeInTheDocument();
     });
 
-    // fetchProject must NOT have been called — failure happened before refresh
+    // fetchProject must NOT have been called failure happened before refresh
     expect(apiModule.fetchProject).not.toHaveBeenCalled();
   });
 });

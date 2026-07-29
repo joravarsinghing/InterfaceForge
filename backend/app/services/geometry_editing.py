@@ -29,14 +29,19 @@ def validate_scale_and_dimensions(interface: Interface) -> List[str]:
     if not scale_cal or scale_cal.pixel_distance <= 0 or scale_cal.real_distance_mm <= 0:
         return warnings
 
+    scale_factor = (
+        (getattr(scale_cal, "scale_factor", 0.0) or (scale_cal.real_distance_mm / scale_cal.pixel_distance))
+        if getattr(scale_cal, "method", "known_measurement") == "two_point_trace"
+        else 1.0
+    )
     outer = interface.traced_outer_contour
     outer_w_mm = 0.0
     outer_h_mm = 0.0
     if outer and outer.points:
         xs = [p.x for p in outer.points]
         ys = [p.y for p in outer.points]
-        outer_w_mm = max(xs) - min(xs)
-        outer_h_mm = max(ys) - min(ys)
+        outer_w_mm = (max(xs) - min(xs)) * scale_factor
+        outer_h_mm = (max(ys) - min(ys)) * scale_factor
 
     for dim in interface.dimensions:
         if dim.consistency_state == "unmapped" or "not mapped" in dim.label.lower():
@@ -71,7 +76,7 @@ def validate_scale_and_dimensions(interface: Interface) -> List[str]:
                 cx = sum(h_xs) / len(h_xs)
                 cy = sum(h_ys) / len(h_ys)
                 radii = [math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) for p in target_hole.points]
-                expected_mm = (sum(radii) / len(radii)) * 2.0
+                expected_mm = (sum(radii) / len(radii)) * 2.0 * scale_factor
 
         if expected_mm is not None and expected_mm > 0:
             diff_pct = abs(dim.value - expected_mm) / expected_mm

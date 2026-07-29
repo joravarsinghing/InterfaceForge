@@ -1,10 +1,10 @@
 /**
- * TracedProfileSvgViewer — renders traced closed profile outer contour and inner holes as SVG.
- * S10.3 — read-only display for review page.
- */
+  * TracedProfileSvgViewer renders traced closed profile outer contour and inner holes as SVG.
+  * S10.3 read-only display for review page.
+  */
 
 import React from 'react';
-import type { TracedContour } from '../types/schema';
+import type { Point2D, TracedContour } from '../types/schema';
 
 interface TracedProfileSvgViewerProps {
   outerContour: TracedContour | null | undefined;
@@ -15,11 +15,15 @@ interface TracedProfileSvgViewerProps {
   onSelectFeature?: (id: string) => void;
   isOverlay?: boolean;
   isExample?: boolean;
+  calibrationMode?: boolean;
+  calibrationPointA?: Point2D | null;
+  calibrationPointB?: Point2D | null;
+  onCalibrationPick?: (point: Point2D) => void;
 }
 
 /**
- * Compute the bounding box of all points across outer and hole contours.
- */
+  * Compute the bounding box of all points across outer and hole contours.
+  */
 function computeBBox(
   outer: TracedContour | null | undefined,
   holes: TracedContour[]
@@ -40,8 +44,22 @@ function computeBBox(
 }
 
 /**
- * Convert contour points to an SVG polygon points string, scaled to viewport.
- */
+  * Convert contour points to an SVG polygon points string, scaled to viewport.
+  */
+function traceToSvgPoint(
+  point: { x: number; y: number },
+  minX: number,
+  minY: number,
+  scaleX: number,
+  scaleY: number,
+  svgHeight: number
+): Point2D {
+  return {
+    x: (point.x - minX) * scaleX,
+    y: svgHeight - (point.y - minY) * scaleY,
+  };
+}
+
 function toSvgPoints(
   points: { x: number; y: number }[],
   minX: number,
@@ -52,9 +70,8 @@ function toSvgPoints(
 ): string {
   return points
     .map((p) => {
-      const sx = (p.x - minX) * scaleX;
-      const sy = svgHeight - (p.y - minY) * scaleY;
-      return `${sx.toFixed(2)},${sy.toFixed(2)}`;
+      const svgPoint = traceToSvgPoint(p, minX, minY, scaleX, scaleY, svgHeight);
+      return `${svgPoint.x.toFixed(2)},${svgPoint.y.toFixed(2)}`;
     })
     .join(' ');
 }
@@ -70,6 +87,10 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
   onSelectFeature,
   isOverlay = false,
   isExample = false,
+  calibrationMode = false,
+  calibrationPointA = null,
+  calibrationPointB = null,
+  onCalibrationPick,
 }) => {
   // If isExample or no outerContour, render a clear example demonstration profile illustration
   const displayOuter = isExample || !outerContour || outerContour.points.length < 3
@@ -146,6 +167,48 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
   const actualH = rangeY * scale + PADDING * 2;
 
   const isOuterHighlighted = highlightFeatureId === 'outer_contour';
+  const markerA = calibrationPointA
+    ? traceToSvgPoint(calibrationPointA, bbox.minX, bbox.minY, scale, scale, drawH)
+    : null;
+  const markerB = calibrationPointB
+    ? traceToSvgPoint(calibrationPointB, bbox.minX, bbox.minY, scale, scale, drawH)
+    : null;
+  const handleSvgClick = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!calibrationMode || !onCalibrationPick) return;
+    const svg = event.currentTarget;
+    let local: Point2D | null = null;
+    if (typeof svg.createSVGPoint === 'function') {
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return;
+      local = pt.matrixTransform(ctm.inverse());
+    } else {
+      const rect = svg.getBoundingClientRect();
+      const attrViewBox = (svg.getAttribute('viewBox') || `0 0 ${actualW} ${actualH}`)
+        .split(/\s+/)
+        .map((value) => parseFloat(value));
+      const viewBox = {
+        x: attrViewBox[0] || 0,
+        y: attrViewBox[1] || 0,
+        width: attrViewBox[2] || actualW,
+        height: attrViewBox[3] || actualH,
+      };
+      const relX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
+      const relY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
+      local = {
+        x: viewBox.x + relX * viewBox.width,
+        y: viewBox.y + relY * viewBox.height,
+      };
+    }
+    const xInGroup = local.x - PADDING;
+    const yInGroup = local.y - PADDING;
+    onCalibrationPick({
+      x: bbox.minX + xInGroup / scale,
+      y: bbox.minY + (drawH - yInGroup) / scale,
+    });
+  };
 
   return (
     <div style={{ position: 'relative', width, height }}>
@@ -165,7 +228,7 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
             fontWeight: 600,
           }}
         >
-          EXAMPLE ILLUSTRATION — NOT YOUR MODEL
+          EXAMPLE ILLUSTRATION - NOT YOUR MODEL
         </div>
       )}
       <svg
@@ -179,7 +242,9 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           display: 'block',
           background: isOverlay ? 'transparent' : '#0d1117',
           borderRadius: isOverlay ? 0 : 6,
+          cursor: calibrationMode ? 'crosshair' : undefined,
         }}
+        onClick={handleSvgClick}
       >
         <g transform={`translate(${PADDING}, ${PADDING})`}>
           {/* Outer contour polygon */}
@@ -226,6 +291,32 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
               />
             );
           })}
+
+
+          {markerA && markerB && (
+            <line
+              x1={markerA.x}
+              y1={markerA.y}
+              x2={markerB.x}
+              y2={markerB.y}
+              stroke="#f0f6fc"
+              strokeWidth={1.6}
+              strokeDasharray="5 3"
+              pointerEvents="none"
+            />
+          )}
+          {markerA && (
+            <g pointerEvents="none">
+              <circle cx={markerA.x} cy={markerA.y} r={5} fill="#f85149" stroke="#ffffff" strokeWidth={1.5} />
+              <text x={markerA.x + 8} y={markerA.y - 8} fill="#ffffff" fontSize={11}>A</text>
+            </g>
+          )}
+          {markerB && (
+            <g pointerEvents="none">
+              <circle cx={markerB.x} cy={markerB.y} r={5} fill="#3fb950" stroke="#ffffff" strokeWidth={1.5} />
+              <text x={markerB.x + 8} y={markerB.y - 8} fill="#ffffff" fontSize={11}>B</text>
+            </g>
+          )}
         </g>
 
         {/* Bottom Legend */}
@@ -258,4 +349,3 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
 };
 
 export default TracedProfileSvgViewer;
-

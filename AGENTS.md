@@ -1,7 +1,7 @@
-# InterfaceForge — Agent Guidelines
+# InterfaceForge - Agent Guidelines
 
-**Project:** InterfaceForge  
-**Status:** Active agent governance  
+**Project:** InterfaceForge
+**Status:** Active agent governance
 **Priority:** Submission reliability, minimal scope, evidence-based completion
 
 ## 1. Read Before Editing
@@ -52,13 +52,13 @@ Primary supported workflow:
 
 '''
 Clean profile A
-→ provide and confirm one known measurement
-→ review and approve A
-→ repeat for profile B
-→ configure connection
-→ generate through Zoo Engine
-→ optionally confirm a bounded Zoo Agent revision
-→ export current STL, STEP, and KCL
+-> provide and confirm one known measurement
+-> review and approve A
+-> repeat for profile B
+-> configure connection
+-> generate through Zoo Engine
+-> optionally confirm a bounded Zoo Agent revision
+-> export current STL, STEP, and KCL
 '''
 
 Product boundaries:
@@ -85,6 +85,12 @@ For every task:
 - Do not commit, push, delete user work, or reset the working tree unless explicitly instructed.
 - Assume the worktree may already contain unrelated changes; preserve them.
 - Do not begin the next phase or add unrequested features.
+
+## 5A. ASCII-Only UI Text
+
+- User-facing source text must use plain ASCII characters unless a non-English language explicitly requires otherwise.
+- Do not paste emoji, smart quotes, em dashes, mojibake, or corrupted encoding into UI copy.
+- Use ASCII alternatives such as `-`, `'`, `"`, `->`, `[OK]`, and `[ERROR]`.
 
 ## 6. Approval Required Before Changing
 

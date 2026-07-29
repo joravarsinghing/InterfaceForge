@@ -1,14 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SvgProfileViewer } from '../components/SvgProfileViewer';
 import { TracedProfileSvgViewer } from '../components/TracedProfileSvgViewer';
-import { approveInterface, patchInterface, getInterfaceImageUrl, getInterfaceArtifactUrl } from '../services/api';
+import {
+  approveInterface,
+  calibrateInterfaceScale,
+  getInterfaceArtifactUrl,
+  getInterfaceImageUrl,
+  patchInterface,
+  resetInterfaceScaleCalibration,
+  snapScalePoint,
+} from '../services/api';
 import {
   Dimension,
   DimensionProvenance,
   InterfaceDefinition,
   ProfileType,
   Project,
+  Point2D,
   ScaleCalibration,
 } from '../types/schema';
 
@@ -61,6 +70,16 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const [customRealMm, setCustomRealMm] = useState<string>(
     (targetInterface?.scale_calibration?.real_distance_mm || 40.0).toString()
   );
+  const [calibrationMode, setCalibrationMode] = useState<boolean>(false);
+  const [calibrationPointA, setCalibrationPointA] = useState<Point2D | null>(
+    targetInterface?.scale_calibration?.point_a || null
+  );
+  const [calibrationPointB, setCalibrationPointB] = useState<Point2D | null>(
+    targetInterface?.scale_calibration?.point_b || null
+  );
+  const calibrationPointARef = useRef<Point2D | null>(targetInterface?.scale_calibration?.point_a || null);
+  const calibrationPointBRef = useRef<Point2D | null>(targetInterface?.scale_calibration?.point_b || null);
+  const [calibrationDraftError, setCalibrationDraftError] = useState<string | null>(null);
   // Primitive fallback toggle state
   const [primitiveFallbackActive, setPrimitiveFallbackActive] = useState<boolean>(
     targetInterface?.primitive_fallback_active || false
@@ -74,6 +93,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       if (targetInterface.scale_calibration) {
         setScaleCalibration(targetInterface.scale_calibration);
         setCustomRealMm(targetInterface.scale_calibration.real_distance_mm.toString());
+        const pointA = targetInterface.scale_calibration.point_a || null;
+        const pointB = targetInterface.scale_calibration.point_b || null;
+        setCalibrationPointA(pointA);
+        setCalibrationPointB(pointB);
+        calibrationPointARef.current = pointA;
+        calibrationPointBRef.current = pointB;
       }
       setPrimitiveFallbackActive(!!targetInterface.primitive_fallback_active);
       if (targetInterface.approved) {
@@ -86,84 +111,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     setImageError(false);
   }, [targetInterface]);
 
-  // Handle profile type changes & supply standard default dimensions per shape
-  const handleProfileTypeChange = (newType: ProfileType) => {
-    setProfileType(newType);
-    if (newType === 'circle') {
-      setDimensions([
-        {
-          id: 'outer_diameter',
-          label: 'Outer Diameter',
-          value: 50.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: true,
-        },
-        {
-          id: 'wall_thickness',
-          label: 'Wall Thickness',
-          value: 5.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: false,
-        },
-      ]);
-    } else if (newType === 'rectangle') {
-      setDimensions([
-        {
-          id: 'width',
-          label: 'Width',
-          value: 60.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: true,
-        },
-        {
-          id: 'height',
-          label: 'Height',
-          value: 40.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: true,
-        },
-      ]);
-    } else if (newType === 'rounded_rectangle') {
-      setDimensions([
-        {
-          id: 'width',
-          label: 'Width',
-          value: 80.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: true,
-        },
-        {
-          id: 'height',
-          label: 'Height',
-          value: 50.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: true,
-        },
-        {
-          id: 'corner_radius',
-          label: 'Corner Radius',
-          value: 5.0,
-          unit: 'mm',
-          provenance: 'user_entered',
-          confidence: 1.0,
-          critical: false,
-        },
-      ]);
-    }
-  };
-
   // Dimension editing handlers
   const handleDimensionValueChange = (index: number, valStr: string) => {
     const val = parseFloat(valStr);
@@ -173,6 +120,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       value: isNaN(val) ? 0 : val,
     };
     setDimensions(updated);
+    if (scaleCalibration.confirmed) {
+      setScaleCalibration({ ...scaleCalibration, confirmed: false });
+    }
   };
 
   const handleProvenanceChange = (
@@ -250,13 +200,107 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     }
   };
 
+  const saveTwoPointCalibration = async (
+    confirmed: boolean,
+    realMmValue?: number,
+    pointAOverride?: Point2D,
+    pointBOverride?: Point2D
+  ) => {
+    const pointA = pointAOverride || calibrationPointA;
+    const pointB = pointBOverride || calibrationPointB;
+    if (!project || !pointA || !pointB) return;
+    const realMm = realMmValue ?? parseFloat(customRealMm);
+    setCalibrationDraftError(null);
+    try {
+      const updatedProj = await calibrateInterfaceScale(
+        project.project_id,
+        interfaceId,
+        {
+          point_a: pointA,
+          point_b: pointB,
+          real_distance_mm: realMm,
+          confirmed,
+        },
+        project.project_token
+      );
+      const updatedInterface = interfaceId === 'interface_a' ? updatedProj.interface_a : updatedProj.interface_b;
+      if (updatedInterface.scale_calibration) {
+        setScaleCalibration(updatedInterface.scale_calibration);
+        const pointA = updatedInterface.scale_calibration.point_a || null;
+        const pointB = updatedInterface.scale_calibration.point_b || null;
+        setCalibrationPointA(pointA);
+        setCalibrationPointB(pointB);
+        calibrationPointARef.current = pointA;
+        calibrationPointBRef.current = pointB;
+        setCustomRealMm(updatedInterface.scale_calibration.real_distance_mm.toString());
+      }
+      if (onProjectUpdate) onProjectUpdate(updatedProj);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update scale calibration';
+      setCalibrationDraftError(message);
+      setError(message);
+    }
+  };
+
+  const handleCalibrationPick = async (point: Point2D) => {
+    if (!project) return;
+    setCalibrationDraftError(null);
+    try {
+      const snapped = await snapScalePoint(project.project_id, interfaceId, point, project.project_token);
+      const currentA = calibrationPointARef.current;
+      const currentB = calibrationPointBRef.current;
+      const nextA = currentA && !currentB ? currentA : snapped.point;
+      const nextB = currentA && !currentB ? snapped.point : null;
+      setCalibrationPointA(nextA);
+      setCalibrationPointB(nextB);
+      calibrationPointARef.current = nextA;
+      calibrationPointBRef.current = nextB;
+      setScaleCalibration({
+        ...scaleCalibration,
+        method: 'two_point_trace',
+        source: 'user_calibration',
+        reference_dimension: 'two_point_distance',
+        point_a: nextA,
+        point_b: nextB,
+        pixel_distance: nextA && nextB ? Math.hypot(nextA.x - nextB.x, nextA.y - nextB.y) : 0,
+        scale_factor: 0,
+        confirmed: false,
+      });
+      if (nextA && nextB) {
+        await saveTwoPointCalibration(false, undefined, nextA, nextB);
+      }
+    } catch (err: unknown) {
+      setCalibrationDraftError(err instanceof Error ? err.message : 'Failed to snap calibration point');
+    }
+  };
+
+  const handleResetCalibration = async () => {
+    if (!project) return;
+    setCalibrationPointA(null);
+    setCalibrationPointB(null);
+    calibrationPointARef.current = null;
+    calibrationPointBRef.current = null;
+    setScaleCalibration({ ...scaleCalibration, confirmed: false, point_a: null, point_b: null, pixel_distance: 0, scale_factor: 0 });
+    try {
+      const updatedProj = await resetInterfaceScaleCalibration(project.project_id, interfaceId, project.project_token);
+      if (onProjectUpdate) onProjectUpdate(updatedProj);
+    } catch (err: unknown) {
+      setCalibrationDraftError(err instanceof Error ? err.message : 'Failed to reset calibration');
+    }
+  };
+
   // Scale Confirmation Handler
   const handleConfirmScale = async (realMmOverride?: number) => {
     if (!project) return;
     const realMm = realMmOverride ?? parseFloat(customRealMm) ?? 40.0;
+    if (calibrationPointA && calibrationPointB) {
+      await saveTwoPointCalibration(true, realMm);
+      return;
+    }
     const updatedScale = {
       ...scaleCalibration,
       real_distance_mm: realMm,
+      scale_factor: scaleCalibration.pixel_distance > 0 ? realMm / scaleCalibration.pixel_distance : scaleCalibration.scale_factor || 0,
       confirmed: true,
     };
     setScaleCalibration(updatedScale);
@@ -419,134 +463,97 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const getProvenanceBadge = (provenance: DimensionProvenance) => {
     switch (provenance) {
       case 'user_entered':
-        return { text: 'User Entered', icon: 'ðŸ‘¤', className: 'badge-user' };
+        return { text: 'User Entered', icon: 'User', className: 'badge-user' };
       case 'image_extracted':
-        return { text: 'Image Extracted', icon: 'ðŸ“·', className: 'badge-extracted' };
+        return { text: 'Image Extracted', icon: 'Image', className: 'badge-extracted' };
       case 'system_inferred':
-        return { text: 'System Inferred', icon: 'âš™ï¸', className: 'badge-inferred' };
+        return { text: 'System Inferred', icon: 'System', className: 'badge-inferred' };
       case 'unresolved':
       default:
-        return { text: 'Unresolved', icon: 'â“', className: 'badge-unresolved' };
+        return { text: 'Unresolved', icon: 'Open', className: 'badge-unresolved' };
     }
   };
 
+  const formatProfileType = (type: ProfileType) => {
+    switch (type) {
+      case 'circle':
+        return 'Circle';
+      case 'rectangle':
+        return 'Rectangle';
+      case 'rounded_rectangle':
+        return 'Rounded rectangle';
+      case 'traced_closed':
+        return 'Traced closed profile';
+      default:
+        return type;
+    }
+  };
+
+  const getAnalysisProviderLabel = () => {
+    const prov = targetInterface?.analysis_provider_name;
+    if (!prov || prov === 'mock') return 'Mock analysis';
+    if (prov === 'gemini') return 'Gemini Vision';
+    return prov;
+  };
   return (
     <div className="profile-review-page container">
       <header className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h1 className="page-title">{interfaceName} â€” Profile Review & Approval</h1>
+        <h1 className="page-title">{interfaceName} - Profile Review & Approval</h1>
         <p className="page-subtitle">
           Review extracted SVG profile, edit parameters, and confirm approval.
         </p>
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-          {/* S10.3: Provider-driven analysis provenance badge */}
-          {(() => {
-            const prov = targetInterface?.analysis_provider_name;
-            if (!prov || prov === 'mock') {
-              return (
-                <span
-                  id="analysis-provenance-badge"
-                  className="badge"
-                  style={{
-                    padding: '0.25rem 0.6rem',
-                    borderRadius: '4px',
-                    fontSize: '0.85rem',
-                    background: '#6e7681',
-                    color: '#ffffff',
-                  }}
-                  title="Analysis ran in deterministic mock mode â€” output is demo data"
-                >
-                  ðŸ§ª Mock Analysis â€” Demo Output
-                </span>
-              );
-            }
-            if (prov === 'gemini') {
-              return (
-                <span
-                  id="analysis-provenance-badge"
-                  className="badge"
-                  style={{
-                    padding: '0.25rem 0.6rem',
-                    borderRadius: '4px',
-                    fontSize: '0.85rem',
-                    background: '#1f6feb',
-                    color: '#ffffff',
-                  }}
-                  title="Analysis ran using Gemini Vision multimodal AI"
-                >
-                  ðŸ¤– Gemini Vision
-                </span>
-              );
-            }
-            // Generic provider label for future providers
-            return (
-              <span
-                id="analysis-provenance-badge"
-                className="badge"
-                style={{
-                  padding: '0.25rem 0.6rem',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  background: '#1f6feb',
-                  color: '#ffffff',
-                }}
-              >
-                ðŸ¤– {prov}
-              </span>
-            );
-          })()}
-          {/* Verification Status Badge */}
-          {(() => {
-            if (primitiveFallbackActive) {
-              return (
-                <span
-                  id="verification-status-badge"
-                  className="badge"
-                  style={{
-                    padding: '0.25rem 0.6rem',
-                    borderRadius: '4px',
-                    fontSize: '0.85rem',
-                    background: '#9e6a03',
-                    color: '#ffffff',
-                  }}
-                  title="Primitive fallback active"
-                >
-                  Warning: Simplified envelope - not the exact cross-section
-                </span>
-              );
-            }
-            if (isTracedProfile) {
-              return (
-                <span
-                  id="verification-status-badge"
-                  className="badge"
-                  style={{
-                    padding: '0.25rem 0.6rem',
-                    borderRadius: '4px',
-                    fontSize: '0.85rem',
-                    background: isFormValid ? '#238636' : '#da3633',
-                    color: '#ffffff',
-                  }}
-                >
-                  {isFormValid ? 'âœ“ Trace ready for approval review' : 'âš ï¸ Trace requires correction'}
-                </span>
-              );
-            }
-            return (
-              <span
-                id="verification-status-badge"
-                className="badge"
-                style={{
-                  padding: '0.25rem 0.6rem',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  background: '#238636',
-                  color: '#ffffff',
-                }}
-              >
-                âœ“ Standard profile ready for approval review
-              </span>
-            );
-          })()}
+          <span
+            id="analysis-provenance-badge"
+            className="badge"
+            style={{
+              padding: '0.25rem 0.6rem',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              background: targetInterface?.analysis_provider_name === 'gemini' ? '#1f6feb' : '#6e7681',
+              color: '#ffffff',
+            }}
+            title={targetInterface?.analysis_provider_name === 'gemini' ? 'Analysis ran using Gemini Vision' : 'Analysis provider'}
+          >
+            {getAnalysisProviderLabel()}
+          </span>
+          <span
+            id="verification-status-badge"
+            className="badge"
+            style={{
+              padding: '0.25rem 0.6rem',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              background: primitiveFallbackActive ? '#9e6a03' : isFormValid ? '#238636' : '#da3633',
+              color: '#ffffff',
+            }}
+            title={primitiveFallbackActive ? 'Primitive fallback active' : 'Profile review status'}
+          >
+            {primitiveFallbackActive
+              ? 'Simplified envelope'
+              : isTracedProfile
+              ? isFormValid
+                ? 'Trace ready'
+                : 'Needs correction'
+              : isFormValid
+              ? 'Profile ready'
+              : 'Needs correction'}
+          </span>
+          {requiresScaleConfirmation && (
+            <span
+              id="scale-status-badge"
+              className="badge"
+              style={{
+                padding: '0.25rem 0.6rem',
+                borderRadius: '4px',
+                fontSize: '0.85rem',
+                background: scaleCalibration.confirmed ? '#238636' : '#9e6a03',
+                color: '#ffffff',
+              }}
+            >
+              {scaleCalibration.confirmed ? 'Scale confirmed' : 'Scale needs confirmation'}
+            </span>
+          )}
         </div>
         {targetInterface?.approved && !isEditing && (
           <div
@@ -560,7 +567,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               marginTop: '0.5rem',
             }}
           >
-            <strong>âœ“ Status: Approved</strong> â€” Interface is approved for adapter configuration.
+            <strong>Status: Approved</strong> - Interface is approved for adapter configuration.
           </div>
         )}
       </header>
@@ -583,7 +590,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             gap: '0.75rem',
           }}
         >
-          <span style={{ fontSize: '1.4rem' }}>ðŸ’¡</span>
+          <span className="badge" style={{ fontSize: '0.8rem', padding: '0.2rem 0.55rem', background: '#1f6feb', color: '#ffffff', borderRadius: '4px' }}>Review note</span>
           <div>
             Check that the blue line follows the outside edge. Coloured internal regions are openings that may remain empty in the adapter.
           </div>
@@ -618,7 +625,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         >
           <h2>Source Image</h2>
 
-          {/* Tab switcher â€” shown for traced profiles */}
+          {/* Tab switcher - shown for traced profiles */}
           {targetInterface?.profile_type === 'traced_closed' && (
             <div
               role="tablist"
@@ -645,12 +652,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   }}
                 >
                   {tab === 'source'
-                    ? 'ðŸ“· Original'
+                    ? 'Original'
                     : tab === 'analysis'
                     ? 'Analysis crop'
                     : tab === 'trace'
-                    ? 'âœï¸ Trace'
-                    : 'ðŸ”€ Overlay'}
+                    ? 'Trace'
+                    : 'Overlay'}
                 </button>
               ))}
             </div>
@@ -784,53 +791,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             )}
           </div>
 
-          {/* Empirical Tracing Metrics (S10.5A) */}
-          {targetInterface?.profile_type === 'traced_closed' && (
-            <div
-              style={{
-                marginTop: '0.75rem',
-                padding: '0.6rem',
-                background: '#0d1117',
-                border: '1px solid #30363d',
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                color: '#8b949e',
-              }}
-            >
-              <div style={{ fontWeight: 600, color: '#58a6ff', marginBottom: '0.25rem' }}>
-                ðŸ”¬ OpenCV Profile Tracing Metrics:
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
-                <div>Raw Outer Points: <strong style={{ color: '#c9d1d9' }}>{targetInterface.raw_outer_point_count ?? (targetInterface.traced_outer_contour?.points.length ? targetInterface.traced_outer_contour.points.length * 40 : 2181)}</strong></div>
-                <div>Simplified Points: <strong style={{ color: '#c9d1d9' }}>{targetInterface.simplified_outer_point_count ?? targetInterface.traced_outer_contour?.points.length ?? 54}</strong></div>
-                <div>Inner Contours: <strong style={{ color: '#c9d1d9' }}>{targetInterface.inner_contour_count ?? targetInterface.traced_hole_contours?.length ?? 15}</strong></div>
-                <div>Tracer: <strong style={{ color: '#3fb950' }}>OpenCV Pixel Tracer V2</strong></div>
-              </div>
-            </div>
-          )}
-
-          {/* Generation-unsupported notice for traced profiles */}
-          {targetInterface?.generation_unsupported && (
-            <div
-              role="note"
-              style={{
-                marginTop: '0.75rem',
-                padding: '0.75rem',
-                background: '#161b22',
-                border: '1px solid #9e6a03',
-                borderRadius: '6px',
-                color: '#d29922',
-                fontSize: '0.85rem',
-              }}
-            >
-              <strong>Generation Limitation:</strong>
-              <br />
-              Traced profile captured successfully.
-              <br />
-              Adapter generation for arbitrary traced profiles is not yet enabled.
-            </div>
-          )}
-
           <div style={{ marginTop: '1rem', textAlign: 'center' }}>
             <button
               type="button"
@@ -863,6 +823,10 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               holeContours={targetInterface.traced_hole_contours ?? []}
               width={300}
               height={280}
+              calibrationMode={calibrationMode}
+              calibrationPointA={calibrationPointA}
+              calibrationPointB={calibrationPointB}
+              onCalibrationPick={handleCalibrationPick}
             />
           ) : (
             <SvgProfileViewer
@@ -874,46 +838,72 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         </div>
       </div>
 
-      {/* Profile Selector & Controls */}
-      <section
-        className="profile-controls-card"
+      <details
+        className="technical-details-card"
         style={{
           background: '#161b22',
           border: '1px solid #30363d',
           borderRadius: '8px',
-          padding: '1.25rem',
+          padding: '1rem 1.25rem',
           marginBottom: '1.5rem',
         }}
       >
+        <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#c9d1d9' }}>
+          Technical details
+        </summary>
         <div
-          className="form-group"
-          style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '0.75rem',
+            marginTop: '1rem',
+            fontSize: '0.85rem',
+            color: '#8b949e',
+          }}
         >
-          <label htmlFor="profile-type-select" style={{ fontWeight: 'bold' }}>
-            Detected Profile Type:
-          </label>
-          <select
-            id="profile-type-select"
-            className="form-control"
-            value={profileType}
-            disabled={targetInterface?.approved && !isEditing}
-            onChange={(e) => handleProfileTypeChange(e.target.value as ProfileType)}
-            style={{
-              padding: '0.5rem',
-              background: '#0d1117',
-              color: '#c9d1d9',
-              border: '1px solid #30363d',
-              borderRadius: '6px',
-            }}
-          >
-            <option value="circle">Circle</option>
-            <option value="rectangle">Rectangle</option>
-            <option value="rounded_rectangle">Rounded Rectangle</option>
-            <option value="traced_closed">Traced Closed (Complex)</option>
-          </select>
+          <div>
+            <strong style={{ color: '#c9d1d9' }}>Detected profile type</strong>
+            <br />
+            {formatProfileType(profileType)}
+          </div>
+          <div>
+            <strong style={{ color: '#c9d1d9' }}>Analysis provider</strong>
+            <br />
+            {getAnalysisProviderLabel()}
+          </div>
+          {isTracedProfile && (
+            <>
+              <div>
+                <strong style={{ color: '#c9d1d9' }}>Raw outer points</strong>
+                <br />
+                {targetInterface?.raw_outer_point_count ?? (targetInterface?.traced_outer_contour?.points.length ? targetInterface.traced_outer_contour.points.length * 40 : 2181)}
+              </div>
+              <div>
+                <strong style={{ color: '#c9d1d9' }}>Simplified points</strong>
+                <br />
+                {targetInterface?.simplified_outer_point_count ?? targetInterface?.traced_outer_contour?.points.length ?? 54}
+              </div>
+              <div>
+                <strong style={{ color: '#c9d1d9' }}>Inner contours</strong>
+                <br />
+                {targetInterface?.inner_contour_count ?? targetInterface?.traced_hole_contours?.length ?? 15}
+              </div>
+              <div>
+                <strong style={{ color: '#c9d1d9' }}>Tracer</strong>
+                <br />
+                OpenCV Pixel Tracer V2
+              </div>
+            </>
+          )}
+          {targetInterface?.generation_unsupported && (
+            <div style={{ gridColumn: '1 / -1', color: '#d29922' }}>
+              <strong>Generation limitation</strong>
+              <br />
+              Traced profile captured successfully. Adapter generation for arbitrary traced profiles is not yet enabled.
+            </div>
+          )}
         </div>
-      </section>
-
+      </details>
       {/* S10.4 Scale Confirmation Panel */}
       {requiresScaleConfirmation && (
         <section
@@ -936,8 +926,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               marginBottom: '0.75rem',
             }}
           >
-            <h2 style={{ fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              ðŸ“ Millimetre Scale Calibration
+            <h2 style={{ fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}> Millimetre Scale Calibration
               <span
                 id="scale-confirmation-status"
                 className="badge"
@@ -949,7 +938,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                   color: '#ffffff',
                 }}
               >
-                {scaleCalibration.confirmed ? 'âœ“ Scale Confirmed' : 'âš ï¸ Scale Unconfirmed'}
+                {scaleCalibration.confirmed ? 'Scale confirmed' : 'Scale unconfirmed'}
               </span>
             </h2>
             <div style={{ fontSize: '0.85rem', color: '#8b949e' }}>
@@ -961,6 +950,56 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             Trace scale is currently set from <strong>{scaleCalibration.real_distance_mm} mm</strong>.
             Confirm or adjust calibration before approving this profile.
           </p>
+
+          {isTracedProfile && (
+            <div
+              style={{
+                background: '#0d1117',
+                border: '1px solid #30363d',
+                borderRadius: '6px',
+                padding: '0.9rem 1rem',
+                marginBottom: '0.9rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                <strong>Two-point SVG calibration</strong>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setCalibrationMode(!calibrationMode)}
+                >
+                  {calibrationMode ? 'Exit Calibrate Scale' : 'Calibrate Scale'}
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem', fontSize: '0.85rem', color: '#c9d1d9' }}>
+                <div>A: {calibrationPointA ? `${calibrationPointA.x.toFixed(2)}, ${calibrationPointA.y.toFixed(2)}` : 'not selected'}</div>
+                <div>B: {calibrationPointB ? `${calibrationPointB.x.toFixed(2)}, ${calibrationPointB.y.toFixed(2)}` : 'not selected'}</div>
+                <div>Pixel distance: <strong>{(scaleCalibration.pixel_distance || 0).toFixed(2)} px</strong></div>
+                <div>Scale factor: <strong>{(scaleCalibration.scale_factor || (scaleCalibration.pixel_distance > 0 ? scaleCalibration.real_distance_mm / scaleCalibration.pixel_distance : 0)).toFixed(6)} mm/px</strong></div>
+              </div>
+              {calibrationDraftError && (
+                <p role="alert" style={{ color: '#f85149', margin: '0.6rem 0 0 0', fontSize: '0.85rem' }}>
+                  {calibrationDraftError}
+                </p>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={handleResetCalibration}>
+                  Reset Calibration
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={!calibrationPointA || !calibrationPointB || !Number.isFinite(parseFloat(customRealMm)) || parseFloat(customRealMm) <= 0}
+                  onClick={() => handleConfirmScale(parseFloat(customRealMm))}
+                >
+                  Confirm Two-point Scale
+                </button>
+              </div>
+              <p style={{ color: '#8b949e', margin: '0.65rem 0 0 0', fontSize: '0.8rem' }}>
+                Click the trace to select A, then B. Each click snaps to the nearest traced segment. Reset to reselect.
+              </p>
+            </div>
+          )}
 
           <div
             style={{
@@ -985,7 +1024,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                 fontWeight: 600,
               }}
             >
-              {scaleCalibration.confirmed ? `Scale Confirmed (${scaleCalibration.real_distance_mm} mm)` : `Confirm Scale (${scaleCalibration.real_distance_mm} mm)`}
+              {scaleCalibration.confirmed ? `Scale confirmed (${scaleCalibration.real_distance_mm} mm)` : `Confirm Scale (${scaleCalibration.real_distance_mm} mm)`}
             </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -998,7 +1037,10 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                 step="0.5"
                 min="1"
                 value={customRealMm}
-                onChange={(e) => setCustomRealMm(e.target.value)}
+                onChange={(e) => {
+                  setCustomRealMm(e.target.value);
+                  setScaleCalibration({ ...scaleCalibration, real_distance_mm: parseFloat(e.target.value) || 0, confirmed: false });
+                }}
                 style={{
                   width: '90px',
                   padding: '0.25rem 0.5rem',
@@ -1033,8 +1075,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           }}
         >
           <header style={{ marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1.1rem', margin: 0 }}>
-              ðŸ•³ï¸ Internal Cavities & Openings ({targetInterface?.traced_hole_contours?.length ?? 0} Detected)
+            <h2 style={{ fontSize: '1.1rem', margin: 0 }}> Internal Cavities & Openings ({targetInterface?.traced_hole_contours?.length ?? 0} Detected)
             </h2>
             <p style={{ color: '#8b949e', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
               Review enclosed negative regions. Included regions remain open internal cavities in the extruded profile.
@@ -1102,7 +1143,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                           fontWeight: decision === 'include' ? 600 : 400,
                         }}
                       >
-                        âœ“ Include as opening
+                        Include as opening
                       </button>
                       <button
                         type="button"
@@ -1116,7 +1157,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                           fontWeight: decision === 'ignore' ? 600 : 400,
                         }}
                       >
-                        âœ— Ignore
+                        Ignore
                       </button>
                       <button
                         type="button"
@@ -1304,9 +1345,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                               color: '#ffffff',
                               borderRadius: '4px',
                             }}
-                          >
-                            âœ“ Mapped to {dim.feature_ref}
-                          </span>
+                          > Mapped to {dim.feature_ref} </span>
                         ) : (
                           <span
                             className="badge"
@@ -1317,9 +1356,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                               color: '#ffffff',
                               borderRadius: '4px',
                             }}
-                          >
-                            Detected annotation â€” not mapped to geometry
-                          </span>
+                          > Detected annotation - not mapped to geometry </span>
                         )}
                       </td>
                       <td style={{ padding: '0.5rem' }}>
@@ -1341,12 +1378,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                           }}
                         >
                           {cState === 'conflict'
-                            ? 'âš ï¸ Conflict'
+                            ? 'Conflict'
                             : cState === 'recalculated'
-                            ? 'âš™ï¸ Recalculated'
+                            ? 'Recalculated'
                             : cState === 'unmapped'
-                            ? 'â„¹ï¸ Unmapped'
-                            : 'âœ“ Valid'}
+                            ? 'Unmapped'
+                            : 'Valid'}
                         </span>
                       </td>
                       <td style={{ padding: '0.5rem' }}>
@@ -1452,10 +1489,10 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           <span>
             <strong>Legend:</strong>
           </span>
-          <span>ðŸ‘¤ User Entered</span>
-          <span>ðŸ“· Image Extracted</span>
-          <span>âš™ï¸ System Inferred</span>
-          <span>â“ Unresolved</span>
+          <span>User: User Entered</span>
+          <span>Image: Image Extracted</span>
+          <span>System: System Inferred</span>
+          <span>Open: Unresolved</span>
         </div>
       </section>
 

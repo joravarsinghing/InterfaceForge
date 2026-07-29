@@ -1,4 +1,4 @@
-﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ProfileReviewPage } from '../pages/ProfileReviewPage';
@@ -11,6 +11,9 @@ vi.mock('../services/api', async () => {
     ...actual,
     patchInterface: vi.fn(),
     approveInterface: vi.fn(),
+    snapScalePoint: vi.fn(),
+    calibrateInterfaceScale: vi.fn(),
+    resetInterfaceScaleCalibration: vi.fn(),
   };
 
 });
@@ -100,22 +103,19 @@ describe('ProfileReviewPage Component', () => {
     expect(screen.getByTitle(/circle Profile Preview/i)).toBeInTheDocument();
   });
 
-  it('supports profile-type selector and updates dimensions list', () => {
+  it('shows detected profile type only in collapsed technical details', () => {
     render(
       <BrowserRouter>
         <ProfileReviewPage interfaceId="interface_a" project={mockProject} />
       </BrowserRouter>
     );
 
-    const select = screen.getByLabelText(/Detected Profile Type/i) as HTMLSelectElement;
-    expect(select.value).toBe('circle');
-
-    fireEvent.change(select, { target: { value: 'rectangle' } });
-    expect(select.value).toBe('rectangle');
-    expect(screen.getByText(/Width/i)).toBeInTheDocument();
-    expect(screen.getByText(/Height/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Detected Profile Type/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Detected Profile Type/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Technical details/i)).toBeInTheDocument();
+    expect(screen.getByText(/Detected profile type/i)).toBeInTheDocument();
+    expect(screen.getByText('Circle')).toBeInTheDocument();
   });
-
   it('displays provenance labels with explicit text and icons (not color alone)', () => {
     render(
       <BrowserRouter>
@@ -228,7 +228,7 @@ describe('ProfileReviewPage Component', () => {
     );
 
     expect(screen.getByText(/Millimetre Scale Calibration/i)).toBeInTheDocument();
-    expect(screen.getByText(/Scale Unconfirmed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Scale unconfirmed/i)).toBeInTheDocument();
     expect(screen.getAllByText(/41.5 mm/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
   });
@@ -255,7 +255,7 @@ describe('ProfileReviewPage Component', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getAllByText(/Scale Confirmed/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Scale confirmed/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).not.toBeDisabled();
   });
 
@@ -359,7 +359,7 @@ describe('ProfileReviewPage Component', () => {
     );
 
     expect(screen.getByText(/Millimetre Scale Calibration/i)).toBeInTheDocument();
-    expect(screen.getByText(/Scale Unconfirmed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Scale unconfirmed/i)).toBeInTheDocument();
     expect(screen.getByText(/Internal Cavities & Openings/i)).toBeInTheDocument();
     expect(screen.getByText(/region_1/i)).toBeInTheDocument();
 
@@ -378,7 +378,7 @@ describe('ProfileReviewPage Component', () => {
         ...mockProject.interface_a,
         profile_type: 'traced_closed',
         primitive_fallback_active: true,
-        primitive_fallback_label: 'Simplified envelope â€” not the exact cross-section',
+        primitive_fallback_label: 'Simplified envelope Ã¢â‚¬â€ not the exact cross-section',
       },
     };
 
@@ -525,4 +525,133 @@ describe('ProfileReviewPage Component', () => {
     expect(screen.queryByAltText(/overlay background/i)).not.toBeInTheDocument();
   });
 
+
+  it('supports two-point SVG scale calibration with snapping and backend confirmation', async () => {
+    const tracedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 50 },
+            { x: 0, y: 50 },
+          ],
+          is_closed: true,
+          classification: 'outer_contour',
+          provenance: 'analysis',
+          confidence: 1,
+          point_count: 4,
+        },
+        traced_hole_contours: [],
+        scale_calibration: {
+          source: 'user_calibration',
+          method: 'two_point_trace',
+          reference_dimension: 'two_point_distance',
+          pixel_distance: 0,
+          real_distance_mm: 40,
+          scale_factor: 0,
+          confidence: 1,
+          confirmed: false,
+        },
+      },
+    };
+    vi.mocked(api.snapScalePoint)
+      .mockResolvedValueOnce({ point: { x: 0, y: 0 }, distance_px: 3, feature_id: 'outer_contour' })
+      .mockResolvedValueOnce({ point: { x: 100, y: 0 }, distance_px: 2, feature_id: 'outer_contour' });
+    vi.mocked(api.calibrateInterfaceScale).mockResolvedValue({
+      ...tracedProject,
+      interface_a: {
+        ...tracedProject.interface_a,
+        scale_calibration: {
+          source: 'user_calibration',
+          method: 'two_point_trace',
+          reference_dimension: 'two_point_distance',
+          point_a: { x: 0, y: 0 },
+          point_b: { x: 100, y: 0 },
+          pixel_distance: 100,
+          real_distance_mm: 40,
+          scale_factor: 0.4,
+          confidence: 1,
+          confirmed: true,
+        },
+      },
+    });
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={tracedProject} />
+      </BrowserRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Calibrate Scale/i }));
+    const svg = screen.getByRole('img', { name: /Traced closed profile SVG/i });
+    fireEvent.click(svg);
+    fireEvent.click(svg);
+
+    await waitFor(() => expect(api.calibrateInterfaceScale).toHaveBeenCalledWith(
+      'proj_123',
+      'interface_a',
+      expect.objectContaining({ confirmed: false }),
+      'tok_abc'
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: /Confirm Two-point Scale/i }));
+    await waitFor(() => expect(api.calibrateInterfaceScale).toHaveBeenCalledWith(
+      'proj_123',
+      'interface_a',
+      expect.objectContaining({ confirmed: true, real_distance_mm: 40 }),
+      'tok_abc'
+    ));
+  });
+
+  it('hydrates two-point calibration markers after refresh and invalidates on real distance edit', () => {
+    const hydratedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        profile_type: 'traced_closed',
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 50 },
+            { x: 0, y: 50 },
+          ],
+          is_closed: true,
+          classification: 'outer_contour',
+          provenance: 'analysis',
+          confidence: 1,
+          point_count: 4,
+        },
+        traced_hole_contours: [],
+        scale_calibration: {
+          source: 'user_calibration',
+          method: 'two_point_trace',
+          reference_dimension: 'two_point_distance',
+          point_a: { x: 0, y: 0 },
+          point_b: { x: 100, y: 0 },
+          pixel_distance: 100,
+          real_distance_mm: 40,
+          scale_factor: 0.4,
+          confidence: 1,
+          confirmed: true,
+        },
+      },
+    };
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={hydratedProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/A: 0.00, 0.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/B: 100.00, 0.00/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Or enter real distance/i), { target: { value: '50' } });
+    expect(screen.getAllByText(/Scale unconfirmed/i).length).toBeGreaterThan(0);
+  });
 });

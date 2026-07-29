@@ -53,7 +53,7 @@ export const AnalysisResultPlaceholder: React.FC<AnalysisResultPlaceholderProps>
 
   return (
     <div className="analysis-result-placeholder container">
-      <h1 className="page-title">{interfaceName} — Profile Analysis Result</h1>
+      <h1 className="page-title">{interfaceName} Profile Analysis Result</h1>
       <p className="page-subtitle">
         Review profile candidate extracted by the analysis provider.
       </p>

@@ -61,4 +61,3 @@ export function getEarliestIncompleteStep(project: Project | null): string {
   // Step 5: Ready
   return '/step5';
 }
-

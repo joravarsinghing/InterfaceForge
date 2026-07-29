@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     analysis_timeout_seconds: float = 30.0
 
+    # OpenRouter Vision fallback status configuration. Backend-only; never exposed raw.
+    openrouter_api_key: str = ""
+    openrouter_api_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_vision_model: str = "google/gemini-2.5-flash-image-preview"
+    openrouter_vision_fallback_model: str = "openai/gpt-4o-mini"
+
     # File Format Export Provider Configuration per ADR-006 and S8
     export_provider: str = "mock"
 

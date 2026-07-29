@@ -38,7 +38,7 @@ export const Footer: React.FC<FooterProps> = ({ healthState }) => {
             GitHub Repository
           </a>
           <span className="footer-separator" aria-hidden="true">|</span>
-          <span className="footer-link-item"><Wordmark /> — Zoo API Makeathon 2026 Submission</span>
+          <span className="footer-link-item"><Wordmark /> - Zoo API Makeathon 2026 Submission</span>
         </div>
       </div>
     </footer>

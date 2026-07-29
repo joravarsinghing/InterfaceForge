@@ -95,9 +95,13 @@ class ScaleCalibration(BaseModel):
     """Scale calibration metadata mapping pixel dimensions to real mm units."""
 
     source: str = "inferred"  # 'drawing_dimension', 'user_calibration', 'inferred'
+    method: str = "known_measurement"  # 'known_measurement', 'two_point_trace'
     reference_dimension: Optional[str] = "overall_width"
+    point_a: Optional[Point2D] = None
+    point_b: Optional[Point2D] = None
     pixel_distance: float = 0.0
     real_distance_mm: float = 40.0
+    scale_factor: float = 0.0
     confidence: float = 1.0
     confirmed: bool = False
 
@@ -347,6 +351,29 @@ class InterfacePatchRequest(BaseModel):
     raw_outer_point_count: Optional[int] = None
     simplified_outer_point_count: Optional[int] = None
     inner_contour_count: Optional[int] = None
+
+
+class ScaleSnapRequest(BaseModel):
+    """Request payload for snapping a trace-space click to valid traced geometry."""
+
+    point: Point2D
+
+
+class ScaleSnapResponse(BaseModel):
+    """Snapped trace-space point and nearest-geometry metadata."""
+
+    point: Point2D
+    distance_px: float
+    feature_id: str
+
+
+class TwoPointScaleCalibrationRequest(BaseModel):
+    """Request payload for drafting or confirming manual two-point scale calibration."""
+
+    point_a: Point2D
+    point_b: Point2D
+    real_distance_mm: float
+    confirmed: bool = False
 
 
 class ConnectionUpdateRequest(BaseModel):

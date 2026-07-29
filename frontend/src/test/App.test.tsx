@@ -116,8 +116,8 @@ describe('InterfaceForge Frontend Application Shell (S6A.5 UI Stabilization)', (
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Backend Service Connected & Healthy/i)).toBeInTheDocument();
-      expect(screen.getByText('InterfaceForge Backend')).toBeInTheDocument();
+      expect(screen.getByText('Runtime Dependencies')).toBeInTheDocument();
+      expect(screen.getByText('InterfaceForge backend')).toBeInTheDocument();
     });
   });
 

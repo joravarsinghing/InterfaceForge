@@ -1,6 +1,6 @@
 /**
- * TypeScript contract definitions matching Backend Canonical Design Schema (ADR-001, ADR-005)
- */
+  * TypeScript contract definitions matching Backend Canonical Design Schema (ADR-001, ADR-005)
+  */
 
 export type WorkflowState =
   | 'new'
@@ -51,11 +51,28 @@ export interface Point2D {
 }
 
 export interface ScaleCalibration {
-  source: 'drawing_dimension' | 'user_calibration' | 'inferred';
+  source: 'drawing_dimension' | 'user_calibration' | 'inferred' | string;
+  method?: 'known_measurement' | 'two_point_trace' | string;
   reference_dimension?: string | null;
+  point_a?: Point2D | null;
+  point_b?: Point2D | null;
   pixel_distance: number;
   real_distance_mm: number;
+  scale_factor?: number;
   confidence: number;
+  confirmed: boolean;
+}
+
+export interface ScaleSnapResponse {
+  point: Point2D;
+  distance_px: number;
+  feature_id: string;
+}
+
+export interface TwoPointScaleCalibrationRequest {
+  point_a: Point2D;
+  point_b: Point2D;
+  real_distance_mm: number;
   confirmed: boolean;
 }
 
@@ -65,7 +82,7 @@ export interface TracedContour {
   is_closed: boolean;
   classification?: 'hole' | 'cavity' | 'slot' | 'outer_contour' | 'unknown';
   decision?: 'include' | 'ignore' | 'unsure';
-  provenance: string;  // 'analysis' | 'user_edited'
+  provenance: string; // 'analysis' | 'user_edited'
   confidence: number;
   point_count: number;
 }
@@ -244,7 +261,7 @@ export interface AnalysisResult {
   warnings: string[];
   rejection_reasons: string[];
   success: boolean;
-  analysis_provider_name?: string | null;  // S10.3: 'mock', 'gemini', etc.
+  analysis_provider_name?: string | null; // S10.3: 'mock', 'gemini', etc.
   traced_outer_contour?: TracedContour | null;
   traced_hole_contours?: TracedContour[];
   scale_calibration?: ScaleCalibration | null;
@@ -386,5 +403,3 @@ export interface RevisionConfirmResponse {
   project: Project;
   job: GenerationJob;
 }
-
-

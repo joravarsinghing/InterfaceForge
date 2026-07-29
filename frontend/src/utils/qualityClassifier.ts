@@ -1,4 +1,4 @@
-// ─── Input Quality Classification Helper ───────────────────────────────────────
+// Input Quality Classification Helper
 
 export type InputQualityStatus =
   | 'recommended'
@@ -8,11 +8,11 @@ export type InputQualityStatus =
   | null;
 
 /**
- * Lightweight heuristic classifier for uploaded image quality.
- *
- * Client-side heuristic pre-upload signal.
- * The authoritative analysis result comes from the backend GeminiAnalysisProvider.
- */
+  * Lightweight heuristic classifier for uploaded image quality.
+  *
+  * Client-side heuristic pre-upload signal.
+  * The authoritative analysis result comes from the backend GeminiAnalysisProvider.
+  */
 export function classifyInputQuality(file: File): InputQualityStatus {
   if (!file) return null;
 
@@ -32,20 +32,20 @@ export function classifyInputQuality(file: File): InputQualityStatus {
   if (hasAnnotationKeyword && !hasCleanKeyword) return 'manual_cleanup_likely';
   if (hasCleanKeyword) return 'recommended';
 
-  // Default for images without clear filename signals — usable but unconfirmed
+  // Default for images without clear filename signals - usable but unconfirmed
   return 'usable_with_review';
 }
 
 export function qualityStatusLabel(status: InputQualityStatus): string {
   switch (status) {
     case 'recommended':
-      return '✓ Recommended input';
+      return '[OK] Recommended input';
     case 'usable_with_review':
-      return '⚠ Usable with review';
+      return '[WARNING] Usable with review';
     case 'manual_cleanup_likely':
-      return '⚠ Manual cleanup likely';
+      return '[WARNING] Manual cleanup likely';
     case 'unsupported':
-      return '✗ Unsupported';
+      return '[NO] Unsupported';
     default:
       return '';
   }

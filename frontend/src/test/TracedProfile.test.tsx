@@ -56,6 +56,6 @@ describe('TracedProfileSvgViewer Component (Stage S10.4)', () => {
 
   it('displays example illustration notice when outer contour is null or insufficient', () => {
     render(<TracedProfileSvgViewer outerContour={null} isExample={true} />);
-    expect(screen.getByText('EXAMPLE ILLUSTRATION — NOT YOUR MODEL')).toBeInTheDocument();
+    expect(screen.getByText('EXAMPLE ILLUSTRATION - NOT YOUR MODEL')).toBeInTheDocument();
   });
 });

@@ -192,27 +192,27 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
         <div className="header-status-badge">
           {project.state === 'model_current' ? (
             <span className="badge badge-success" aria-live="polite">
-              ✓ [MODEL CURRENT — REV {project.current_model_revision}]
+                [MODEL CURRENT REV {project.current_model_revision}]
             </span>
           ) : isJobSucceeded ? (
             <span className="badge badge-success" aria-live="polite">
-              ✓ [GENERATION SUCCEEDED]
+                [GENERATION SUCCEEDED]
             </span>
           ) : isJobActive ? (
             <span className="badge badge-info" aria-live="polite">
-              ⚡ [JOB RUNNING — STAGE: {activeJob?.current_stage.toUpperCase()}]
+                [JOB RUNNING STAGE: {activeJob?.current_stage.toUpperCase()}]
             </span>
           ) : isJobFailed ? (
             <span className="badge badge-error" aria-live="polite">
-              ⛔ [GENERATION FAILED]
+                [GENERATION FAILED]
             </span>
           ) : isReadyToCompile ? (
             <span className="badge badge-info" aria-live="polite">
-              ✓ [READY TO GENERATE]
+                [READY TO GENERATE]
             </span>
           ) : (
             <span className="badge badge-error" aria-live="polite">
-              ⛔ [CONFIGURATION INCOMPLETE]
+                [CONFIGURATION INCOMPLETE]
             </span>
           )}
         </div>
@@ -258,7 +258,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
         ) : readiness?.is_valid ? (
           <div className="readiness-success-panel">
             <p className="status-text">
-              ✓ Both Interface A and Interface B are approved, and connection parameters satisfy geometric validation rules.
+                Both Interface A and Interface B are approved, and connection parameters satisfy geometric validation rules.
             </p>
             <div className="readiness-details-grid">
               <div className="readiness-detail-item">
@@ -281,7 +281,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           </div>
         ) : (
           <div className="readiness-error-panel" aria-live="assertive">
-            <p className="error-text">⛔ Pre-flight readiness check failed:</p>
+            <p className="error-text"> Pre-flight readiness check failed:</p>
             <ul className="error-list">
               {readiness?.blocking_errors.map((err) => (
                 <li key={err.id}>
@@ -307,7 +307,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             disabled={!isReadyToCompile || isJobActive || jobState.loading}
             onClick={handleStartGeneration}
           >
-            {jobState.loading ? 'Launching Generation...' : '⚡ Start 3D Generation'}
+            {jobState.loading ? 'Launching Generation...' : ' Start 3D Generation'}
           </button>
         </div>
       </section>
@@ -407,7 +407,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
                 onClick={handleCancelGeneration}
                 disabled={jobState.loading}
               >
-                ⛔ Cancel Generation
+                  Cancel Generation
               </button>
             )}
 
@@ -418,7 +418,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
                 onClick={handleRetryGeneration}
                 disabled={jobState.loading}
               >
-                🔄 Retry Generation
+                  Retry Generation
               </button>
             )}
           </div>
@@ -426,7 +426,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           {/* Service Failure State & Recovery Steps */}
           {(isJobFailed || isJobCancelled) && (
             <div className="failure-details-panel" role="alert">
-              <h3>⛔ Generation Failure Notice [{activeJob.error_id || 'IF-ENG-ERR'}]</h3>
+              <h3> Generation Failure Notice [{activeJob.error_id || 'IF-ENG-ERR'}]</h3>
               <p className="failure-message">{activeJob.error_message}</p>
               {activeJob.recovery_steps.length > 0 && (
                 <div className="recovery-steps-box">
@@ -442,11 +442,11 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
               <div className="last-known-good-banner">
                 {project.last_known_good_model_revision ? (
                   <p className="lkg-text">
-                    🛡️ <strong>Last-Known-Good Model Preserved:</strong> Revision {project.last_known_good_model_revision} remains active as current model.
+                      <strong>Last-Known-Good Model Preserved:</strong> Revision {project.last_known_good_model_revision} remains active as current model.
                   </p>
                 ) : (
                   <p className="lkg-text">
-                    ⚠️ <strong>No Last-Known-Good Model:</strong> Project does not currently have an active valid model.
+                      <strong>No Last-Known-Good Model:</strong> Project does not currently have an active valid model.
                   </p>
                 )}
               </div>
@@ -456,7 +456,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           {/* Preview Artifact & Model Summary */}
           {isJobSucceeded && activeJob.preview_metadata && (
             <div className="preview-container-card">
-              <h3>✓ Generated 3D Adapter Preview</h3>
+              <h3> Generated 3D Adapter Preview</h3>
               <div className="preview-content-grid">
                 <div
                   className="preview-svg-wrapper"
@@ -471,12 +471,12 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
                     </div>
                     <div className="summary-item">
                       <span className="s-label">Estimated Volume:</span>
-                      <span className="s-val">{activeJob.preview_metadata.volume_cm3} cm³</span>
+                      <span className="s-val">{activeJob.preview_metadata.volume_cm3} cm3</span>
                     </div>
                     <div className="summary-item">
                       <span className="s-label">Bounding Box:</span>
                       <span className="s-val">
-                        {activeJob.preview_metadata.bounding_box.x_mm} × {activeJob.preview_metadata.bounding_box.y_mm} × {activeJob.preview_metadata.bounding_box.z_mm} mm
+                        {activeJob.preview_metadata.bounding_box.x_mm} - {activeJob.preview_metadata.bounding_box.y_mm} - {activeJob.preview_metadata.bounding_box.z_mm} mm
                       </span>
                     </div>
                     <div className="summary-item">
@@ -489,7 +489,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
                     </div>
                     <div className="summary-item">
                       <span className="s-label">Status:</span>
-                      <span className="s-val badge badge-success">✓ CURRENT</span>
+                      <span className="s-val badge badge-success"> CURRENT</span>
                     </div>
                   </div>
                 </div>
@@ -502,7 +502,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
       {/* Global Error Alert */}
       {jobState.error && (
         <div className="compile-error-banner" role="alert">
-          <h3>⛔ Request Error</h3>
+          <h3> Request Error</h3>
           <p>{jobState.error}</p>
         </div>
       )}
@@ -510,7 +510,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
       {/* Footer Navigation */}
       <div className="navigation-footer">
         <button type="button" className="btn btn-secondary" onClick={() => navigate('/step3')}>
-          ← Back to Connection Config
+            Back to Connection Config
         </button>
         <button
           type="button"
@@ -518,7 +518,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           onClick={() => navigate('/step5')}
           disabled={!isJobSucceeded && project.state !== 'model_current'}
         >
-          Proceed to Review &amp; Export (Step 5) →
+          Proceed to Review &amp; Export (Step 5)
         </button>
       </div>
     </div>

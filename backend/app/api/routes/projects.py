@@ -23,6 +23,8 @@ from app.models.schema import (
     ProviderModeUpdateRequest,
     RevisionConfirmRequest,
     RevisionProposeRequest,
+    ScaleSnapRequest,
+    TwoPointScaleCalibrationRequest,
 )
 from app.services.agent_service import get_agent_service
 from app.services.analysis_provider import get_analysis_provider
@@ -360,6 +362,66 @@ def patch_interface(
         project_id=project_id,
         interface_id=interface_id,
         patch=patch,
+        project_token=x_project_token,
+    )
+    return {"success": True, "data": project.model_dump()}
+
+
+
+
+@router.post(
+    "/{project_id}/interfaces/{interface_id}/scale/snap", response_model=StandardResponse
+)
+def snap_interface_scale_point(
+    project_id: str,
+    interface_id: str,
+    req: ScaleSnapRequest,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Snap a trace-space calibration point to valid traced geometry."""
+    service = get_service()
+    result = service.snap_scale_point(
+        project_id=project_id,
+        interface_id=interface_id,
+        point=req.point,
+        project_token=x_project_token,
+    )
+    return {"success": True, "data": result.model_dump()}
+
+
+@router.post(
+    "/{project_id}/interfaces/{interface_id}/scale/calibrate", response_model=StandardResponse
+)
+def calibrate_interface_scale(
+    project_id: str,
+    interface_id: str,
+    req: TwoPointScaleCalibrationRequest,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Persist or confirm two-point traced scale calibration."""
+    service = get_service()
+    project = service.calibrate_interface_scale(
+        project_id=project_id,
+        interface_id=interface_id,
+        req=req,
+        project_token=x_project_token,
+    )
+    return {"success": True, "data": project.model_dump()}
+
+
+@router.delete(
+    "/{project_id}/interfaces/{interface_id}/scale/calibration", response_model=StandardResponse
+)
+def reset_interface_scale_calibration(
+    project_id: str,
+    interface_id: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Reset trace scale calibration and invalidate approval."""
+    service = get_service()
+    project = service.reset_interface_scale_calibration(
+        project_id=project_id,
+        interface_id=interface_id,
         project_token=x_project_token,
     )
     return {"success": True, "data": project.model_dump()}

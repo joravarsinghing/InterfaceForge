@@ -90,7 +90,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
                 >
                   <span className="step-number">{step.id}</span>
                   <span className="step-text">{step.fullName}</span>
-                  <span className="step-lock-icon" aria-hidden="true">🔒</span>
+                  <span className="step-lock-icon" aria-hidden="true"></span>
                 </span>
               ) : (
                 <Link
@@ -99,7 +99,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
                   aria-current={isActive ? 'step' : undefined}
                 >
                   <span className="step-number">
-                    {step.isCompleted ? '✓' : step.id}
+                    {step.isCompleted ? '' : step.id}
                   </span>
                   <span className="step-text">{step.fullName}</span>
                 </Link>
@@ -113,4 +113,3 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
 };
 
 export default StepNavigation;
-

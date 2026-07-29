@@ -112,7 +112,7 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
               fontWeight="bold"
               textAnchor="middle"
             >
-              Ø {outerDiameter} mm
+                {outerDiameter} mm
             </text>
           </g>
         )}

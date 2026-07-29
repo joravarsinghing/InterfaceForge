@@ -220,4 +220,3 @@ describe('focused landing-page correction pass', () => {
     expect(screen.getByRole('img', { name: 'Placeholder for future Camera Mount Adapter example image' })).toBeInTheDocument();
   });
 });
-

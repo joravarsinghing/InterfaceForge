@@ -7,10 +7,10 @@ import {
   qualityStatusClass,
 } from '../utils/qualityClassifier';
 
-// ─── ImageGuidance Component ───────────────────────────────────────────────────
+// ImageGuidance Component
 
 interface ImageGuidanceProps {
-  /** Current file selected by the user (optional — used for quality classification) */
+  /** Current file selected by the user (optional used for quality classification) */
   selectedFile?: File | null;
   /** Called when the user enters a known measurement for scale calibration */
   onKnownMeasurement?: (value: string, dimension: string) => void;
@@ -40,7 +40,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
 
   return (
     <aside className="image-guidance-panel" aria-label="Image capture guidance">
-      {/* ── Preferred Input Standard ── */}
+      {/* Preferred Input Standard */}
       <section className="guidance-section" aria-labelledby="preferred-input-heading">
         <h2 className="guidance-title" id="preferred-input-heading">
           Preferred Input
@@ -75,10 +75,10 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
               </svg>
             </div>
             <div className="guidance-example-label guidance-label-good">
-              <span aria-hidden="true">✓</span> Clean shaded profile
+              <span aria-hidden="true">[OK]</span> Clean shaded profile
             </div>
             <div className="guidance-example-caption">
-              Recommended — solid fill, no annotations
+              Recommended - solid fill, no annotations
             </div>
           </div>
 
@@ -112,10 +112,10 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
               </svg>
             </div>
             <div className="guidance-example-label guidance-label-bad">
-              <span aria-hidden="true">✗</span> Dimensioned drawing
+              <span aria-hidden="true">-</span> Dimensioned drawing
             </div>
             <div className="guidance-example-caption">
-              Not recommended — annotations cause false edges
+              Not recommended - annotations cause false edges
             </div>
           </div>
         </div>
@@ -138,10 +138,10 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
               </svg>
             </div>
             <div className="guidance-example-label guidance-label-bad">
-              <span aria-hidden="true">✗</span> Angled photo
+              <span aria-hidden="true">-</span> Angled photo
             </div>
             <div className="guidance-example-caption">
-              Unsupported — perspective distortion
+              Unsupported - perspective distortion
             </div>
           </div>
 
@@ -149,7 +149,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
             <div className="guidance-example-visual" aria-hidden="true">
               <svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <rect width="120" height="80" fill="#0a1628" />
-                {/* Cropped profile — cut off edges */}
+                {/* Cropped profile cut off edges */}
                 <clipPath id="crop-clip">
                   <rect x="0" y="0" width="120" height="80" />
                 </clipPath>
@@ -166,16 +166,16 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
               </svg>
             </div>
             <div className="guidance-example-label guidance-label-bad">
-              <span aria-hidden="true">✗</span> Cropped profile
+              <span aria-hidden="true">-</span> Cropped profile
             </div>
             <div className="guidance-example-caption">
-              Unsupported — full contour must be visible
+              Unsupported - full contour must be visible
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Image Checklist ── */}
+      {/* Image Checklist */}
       <section className="guidance-section" aria-labelledby="checklist-heading">
         <h2 className="guidance-title" id="checklist-heading">
           Image Guidance
@@ -183,7 +183,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
         <div className="guidance-columns">
           <div className="guidance-card guidance-good">
             <h3>
-              <span aria-hidden="true" style={{ marginRight: '6px' }}>✓</span>
+              <span aria-hidden="true" style={{ marginRight: '6px' }}>[OK]</span>
               GOOD CAPTURE
             </h3>
             <ul>
@@ -197,7 +197,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
           </div>
           <div className="guidance-card guidance-bad">
             <h3>
-              <span aria-hidden="true" style={{ marginRight: '6px' }}>✗</span>
+              <span aria-hidden="true" style={{ marginRight: '6px' }}>-</span>
               BAD CAPTURE
             </h3>
             <ul>
@@ -213,7 +213,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
 
         {/* Annotation warning */}
         <div className="guidance-annotation-warning" role="note">
-          <span aria-hidden="true">ℹ</span>
+          <span aria-hidden="true"></span>
           <span>
             <strong>Why annotations cause problems:</strong> Dimension lines, leaders, and
             center marks create false edges that OpenCV cannot distinguish from the real
@@ -224,7 +224,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
         </div>
       </section>
 
-      {/* ── Quality Status (shown after file selection) ── */}
+      {/* Quality Status (shown after file selection) */}
       {qualityStatus && (
         <section className="guidance-section" aria-labelledby="quality-status-heading" aria-live="polite">
           <h2 className="guidance-title" id="quality-status-heading">
@@ -243,7 +243,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
           </p>
           {qualityStatus === 'manual_cleanup_likely' && (
             <div className="guidance-annotation-warning guidance-annotation-warning--error" role="alert">
-              <span aria-hidden="true">⚠</span>
+              <span aria-hidden="true"></span>
               <span>
                 This image appears to contain dimension annotations. The trace may include
                 false edges from leaders and extension lines. Review the SVG profile
@@ -253,7 +253,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
           )}
           {qualityStatus === 'unsupported' && (
             <div className="guidance-annotation-warning guidance-annotation-warning--error" role="alert">
-              <span aria-hidden="true">✗</span>
+              <span aria-hidden="true">-</span>
               <span>
                 This file is unlikely to produce a usable profile. Upload a clean
                 cross-section image without perspective distortion, cropping, or severe blur.
@@ -263,14 +263,14 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
         </section>
       )}
 
-      {/* ── Known Measurement (Scale Calibration) ── */}
+      {/* Known Measurement (Scale Calibration) */}
       <section className="guidance-section" aria-labelledby="known-measurement-heading">
         <h2 className="guidance-title" id="known-measurement-heading">
           Known Measurement <span className="guidance-optional-badge">optional</span>
         </h2>
         <p className="guidance-measurement-hint">
           Provide one real dimension to calibrate scale after the trace is generated. This
-          becomes the preferred calibration source — you will confirm it before any 3D
+          becomes the preferred calibration source - you will confirm it before any 3D
           generation begins.
         </p>
         <div className="guidance-measurement-row">

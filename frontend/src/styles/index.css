@@ -1977,3 +1977,85 @@ html, body {
     max-width: 100%;
   }
 }
+.status-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.status-panel-header h3 {
+  margin: 0 0 4px 0;
+}
+
+.status-panel-header p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.service-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.service-status-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.service-status-row p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+.service-model {
+  display: block;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.service-status-badge {
+  border-radius: 999px;
+  border: 1px solid var(--border-medium);
+  color: var(--text-primary);
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 9px;
+}
+
+.service-status-row[data-status="Available"] .service-status-badge {
+  background: var(--status-green-bg);
+  border-color: var(--status-green);
+  color: var(--status-green);
+}
+
+.service-status-row[data-status="Not configured"] .service-status-badge {
+  background: rgba(107, 114, 128, 0.14);
+  border-color: rgba(156, 163, 175, 0.25);
+  color: var(--text-secondary);
+}
+
+.service-status-row[data-status="Unavailable"] .service-status-badge {
+  background: var(--status-red-bg);
+  border-color: var(--status-red);
+  color: var(--status-red);
+}
+
+.service-status-row[data-status="Checking"] .service-status-badge {
+  background: var(--status-amber-bg);
+  border-color: var(--status-amber);
+  color: var(--status-amber);
+}

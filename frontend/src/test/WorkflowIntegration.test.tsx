@@ -117,7 +117,7 @@ describe('S6A Workflow Integration Test Suite', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Interface A — Upload Image/i)).toBeInTheDocument();
+      expect(screen.getByText(/Interface A - Upload Image/i)).toBeInTheDocument();
     });
   });
 
@@ -135,7 +135,7 @@ describe('S6A Workflow Integration Test Suite', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Interface A — Upload Image/i)).toBeInTheDocument();
+      expect(screen.getByText(/Interface A - Upload Image/i)).toBeInTheDocument();
     });
   });
 
@@ -151,7 +151,7 @@ describe('S6A Workflow Integration Test Suite', () => {
     fireEvent.click(startBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Interface A — Upload Image/i)).toBeInTheDocument();
+      expect(screen.getByText(/Interface A - Upload Image/i)).toBeInTheDocument();
     });
   });
 

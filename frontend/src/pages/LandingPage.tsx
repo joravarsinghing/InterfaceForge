@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HealthResponse } from '../services/api';
+import { HealthResponse, ServiceStatusRow } from '../services/api';
+import { getEarliestIncompleteStep } from '../services/workflow';
 import { Project } from '../types/schema';
 
 interface LandingPageProps {
@@ -9,17 +10,66 @@ interface LandingPageProps {
     loading: boolean;
     error: string | null;
   };
+  project?: Project | null;
+  isHydrating?: boolean;
   onRetryHealth: () => void;
   onStartProject?: () => Promise<Project>;
+  onContinueProject?: () => Promise<Project | null>;
+}
+
+const REQUIRED_SERVICE_IDS = [
+  'backend',
+  'gemini_vision',
+  'openrouter_vision',
+  'zoo_engine',
+  'persistence',
+];
+
+const SERVICE_LABELS: Record<string, string> = {
+  backend: 'InterfaceForge backend',
+  gemini_vision: 'Gemini Vision',
+  openrouter_vision: 'OpenRouter Vision fallback',
+  zoo_engine: 'Zoo Authentication',
+  persistence: 'Project persistence/storage',
+};
+
+function rowsFromHealth(health: HealthResponse | null, loading: boolean, error: string | null): ServiceStatusRow[] {
+  const rows = health?.services ?? [];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return REQUIRED_SERVICE_IDS.map((id) => {
+    const existing = byId.get(id);
+    if (existing) return existing;
+    if (id === 'backend') {
+      if (loading) {
+        return { id, label: SERVICE_LABELS[id], status: 'Checking', message: 'Backend health check is in progress.' };
+      }
+      if (error || !health) {
+        return { id, label: SERVICE_LABELS[id], status: 'Unavailable', message: error || 'Backend health check failed.' };
+      }
+      return { id, label: SERVICE_LABELS[id], status: 'Available', message: 'Backend API is responding.' };
+    }
+    return {
+      id,
+      label: SERVICE_LABELS[id],
+      status: loading ? 'Checking' : 'Unavailable',
+      message: loading ? 'Service check is in progress.' : 'No status was returned for this service.',
+    };
+  });
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   healthState,
+  project,
+  isHydrating = false,
   onRetryHealth,
   onStartProject,
+  onContinueProject,
 }) => {
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const [showNewProjectConfirm, setShowNewProjectConfirm] = useState(false);
+  const hasProject = Boolean(project?.project_id);
 
   const handleStart = async () => {
     if (onStartProject) {
@@ -28,9 +78,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         await onStartProject();
         setStarting(false);
         navigate('/step1');
-      } catch (err: unknown) {
+      } catch (_err: unknown) {
         setStarting(false);
-        // Navigate anyway to step1 as fallback
         navigate('/step1');
       }
     } else {
@@ -38,9 +87,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
+  const handleContinue = async () => {
+    if (!project) return;
+    setContinuing(true);
+    try {
+      const latest = onContinueProject ? await onContinueProject() : project;
+      navigate(getEarliestIncompleteStep(latest || project));
+    } finally {
+      setContinuing(false);
+    }
+  };
+
+  const statusRows = rowsFromHealth(healthState.data, healthState.loading, healthState.error);
+  const connectedCount = statusRows.filter((row) => row.status === 'Available').length;
+  const statusSummary = healthState.loading
+    ? 'Checking services'
+    : `${connectedCount}/${statusRows.length} services available`;
+
   return (
     <div className="landing-page">
-      {/* Hero Section */}
       <section className="hero-section" aria-labelledby="hero-heading">
         <div className="hero-container">
           <img src="/InterfaceForge_logo.svg" alt="" className="hero-icon" />
@@ -52,19 +117,39 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </p>
 
           <div className="hero-actions">
-            <button
-              type="button"
-              className="btn btn-primary btn-large"
-              disabled={starting}
-              onClick={handleStart}
-            >
-              {starting ? 'Initializing Project...' : 'Start New Project'}
-            </button>
+            {hasProject ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-large"
+                  disabled={continuing || isHydrating}
+                  onClick={handleContinue}
+                >
+                  {continuing || isHydrating ? 'Restoring Project...' : 'Continue Project'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-large"
+                  disabled={starting}
+                  onClick={() => setShowNewProjectConfirm(true)}
+                >
+                  Start New Project
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary btn-large"
+                disabled={starting || isHydrating}
+                onClick={handleStart}
+              >
+                {starting ? 'Initializing Project...' : 'Start New Project'}
+              </button>
+            )}
           </div>
         </div>
       </section>
 
-      {/* How It Works Section */}
       <section className="workflow-preview-section" aria-labelledby="workflow-heading">
         <h2 id="workflow-heading" className="section-title">How It Works</h2>
         <div className="workflow-steps-grid">
@@ -90,13 +175,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
           <div className="workflow-card">
             <div className="workflow-step-num">5</div>
-            <h3>Review & Export</h3>
+            <h3>Review &amp; Export</h3>
             <p>Inspect the adapter candidate, optionally revise parameters, and export STL/STEP/KCL.</p>
           </div>
         </div>
       </section>
 
-      {/* Sample Examples Preview */}
       <section className="examples-section" aria-labelledby="examples-heading">
         <h2 id="examples-heading" className="section-title">Example Applications</h2>
         <div className="examples-grid">
@@ -119,66 +203,61 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* Low-Emphasis Collapsible Backend & Developer Status */}
       <details className="dev-status-details">
         <summary className="dev-status-summary">
-          <span>⚙️ System Architecture &amp; Backend Status</span>
-          <span className="dev-status-indicator">
-            {healthState.data ? '● Service Connected' : healthState.loading ? '○ Checking...' : '⚠️ Service Offline'}
-          </span>
+          <span>System Status</span>
+          <span className="dev-status-indicator">{statusSummary}</span>
         </summary>
         <div className="status-card" style={{ marginTop: '16px' }}>
-          {healthState.loading && (
-            <div className="status-state loading" aria-live="polite">
-              <div className="spinner"></div>
-              <p>Connecting to FastAPI backend endpoint at <code>/health</code>...</p>
+          <div className="status-panel-header">
+            <div>
+              <h3>Runtime Dependencies</h3>
+              <p>Provider checks are independent and do not expose keys or environment values.</p>
             </div>
-          )}
-
-          {healthState.error && (
-            <div className="status-state offline" aria-live="polite">
-              <div className="status-icon">⚠️</div>
-              <div className="status-details">
-                <h3>Backend Service Unavailable</h3>
-                <p>Could not reach local FastAPI server at <code>http://localhost:8000/health</code>.</p>
-                <p className="error-message">Error details: {healthState.error}</p>
-                <div className="status-actions">
-                  <button type="button" className="btn btn-secondary" onClick={onRetryHealth}>
-                    Retry Connection
-                  </button>
+            <button type="button" className="btn btn-secondary" onClick={onRetryHealth} disabled={healthState.loading}>
+              {healthState.loading ? 'Checking...' : 'Refresh Status'}
+            </button>
+          </div>
+          <div className="service-status-list" aria-live="polite">
+            {statusRows.map((row) => (
+              <div className="service-status-row" key={row.id} data-status={row.status}>
+                <div>
+                  <strong>{row.label}</strong>
+                  {row.model && <span className="service-model">Model: {row.model}</span>}
+                  <p>{row.message}</p>
                 </div>
+                <span className="service-status-badge">{row.status}</span>
               </div>
-            </div>
-          )}
-
-          {healthState.data && (
-            <div className="status-state online" aria-live="polite">
-              <div className="status-icon">✅</div>
-              <div className="status-details">
-                <h3>Backend Service Connected &amp; Healthy</h3>
-                <div className="health-grid">
-                  <div className="health-item">
-                    <span className="health-label">Service Name</span>
-                    <span className="health-value">{healthState.data.service_name}</span>
-                  </div>
-                  <div className="health-item">
-                    <span className="health-label">Status</span>
-                    <span className="health-value status-ok">{healthState.data.status}</span>
-                  </div>
-                  <div className="health-item">
-                    <span className="health-label">Environment</span>
-                    <span className="health-value">{healthState.data.environment}</span>
-                  </div>
-                  <div className="health-item">
-                    <span className="health-label">API Version</span>
-                    <span className="health-value">{healthState.data.version}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       </details>
+
+      {showNewProjectConfirm && (
+        <div className="modal-overlay" role="presentation">
+          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="new-project-heading">
+            <h3 id="new-project-heading">Start New Project?</h3>
+            <p>
+              A separate new project will be created. Your existing project will remain saved and will not be deleted or overwritten.
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowNewProjectConfirm(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setShowNewProjectConfirm(false);
+                  void handleStart();
+                }}
+              >
+                Start New Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

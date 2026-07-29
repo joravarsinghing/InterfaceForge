@@ -1,6 +1,6 @@
 /**
- * Backend API Client Abstraction
- */
+  * Backend API Client Abstraction
+  */
 
 import type {
   AnalysisResult,
@@ -10,15 +10,28 @@ import type {
   ProviderMode,
   ProviderModeStatus,
   ProviderModeUpdateResponse,
+  ScaleSnapResponse,
+  TwoPointScaleCalibrationRequest,
   UploadResponseData,
 } from '../types/schema';
 
+
+export type ServiceState = 'Available' | 'Not configured' | 'Unavailable' | 'Checking';
+
+export interface ServiceStatusRow {
+  id: string;
+  label: string;
+  status: ServiceState;
+  message: string;
+  model?: string | null;
+}
 
 export interface HealthResponse {
   service_name: string;
   status: string;
   environment: string;
   version: string;
+  services?: ServiceStatusRow[];
 }
 
 export interface ReadyResponse {
@@ -125,8 +138,8 @@ export async function updateProviderMode(
   return json.data;
 }
 /**
- * Project API client functions matching S3 contracts
- */
+  * Project API client functions matching S3 contracts
+  */
 export async function createProject(providerMode: ProviderMode = 'mock'): Promise<Project> {
   const response = await fetch(`${BACKEND_BASE_URL}/api/projects`, {
     method: 'POST',
@@ -244,6 +257,70 @@ export async function analyzeInterfaceImage(
   );
 
   const json: APIEnvelope<AnalysisResult> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function snapScalePoint(
+  projectId: string,
+  interfaceId: 'interface_a' | 'interface_b',
+  point: { x: number; y: number },
+  projectToken?: string
+): Promise<ScaleSnapResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/scale/snap`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ point }),
+    }
+  );
+  const json: APIEnvelope<ScaleSnapResponse> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function calibrateInterfaceScale(
+  projectId: string,
+  interfaceId: 'interface_a' | 'interface_b',
+  calibration: TwoPointScaleCalibrationRequest,
+  projectToken?: string
+): Promise<Project> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/scale/calibrate`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(calibration),
+    }
+  );
+  const json: APIEnvelope<Project> = await response.json();
+  if (!json.success) {
+    throw new Error(`[${json.error.id}] ${json.error.message}`);
+  }
+  return json.data;
+}
+
+export async function resetInterfaceScaleCalibration(
+  projectId: string,
+  interfaceId: 'interface_a' | 'interface_b',
+  projectToken?: string
+): Promise<Project> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/interfaces/${interfaceId}/scale/calibration`,
+    { method: 'DELETE', headers }
+  );
+  const json: APIEnvelope<Project> = await response.json();
   if (!json.success) {
     throw new Error(`[${json.error.id}] ${json.error.message}`);
   }
@@ -416,8 +493,8 @@ export async function compileKcl(
 }
 
 /**
- * 3D Model Generation API Client Functions per ADR-006 & S5.5
- */
+  * 3D Model Generation API Client Functions per ADR-006 & S5.5
+  */
 export async function startGeneration(
   projectId: string,
   projectToken?: string,
@@ -560,8 +637,8 @@ export async function fetchPreviewMetadata(
 }
 
 /**
- * File Format Export API Functions per S8
- */
+  * File Format Export API Functions per S8
+  */
 export async function generateExports(
   projectId: string,
   formats: string[] = ['stl', 'step', 'kcl'],
@@ -656,9 +733,9 @@ export function getExportDownloadUrl(
 }
 
 /**
- * Returns a browser-accessible URL for the uploaded interface source image.
- * The project token is passed as a query parameter so <img src> can load it directly.
- */
+  * Returns a browser-accessible URL for the uploaded interface source image.
+  * The project token is passed as a query parameter so <img src> can load it directly.
+  */
 export function getInterfaceImageUrl(
   projectId: string,
   interfaceId: 'interface_a' | 'interface_b',
@@ -736,7 +813,3 @@ export async function confirmRevision(
   }
   return json.data;
 }
-
-
-
-

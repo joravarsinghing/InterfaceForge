@@ -119,6 +119,17 @@ export const AppContent: React.FC = () => {
     return newProject;
   }, [preProjectProviderMode]);
 
+  const handleContinueProject = useCallback(async (): Promise<Project | null> => {
+    const savedId = sessionStorage.getItem('interfaceforge_project_id') || project?.project_id;
+    const savedToken = sessionStorage.getItem('interfaceforge_project_token') || project?.project_token;
+    if (!savedId) return project;
+    const hydrated = await fetchProject(savedId, savedToken || undefined);
+    setProject(hydrated);
+    fetchProviderModeStatus(hydrated.project_id, savedToken || undefined)
+      .then(setProviderStatus)
+      .catch(() => setProviderStatus(null));
+    return hydrated;
+  }, [project]);
   // Project Restart Handler
   const handleRestartProject = useCallback(() => {
     sessionStorage.removeItem('interfaceforge_project_id');
@@ -187,8 +198,11 @@ export const AppContent: React.FC = () => {
             element={
               <LandingPage
                 healthState={healthState}
+                project={project}
+                isHydrating={isHydrating}
                 onRetryHealth={checkBackendHealth}
                 onStartProject={handleStartProject}
+                onContinueProject={handleContinueProject}
               />
             }
           />

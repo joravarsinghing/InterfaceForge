@@ -1,6 +1,7 @@
 """Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
+import math
 import logging
 import os
 import secrets
@@ -43,6 +44,7 @@ from app.models.schema import (
     ModelRevision,
     ModelRevisionStatus,
     ModelSucceedRequest,
+    Point2D,
     ProviderMode,
     ProviderModeStatus,
     ProfileType,
@@ -50,6 +52,8 @@ from app.models.schema import (
     Project,
     ProjectPatchRequest,
     ScaleCalibration,
+    ScaleSnapResponse,
+    TwoPointScaleCalibrationRequest,
     UploadResponseData,
     WorkflowState,
     current_iso_timestamp,
@@ -104,7 +108,16 @@ def _measurement_fingerprint(interface: Interface) -> tuple:
         dims,
         (
             scale.reference_dimension,
+            scale.method,
+            (round(float(scale.point_a.x), 6), round(float(scale.point_a.y), 6))
+            if scale.point_a
+            else None,
+            (round(float(scale.point_b.x), 6), round(float(scale.point_b.y), 6))
+            if scale.point_b
+            else None,
+            round(float(scale.pixel_distance), 6),
             round(float(scale.real_distance_mm), 6),
+            round(float(scale.scale_factor), 9),
             getattr(scale, "unit", "mm"),
         )
         if scale
@@ -158,9 +171,11 @@ def _apply_known_measurement(
         pixel_distance = interface.scale_calibration.pixel_distance
     interface.scale_calibration = ScaleCalibration(
         source="user_calibration",
+        method="known_measurement",
         reference_dimension=measurement_type,
         pixel_distance=pixel_distance,
         real_distance_mm=value,
+        scale_factor=value / pixel_distance if pixel_distance > 0 else 0.0,
         confidence=1.0,
         confirmed=False,
     )
@@ -180,6 +195,134 @@ def _merge_upload_measurement_after_analysis(interface: Interface, previous: Int
     if interface.scale_calibration:
         interface.scale_calibration.pixel_distance = result_pixel_distance
         interface.scale_calibration.confirmed = False
+
+
+def _finite_point(point: Point2D) -> bool:
+    return math.isfinite(point.x) and math.isfinite(point.y)
+
+
+def _trace_geometry_segments(interface: Interface) -> list[tuple[Point2D, Point2D, str]]:
+    contours = []
+    if interface.traced_outer_contour is not None:
+        contours.append(interface.traced_outer_contour)
+    contours.extend(
+        contour
+        for contour in (interface.traced_hole_contours or [])
+        if getattr(contour, "decision", "include") == "include"
+    )
+    segments: list[tuple[Point2D, Point2D, str]] = []
+    for contour in contours:
+        points = contour.points or []
+        if len(points) < 2:
+            continue
+        count = len(points)
+        edge_count = count if contour.is_closed else count - 1
+        for idx in range(edge_count):
+            a = points[idx]
+            b = points[(idx + 1) % count]
+            if _finite_point(a) and _finite_point(b) and (a.x != b.x or a.y != b.y):
+                segments.append((a, b, contour.id or "trace_geometry"))
+    return segments
+
+
+def _trace_bbox(interface: Interface) -> tuple[float, float, float, float] | None:
+    points = []
+    if interface.traced_outer_contour is not None:
+        points.extend(interface.traced_outer_contour.points or [])
+    for hole in interface.traced_hole_contours or []:
+        points.extend(hole.points or [])
+    points = [p for p in points if _finite_point(p)]
+    if not points:
+        return None
+    xs = [p.x for p in points]
+    ys = [p.y for p in points]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def _ensure_point_within_trace_bounds(interface: Interface, point: Point2D) -> None:
+    if not _finite_point(point):
+        raise InvalidInterfaceApprovalError(
+            "Calibration point must use finite trace-space coordinates.",
+            recovery_steps=["Select a point inside the traced SVG viewport."],
+        )
+    bbox = _trace_bbox(interface)
+    if bbox is None:
+        raise InvalidInterfaceApprovalError(
+            "Cannot calibrate scale: traced geometry is missing.",
+            recovery_steps=["Re-run analysis or upload a cleaner interface image."],
+        )
+    min_x, max_x, min_y, max_y = bbox
+    pad = max(max_x - min_x, max_y - min_y, 1.0) * 0.05
+    if not (min_x - pad <= point.x <= max_x + pad and min_y - pad <= point.y <= max_y + pad):
+        raise InvalidInterfaceApprovalError(
+            "Calibration point is outside the traced profile bounds.",
+            recovery_steps=["Select points on the visible traced contour."],
+        )
+
+
+def _distance(a: Point2D, b: Point2D) -> float:
+    return math.hypot(a.x - b.x, a.y - b.y)
+
+
+def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapResponse:
+    _ensure_point_within_trace_bounds(interface, point)
+    segments = _trace_geometry_segments(interface)
+    if not segments:
+        raise InvalidInterfaceApprovalError(
+            "Cannot calibrate scale: no valid trace segments are available.",
+            recovery_steps=["Re-run analysis or upload a cleaner interface image."],
+        )
+    best: tuple[float, Point2D, str] | None = None
+    for a, b, feature_id in segments:
+        dx = b.x - a.x
+        dy = b.y - a.y
+        denom = dx * dx + dy * dy
+        if denom <= 0:
+            continue
+        t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / denom
+        t = max(0.0, min(1.0, t))
+        snapped = Point2D(x=a.x + t * dx, y=a.y + t * dy)
+        dist = _distance(point, snapped)
+        if best is None or dist < best[0]:
+            best = (dist, snapped, feature_id)
+    if best is None:
+        raise InvalidInterfaceApprovalError(
+            "Cannot calibrate scale: trace segments are degenerate.",
+            recovery_steps=["Re-run analysis or upload a cleaner interface image."],
+        )
+    return ScaleSnapResponse(point=best[1], distance_px=best[0], feature_id=best[2])
+
+
+def _upsert_scaled_dimension(
+    interface: Interface, dim_id: str, label: str, value: float, feature_ref: str
+) -> None:
+    existing = {d.id: d for d in interface.dimensions}
+    prev = existing.get(dim_id)
+    existing[dim_id] = Dimension(
+        id=dim_id,
+        label=label,
+        value=round(value, 4),
+        unit="mm",
+        provenance=DimensionProvenance.USER_ENTERED if prev and prev.provenance == DimensionProvenance.USER_ENTERED else DimensionProvenance.SYSTEM_INFERRED,
+        confidence=1.0,
+        critical=True,
+        feature_ref=feature_ref,
+        consistency_state="recalculated",
+    )
+    interface.dimensions = list(existing.values())
+
+
+def _update_derived_dimensions_from_scale(interface: Interface, scale_factor: float) -> None:
+    bbox = _trace_bbox(interface)
+    if bbox is None:
+        return
+    min_x, max_x, min_y, max_y = bbox
+    _upsert_scaled_dimension(
+        interface, "overall_width", "Overall Width", (max_x - min_x) * scale_factor, "outer_contour"
+    )
+    _upsert_scaled_dimension(
+        interface, "overall_height", "Overall Height", (max_y - min_y) * scale_factor, "outer_contour"
+    )
 
 
 class ProjectService:
@@ -750,6 +893,14 @@ class ProjectService:
         if patch.traced_hole_contours is not None:
             target_interface.traced_hole_contours = patch.traced_hole_contours
         if patch.scale_calibration is not None:
+            if (
+                patch.scale_calibration.method == "two_point_trace"
+                and patch.scale_calibration.confirmed
+            ):
+                raise InvalidInterfaceApprovalError(
+                    "Confirmed two-point calibration must use the calibration endpoint.",
+                    recovery_steps=["Use POST /interfaces/{interface_id}/scale/calibrate."],
+                )
             target_interface.scale_calibration = patch.scale_calibration
         if patch.verification_status is not None:
             target_interface.verification_status = patch.verification_status
@@ -778,9 +929,12 @@ class ProjectService:
         measurement_changed = (
             _measurement_fingerprint(target_interface) != original_measurement_fingerprint
         )
+        explicit_scale_confirmation = (
+            patch.scale_calibration is not None and patch.scale_calibration.confirmed
+        )
         if (
             geometry_changed or (patch.dimensions is not None and measurement_changed)
-        ) and target_interface.scale_calibration:
+        ) and target_interface.scale_calibration and not explicit_scale_confirmation:
             target_interface.scale_calibration.confirmed = False
 
         severe_update_errors = [
@@ -832,6 +986,139 @@ class ProjectService:
         project.updated_at = current_iso_timestamp()
         return self.repository.save(project)
 
+
+    def snap_scale_point(
+        self,
+        project_id: str,
+        interface_id: str,
+        point: Point2D,
+        project_token: Optional[str] = None,
+    ) -> ScaleSnapResponse:
+        """Snap a trace-space point to the nearest valid traced segment."""
+        project = self._verify_project_and_token(project_id, project_token)
+        if interface_id not in ("interface_a", "interface_b"):
+            raise MissingPrerequisiteError(
+                f"Invalid interface ID '{interface_id}'. Must be 'interface_a' or 'interface_b'."
+            )
+        if interface_id == "interface_b" and not project.interface_a.approved:
+            raise MissingPrerequisiteError(
+                "Interface A must be approved before Interface B can be modified.",
+                recovery_steps=["Approve Interface A first."],
+            )
+        target_interface = project.interface_a if interface_id == "interface_a" else project.interface_b
+        if target_interface.profile_type != ProfileType.TRACED_CLOSED:
+            raise InvalidInterfaceApprovalError(
+                "Two-point scale calibration requires a traced closed profile.",
+                recovery_steps=["Run trace analysis before calibrating scale."],
+            )
+        return _snap_point_to_trace(target_interface, point)
+
+    def calibrate_interface_scale(
+        self,
+        project_id: str,
+        interface_id: str,
+        req: TwoPointScaleCalibrationRequest,
+        project_token: Optional[str] = None,
+    ) -> Project:
+        """Persist two-point trace calibration and confirm uniform scale only when requested."""
+        project = self._verify_project_and_token(project_id, project_token)
+        if interface_id not in ("interface_a", "interface_b"):
+            raise MissingPrerequisiteError(
+                f"Invalid interface ID '{interface_id}'. Must be 'interface_a' or 'interface_b'."
+            )
+        if interface_id == "interface_b" and not project.interface_a.approved:
+            raise MissingPrerequisiteError(
+                "Interface A must be approved before Interface B can be modified.",
+                recovery_steps=["Approve Interface A first."],
+            )
+
+        target_interface = (
+            project.interface_a if interface_id == "interface_a" else project.interface_b
+        ).model_copy(deep=True)
+        if target_interface.profile_type != ProfileType.TRACED_CLOSED:
+            raise InvalidInterfaceApprovalError(
+                "Two-point scale calibration requires a traced closed profile.",
+                recovery_steps=["Run trace analysis before calibrating scale."],
+            )
+        if not math.isfinite(req.real_distance_mm) or req.real_distance_mm <= 0:
+            raise InvalidInterfaceApprovalError(
+                "Real calibration distance must be a positive millimetre value.",
+                recovery_steps=["Enter the measured real-world distance in millimetres."],
+            )
+
+        snap_a = _snap_point_to_trace(target_interface, req.point_a)
+        snap_b = _snap_point_to_trace(target_interface, req.point_b)
+        pixel_distance = _distance(snap_a.point, snap_b.point)
+        if pixel_distance < 1.0:
+            raise InvalidInterfaceApprovalError(
+                "Calibration points are identical or too close together to determine scale.",
+                recovery_steps=["Select two separated points on the traced contour."],
+            )
+        scale_factor = req.real_distance_mm / pixel_distance
+        if not math.isfinite(scale_factor) or scale_factor <= 0:
+            raise InvalidInterfaceApprovalError(
+                "Calculated scale factor is invalid.",
+                recovery_steps=["Check the selected points and real-world distance."],
+            )
+
+        target_interface.scale_calibration = ScaleCalibration(
+            source="user_calibration",
+            method="two_point_trace",
+            reference_dimension="two_point_distance",
+            point_a=snap_a.point,
+            point_b=snap_b.point,
+            pixel_distance=pixel_distance,
+            real_distance_mm=req.real_distance_mm,
+            scale_factor=scale_factor,
+            confidence=1.0,
+            confirmed=req.confirmed,
+        )
+        if req.confirmed:
+            _update_derived_dimensions_from_scale(target_interface, scale_factor)
+
+        target_interface.approved = False
+        target_interface.approved_at = None
+        if interface_id == "interface_a":
+            project.interface_a = target_interface
+            project.state = WorkflowState.INTERFACE_A_REVIEW_REQUIRED
+        else:
+            project.interface_b = target_interface
+            project.state = WorkflowState.INTERFACE_B_REVIEW_REQUIRED
+
+        project.current_schema_revision += 1
+        self._mark_current_model_stale_if_exists(project)
+        project.updated_at = current_iso_timestamp()
+        return self.repository.save(project)
+
+    def reset_interface_scale_calibration(
+        self,
+        project_id: str,
+        interface_id: str,
+        project_token: Optional[str] = None,
+    ) -> Project:
+        """Clear saved calibration and invalidate profile approval."""
+        project = self._verify_project_and_token(project_id, project_token)
+        if interface_id not in ("interface_a", "interface_b"):
+            raise MissingPrerequisiteError(
+                f"Invalid interface ID '{interface_id}'. Must be 'interface_a' or 'interface_b'."
+            )
+        target_interface = (
+            project.interface_a if interface_id == "interface_a" else project.interface_b
+        )
+        target_interface.scale_calibration = None
+        target_interface.approved = False
+        target_interface.approved_at = None
+        if interface_id == "interface_a":
+            project.interface_a = target_interface
+            project.state = WorkflowState.INTERFACE_A_REVIEW_REQUIRED
+        else:
+            project.interface_b = target_interface
+            project.state = WorkflowState.INTERFACE_B_REVIEW_REQUIRED
+        project.current_schema_revision += 1
+        self._mark_current_model_stale_if_exists(project)
+        project.updated_at = current_iso_timestamp()
+        return self.repository.save(project)
+
     def approve_interface(
         self, project_id: str, interface_id: str, project_token: Optional[str] = None
     ) -> Project:
@@ -854,6 +1141,12 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
+
+        if target_interface.profile_type == ProfileType.TRACED_CLOSED and target_interface.scale_calibration is None:
+            raise InvalidInterfaceApprovalError(
+                "Cannot approve interface: Scale calibration must be confirmed.",
+                recovery_steps=["Select two trace points and confirm the real-world distance."],
+            )
 
         if (
             target_interface.scale_calibration is not None
