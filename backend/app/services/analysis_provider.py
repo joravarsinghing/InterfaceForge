@@ -424,7 +424,7 @@ class MockAnalysisProvider(AnalysisProvider):
                     confidence=0.90,
                     critical=False,
                     feature_ref="region_1",
-                    source_annotation="Ø12",
+                    source_annotation="Ã˜12",
                 ),
             ]
             scale_cal = ScaleCalibration(
@@ -444,7 +444,7 @@ class MockAnalysisProvider(AnalysisProvider):
                 confidence=0.92,
                 warnings=[
                     "Traced closed profile detected.",
-                    "Adapter generation for arbitrary traced profiles is not yet enabled.",
+                    "This outline is more complex than the shapes supported in this version.",
                     "Profile captured successfully for review.",
                 ],
                 rejection_reasons=[],

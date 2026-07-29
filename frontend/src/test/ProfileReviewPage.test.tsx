@@ -575,17 +575,22 @@ describe('Primitive Profile Calibration', () => {
   });
 });
 
-const roundedRectangleCandidateProject: Project = {
+const resolvedRoundedRectangleProject: Project = {
   ...mockProject,
   interface_a: {
     ...mockProject.interface_a,
-    profile_type: 'traced_closed',
+    profile_type: 'rounded_rectangle',
+    trace_profile_type: 'traced_closed',
+    resolved_profile_type: 'rounded_rectangle',
+    resolution_status: 'resolved',
+    resolution_confidence: 0.9,
+    resolution_reason: 'corner_offsets_support_rounded_rectangle',
     primitive_fallback_active: false,
-    primitive_promotion_confirmed: false,
+    primitive_promotion_confirmed: true,
     primitive_detection_confidence: 0.9,
     primitive_detection_reason: 'corner_offsets_support_rounded_rectangle',
-    generation_unsupported: true,
-    generation_unsupported_reason: 'Adapter generation for arbitrary traced profiles is not yet enabled.',
+    generation_unsupported: false,
+    generation_unsupported_reason: null,
     traced_outer_contour: {
       id: 'outer_contour',
       points: [
@@ -614,118 +619,79 @@ const roundedRectangleCandidateProject: Project = {
       confirmed: true,
     },
     dimensions: [
-      { id: 'overall_width', label: 'Overall Width', value: 50, unit: 'mm', provenance: 'system_inferred', confidence: 1, critical: true, feature_ref: 'outer_contour' },
-      { id: 'overall_height', label: 'Overall Height', value: 30, unit: 'mm', provenance: 'system_inferred', confidence: 1, critical: true, feature_ref: 'outer_contour' },
-    ],
-  },
-};
-
-const confirmedRoundedRectangleProject: Project = {
-  ...roundedRectangleCandidateProject,
-  interface_a: {
-    ...roundedRectangleCandidateProject.interface_a,
-    profile_type: 'rounded_rectangle',
-    primitive_fallback_active: true,
-    primitive_promotion_confirmed: true,
-    generation_unsupported: false,
-    generation_unsupported_reason: null,
-    dimensions: [
-      { id: 'width', label: 'Width', value: 50, unit: 'mm', provenance: 'user_entered', confidence: 1, critical: true, feature_ref: 'outer_contour' },
-      { id: 'height', label: 'Height', value: 30, unit: 'mm', provenance: 'user_entered', confidence: 1, critical: true, feature_ref: 'outer_contour' },
+      { id: 'width', label: 'Width', value: 50, unit: 'mm', provenance: 'image_extracted', confidence: 1, critical: true, feature_ref: 'outer_contour' },
+      { id: 'height', label: 'Height', value: 30, unit: 'mm', provenance: 'image_extracted', confidence: 1, critical: true, feature_ref: 'outer_contour' },
       { id: 'corner_radius', label: 'Corner Radius', value: 5, unit: 'mm', provenance: 'image_extracted', confidence: 0.82, critical: false, feature_ref: 'outer_contour' },
     ],
   },
 };
 
-describe('Profile Review shape confirmation regressions', () => {
-  it('shows Use Rounded Rectangle for a calibrated rounded-rectangle trace and hides the unsupported warning', () => {
+describe('Profile Review shape resolution regressions', () => {
+  it('shows the resolved rounded-rectangle shape and hides the unsupported warning', () => {
     render(
       <BrowserRouter>
-        <ProfileReviewPage interfaceId="interface_a" project={roundedRectangleCandidateProject} />
+        <ProfileReviewPage interfaceId="interface_a" project={resolvedRoundedRectangleProject} />
       </BrowserRouter>
     );
 
-    expect(screen.getByRole('heading', { name: /Detected shape: Rounded rectangle/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use Rounded Rectangle' })).toBeInTheDocument();
-    expect(screen.queryByText(/Arbitrary traced profiles are not supported/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
+    expect(screen.getAllByRole('heading', { name: /Detected shape: Rounded rectangle/i })[0]).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use Rounded Rectangle' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/This outline is more complex than the shapes supported in this version/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
   });
 
-  it('clicking Use Rounded Rectangle persists the supported profile and keeps calibration confirmed', async () => {
-    vi.mocked(api.patchInterface).mockResolvedValueOnce(confirmedRoundedRectangleProject);
-    const onProjectUpdate = vi.fn();
-
-    render(
-      <BrowserRouter>
-        <ProfileReviewPage interfaceId="interface_a" project={roundedRectangleCandidateProject} onProjectUpdate={onProjectUpdate} />
-      </BrowserRouter>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use Rounded Rectangle' }));
-
-    await waitFor(() => expect(api.patchInterface).toHaveBeenCalledWith(
-      'proj_123',
-      'interface_a',
-      expect.objectContaining({
-        profile_type: 'rounded_rectangle',
-        primitive_fallback_active: true,
-        primitive_promotion_confirmed: true,
-      }),
-      'tok_abc'
-    ));
-    await waitFor(() => expect(onProjectUpdate).toHaveBeenCalledWith(confirmedRoundedRectangleProject));
-    expect(screen.getAllByText(/Shape confirmed/i).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Arbitrary traced profiles are not supported/i)).not.toBeInTheDocument();
-  });
-
-  it('enables approval after valid shape confirmation and persists rounded_rectangle approval', async () => {
-    vi.mocked(api.patchInterface).mockResolvedValueOnce(confirmedRoundedRectangleProject);
+  it('approves a resolved rounded rectangle without patching a promotion first', async () => {
     vi.mocked(api.approveInterface).mockResolvedValueOnce({
-      ...confirmedRoundedRectangleProject,
-      interface_a: { ...confirmedRoundedRectangleProject.interface_a, approved: true },
+      ...resolvedRoundedRectangleProject,
+      interface_a: { ...resolvedRoundedRectangleProject.interface_a, approved: true },
       state: 'interface_a_approved',
     });
 
     render(
       <BrowserRouter>
-        <ProfileReviewPage interfaceId="interface_a" project={confirmedRoundedRectangleProject} />
+        <ProfileReviewPage interfaceId="interface_a" project={resolvedRoundedRectangleProject} />
       </BrowserRouter>
     );
 
-    const approve = screen.getByRole('button', { name: /Approve Interface A/i });
-    expect(approve).toBeEnabled();
-    fireEvent.click(approve);
+    fireEvent.click(screen.getByRole('button', { name: /Approve Interface A/i }));
 
-    await waitFor(() => expect(api.patchInterface).toHaveBeenCalledWith(
-      'proj_123',
-      'interface_a',
-      expect.objectContaining({ profile_type: 'rounded_rectangle', primitive_promotion_confirmed: true }),
-      'tok_abc'
-    ));
-    await waitFor(() => expect(api.approveInterface).toHaveBeenCalled());
+    await waitFor(() => expect(api.approveInterface).toHaveBeenCalledWith('proj_123', 'interface_a', 'tok_abc'));
+    expect(api.patchInterface).not.toHaveBeenCalled();
   });
 
-  it('keeps confirmed shape visible after refresh', () => {
+  it('keeps resolved shape visible after refresh', () => {
     render(
       <BrowserRouter>
-        <ProfileReviewPage interfaceId="interface_a" project={confirmedRoundedRectangleProject} />
+        <ProfileReviewPage interfaceId="interface_a" project={resolvedRoundedRectangleProject} />
       </BrowserRouter>
     );
 
-    expect(screen.getByRole('heading', { name: /Detected shape: Rounded rectangle/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: /Detected shape: Rounded rectangle/i })[0]).toBeInTheDocument();
     expect(screen.getAllByText(/Shape confirmed/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
   });
 
   it('shows the unsupported warning for genuinely complex traces', () => {
     const complexProject: Project = {
-      ...roundedRectangleCandidateProject,
+      ...resolvedRoundedRectangleProject,
       interface_a: {
-        ...roundedRectangleCandidateProject.interface_a,
+        ...resolvedRoundedRectangleProject.interface_a,
+        profile_type: 'traced_closed',
+        resolved_profile_type: null,
+        resolution_status: 'unsupported',
+        resolution_confidence: null,
+        resolution_reason: 'Contour does not match a supported circle, rectangle, or rounded rectangle.',
         primitive_detection_confidence: null,
         primitive_detection_reason: null,
+        primitive_promotion_confirmed: false,
+        generation_unsupported: true,
+        generation_unsupported_reason: 'This outline is more complex than the shapes supported in this version.',
+        dimensions: [
+          { id: 'overall_width', label: 'Overall Width', value: 50, unit: 'mm', provenance: 'system_inferred', confidence: 1, critical: true, feature_ref: 'outer_contour' },
+          { id: 'overall_height', label: 'Overall Height', value: 30, unit: 'mm', provenance: 'system_inferred', confidence: 1, critical: true, feature_ref: 'outer_contour' },
+        ],
         traced_outer_contour: {
-          ...roundedRectangleCandidateProject.interface_a.traced_outer_contour!,
+          ...resolvedRoundedRectangleProject.interface_a.traced_outer_contour!,
           points: [
             { x: 0, y: 0 },
             { x: 80, y: 0 },
@@ -748,7 +714,7 @@ describe('Profile Review shape confirmation regressions', () => {
     );
 
     expect(screen.queryByRole('button', { name: /Use Rounded Rectangle/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/Arbitrary traced profiles are not supported/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/This outline is more complex than the shapes supported in this version/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
   });
 });

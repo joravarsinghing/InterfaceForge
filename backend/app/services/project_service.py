@@ -53,6 +53,7 @@ from app.models.schema import (
     ProviderModeStatus,
     ScaleCalibration,
     ScaleSnapResponse,
+    ShapeResolutionStatus,
     TwoPointScaleCalibrationRequest,
     UploadResponseData,
     WorkflowState,
@@ -412,6 +413,107 @@ def _update_derived_dimensions_from_scale(interface: Interface, scale_factor: fl
     )
 
 
+
+SUPPORTED_GENERATION_PROFILE_TYPES = {
+    ProfileType.CIRCLE,
+    ProfileType.RECTANGLE,
+    ProfileType.ROUNDED_RECTANGLE,
+}
+
+AUTO_RESOLUTION_THRESHOLDS = {
+    ProfileType.CIRCLE: 0.90,
+    ProfileType.RECTANGLE: 0.90,
+    ProfileType.ROUNDED_RECTANGLE: 0.70,
+}
+
+
+def _resolved_dimension_map(interface: Interface) -> dict[str, float]:
+    values: dict[str, float] = {}
+    for dim in interface.dimensions:
+        if dim.id in {"outer_diameter", "diameter", "width", "height", "corner_radius"}:
+            if math.isfinite(dim.value) and dim.value > 0:
+                key = "diameter" if dim.id in {"outer_diameter", "diameter"} else dim.id
+                values[key] = round(float(dim.value), 4)
+    return values
+
+
+def _apply_authoritative_shape_resolution(
+    interface: Interface, *, repair_reason: str | None = None
+) -> bool:
+    before = interface.model_dump()
+    has_trace = interface.traced_outer_contour is not None and len(interface.traced_outer_contour.points) >= 4
+    trace_is_closed = bool(
+        has_trace and interface.traced_outer_contour and interface.traced_outer_contour.is_closed
+    )
+    original_profile_type = interface.profile_type
+    if repair_reason and not has_trace and original_profile_type in SUPPORTED_GENERATION_PROFILE_TYPES:
+        return False
+    interface.trace_profile_type = ProfileType.TRACED_CLOSED if has_trace else original_profile_type
+
+    candidate = None
+    if has_trace and trace_is_closed and not interface.is_complex:
+        candidate = classify_primitive_candidate(interface.traced_outer_contour.points)
+
+    if candidate and candidate.confidence >= AUTO_RESOLUTION_THRESHOLDS[candidate.profile_type]:
+        interface.profile_type = candidate.profile_type
+        interface.resolved_profile_type = candidate.profile_type
+        interface.resolution_status = ShapeResolutionStatus.RESOLVED
+        interface.resolution_confidence = candidate.confidence
+        interface.resolution_reason = candidate.reason
+        interface.primitive_fallback_active = False
+        interface.primitive_fallback_label = None
+        interface.primitive_promotion_confirmed = True
+        interface.primitive_detection_confidence = candidate.confidence
+        interface.primitive_detection_reason = candidate.reason
+        interface.verification_status = "shape_resolved"
+        interface.generation_unsupported = False
+        interface.generation_unsupported_reason = None
+        if interface.scale_calibration and interface.scale_calibration.confirmed:
+            set_calibrated_primitive_dimensions(interface, interface.scale_calibration.scale_factor)
+    elif candidate:
+        interface.profile_type = ProfileType.TRACED_CLOSED
+        interface.resolved_profile_type = candidate.profile_type
+        interface.resolution_status = ShapeResolutionStatus.NEEDS_CONFIRMATION
+        interface.resolution_confidence = candidate.confidence
+        interface.resolution_reason = candidate.reason
+        interface.primitive_detection_confidence = candidate.confidence
+        interface.primitive_detection_reason = candidate.reason
+        interface.primitive_fallback_active = False
+        interface.primitive_promotion_confirmed = False
+        interface.verification_status = "shape_resolution_needs_confirmation"
+        interface.generation_unsupported = True
+        interface.generation_unsupported_reason = "This outline needs shape confirmation before generation."
+    elif original_profile_type in SUPPORTED_GENERATION_PROFILE_TYPES and not has_trace:
+        interface.resolved_profile_type = original_profile_type
+        interface.resolution_status = ShapeResolutionStatus.RESOLVED
+        interface.resolution_confidence = interface.primitive_detection_confidence or 1.0
+        interface.resolution_reason = interface.primitive_detection_reason or "provider_returned_supported_profile"
+        interface.trace_profile_type = original_profile_type
+        interface.generation_unsupported = False
+        interface.generation_unsupported_reason = None
+    else:
+        interface.profile_type = ProfileType.TRACED_CLOSED
+        interface.resolved_profile_type = None
+        interface.resolution_status = ShapeResolutionStatus.UNSUPPORTED
+        interface.resolution_confidence = candidate.confidence if candidate else None
+        interface.resolution_reason = "Contour does not match a supported circle, rectangle, or rounded rectangle."
+        interface.primitive_fallback_active = False
+        interface.primitive_fallback_label = None
+        interface.primitive_promotion_confirmed = False
+        interface.primitive_detection_confidence = None
+        interface.primitive_detection_reason = None
+        interface.verification_status = "shape_resolution_unsupported"
+        interface.generation_unsupported = True
+        interface.generation_unsupported_reason = "This outline is more complex than the shapes supported in this version."
+        if interface.scale_calibration and interface.scale_calibration.confirmed:
+            _update_derived_dimensions_from_scale(interface, interface.scale_calibration.scale_factor)
+
+    interface.resolved_dimensions = _resolved_dimension_map(interface)
+    if repair_reason and before != interface.model_dump():
+        interface.resolution_repaired_at = current_iso_timestamp()
+        interface.resolution_repair_reason = repair_reason
+    return before != interface.model_dump()
+
 class ProjectService:
     """Service layer enforcing canonical schema revision rules and workflow state invariants."""
 
@@ -442,8 +544,9 @@ class ProjectService:
 
         repaired = False
         for interface in (project.interface_a, project.interface_b):
-            if interface.profile_type == ProfileType.TRACED_CLOSED:
-                repaired = _normalize_confirmed_primitive_promotion(interface) or repaired
+            repaired = _apply_authoritative_shape_resolution(
+                interface, repair_reason="loaded_project_shape_resolution_normalization"
+            ) or repaired
         if repaired:
             project.current_schema_revision += 1
             self._mark_current_model_stale_if_exists(project)
@@ -863,57 +966,23 @@ class ProjectService:
         if result.traced_outer_contour is not None:
             target_interface.traced_outer_contour = result.traced_outer_contour
             target_interface.traced_hole_contours = result.traced_hole_contours
-            primitive_candidate = (
-                classify_primitive_candidate(result.traced_outer_contour.points)
-                if result.profile_type == ProfileType.TRACED_CLOSED and not result.is_complex
-                else None
-            )
-            if primitive_candidate is not None:
-                target_interface.profile_type = primitive_candidate.profile_type
-                target_interface.verification_status = "primitive_detected_pending_confirmation"
-                target_interface.primitive_fallback_active = True
-                target_interface.primitive_promotion_confirmed = False
-                target_interface.primitive_detection_confidence = primitive_candidate.confidence
-                target_interface.primitive_detection_reason = primitive_candidate.reason
-                target_interface.primitive_fallback_label = (
-                    f"Detected {primitive_candidate.profile_type.value} primitive "
-                    f"with confidence {primitive_candidate.confidence:.2f}"
-                )
-                target_interface.generation_unsupported = False
-                target_interface.generation_unsupported_reason = None
-            elif result.profile_type == ProfileType.TRACED_CLOSED:
-                target_interface.profile_type = ProfileType.TRACED_CLOSED
-                target_interface.primitive_fallback_active = False
-                target_interface.primitive_promotion_confirmed = False
-                target_interface.primitive_detection_confidence = None
-                target_interface.primitive_detection_reason = None
-                target_interface.verification_status = "opencv_traced_pending_review"
-                target_interface.generation_unsupported = True
-                target_interface.generation_unsupported_reason = (
-                    "Adapter generation for arbitrary traced profiles is not yet enabled. "
-                    "Profile is captured and stored for review only."
-                )
-            else:
-                target_interface.profile_type = result.profile_type
-                target_interface.primitive_fallback_active = False
-                target_interface.primitive_promotion_confirmed = False
-                target_interface.primitive_detection_confidence = None
-                target_interface.primitive_detection_reason = None
-                target_interface.primitive_fallback_label = None
-                target_interface.verification_status = "opencv_primitive_pending_review"
-                target_interface.generation_unsupported = False
-                target_interface.generation_unsupported_reason = None
         else:
             primitive_contour = primitive_boundary_contour(
                 result.profile_type, result.candidate_dimensions, result.candidate_points
             )
             target_interface.traced_outer_contour = primitive_contour
             target_interface.traced_hole_contours = []
-            target_interface.verification_status = "pending_review"
-            target_interface.generation_unsupported = False
-            target_interface.generation_unsupported_reason = None
 
         _merge_upload_measurement_after_analysis(target_interface, previous_interface)
+        _apply_authoritative_shape_resolution(target_interface)
+        result.trace_profile_type = target_interface.trace_profile_type
+        result.resolved_profile_type = target_interface.resolved_profile_type
+        result.resolution_status = target_interface.resolution_status
+        result.resolution_confidence = target_interface.resolution_confidence
+        result.resolution_reason = target_interface.resolution_reason
+        result.resolved_dimensions = target_interface.resolved_dimensions
+        result.profile_type = target_interface.profile_type
+        result.candidate_dimensions = target_interface.dimensions
 
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         target_interface.validation = ProfileValidation(
@@ -1061,6 +1130,23 @@ class ProjectService:
                     recovery_steps=["Use POST /interfaces/{interface_id}/scale/calibrate."],
                 )
             target_interface.scale_calibration = patch.scale_calibration
+            if target_interface.scale_calibration.confirmed:
+                if (
+                    target_interface.scale_calibration.scale_factor <= 0
+                    and target_interface.scale_calibration.pixel_distance > 0
+                ):
+                    target_interface.scale_calibration.scale_factor = (
+                        target_interface.scale_calibration.real_distance_mm
+                        / target_interface.scale_calibration.pixel_distance
+                    )
+                if target_interface.profile_type == ProfileType.TRACED_CLOSED:
+                    _update_derived_dimensions_from_scale(
+                        target_interface, target_interface.scale_calibration.scale_factor
+                    )
+                else:
+                    set_calibrated_primitive_dimensions(
+                        target_interface, target_interface.scale_calibration.scale_factor
+                    )
         if patch.verification_status is not None:
             target_interface.verification_status = patch.verification_status
         if patch.primitive_fallback_active is not None:
@@ -1092,7 +1178,7 @@ class ProjectService:
             target_interface.generation_unsupported = False
             target_interface.generation_unsupported_reason = None
 
-        _normalize_confirmed_primitive_promotion(target_interface)
+        _apply_authoritative_shape_resolution(target_interface)
 
         # Run structural validation
         is_valid, errors, warnings = validate_interface_profile(target_interface)
@@ -1119,7 +1205,7 @@ class ProjectService:
         )
         promotion_confirmation_update = patch.primitive_promotion_confirmed is True
         if (
-            (geometry_changed or (patch.dimensions is not None and measurement_changed))
+            (geometry_changed or patch.dimensions is not None or measurement_changed)
             and target_interface.scale_calibration
             and not explicit_scale_confirmation
             and not promotion_confirmation_update
@@ -1268,6 +1354,7 @@ class ProjectService:
                 _update_derived_dimensions_from_scale(target_interface, scale_factor)
             else:
                 set_calibrated_primitive_dimensions(target_interface, scale_factor)
+            _apply_authoritative_shape_resolution(target_interface)
 
         target_interface.approved = False
         target_interface.approved_at = None
@@ -1334,7 +1421,7 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
-        promotion_changed = _normalize_confirmed_primitive_promotion(target_interface)
+        promotion_changed = _apply_authoritative_shape_resolution(target_interface)
         if promotion_changed:
             project.current_schema_revision += 1
             self._mark_current_model_stale_if_exists(project)
@@ -1365,13 +1452,22 @@ class ProjectService:
                 recovery_steps=["Re-run analysis or upload a cleaner interface image."],
             )
 
-        if (
-            target_interface.primitive_fallback_active
-            and not target_interface.primitive_promotion_confirmed
-        ):
+        is_valid, errors, warnings = validate_interface_profile(target_interface)
+        if not is_valid or errors:
             raise InvalidInterfaceApprovalError(
-                "Cannot approve interface: detected primitive promotion must be confirmed.",
-                recovery_steps=["Review the detected primitive and confirm it before approval."],
+                f"Cannot approve {interface_id}: profile has structural validation errors "
+                f"({errors[0]})."
+            )
+        if (
+            target_interface.resolution_status != ShapeResolutionStatus.RESOLVED
+            or target_interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES
+        ):
+            message = "This outline is more complex than the shapes supported in this version."
+            if target_interface.resolution_status == ShapeResolutionStatus.NEEDS_CONFIRMATION:
+                message = "Cannot approve interface: shape resolution still needs confirmation."
+            raise InvalidInterfaceApprovalError(
+                message,
+                recovery_steps=["Replace the image with a clean circle, rectangle, or rounded rectangle."],
             )
 
         if target_interface.profile_type == ProfileType.ROUNDED_RECTANGLE:
@@ -1390,23 +1486,6 @@ class ProjectService:
                     "Cannot approve interface: inferred corner radius must be confirmed.",
                     recovery_steps=["Confirm or edit the corner radius before approval."],
                 )
-
-        is_valid, errors, warnings = validate_interface_profile(target_interface)
-        if not is_valid or errors:
-            raise InvalidInterfaceApprovalError(
-                f"Cannot approve {interface_id}: profile has structural validation errors "
-                f"({errors[0]})."
-            )
-
-        if target_interface.profile_type == ProfileType.TRACED_CLOSED:
-            raise InvalidInterfaceApprovalError(
-                "Cannot approve interface: arbitrary traced profiles are not supported "
-                "for generation yet.",
-                recovery_steps=[
-                    "Use a clean circle, rectangle, or rounded rectangle image.",
-                    "Replace the image or confirm an eligible supported primitive approximation.",
-                ],
-            )
 
         now = current_iso_timestamp()
         if interface_id == "interface_a":

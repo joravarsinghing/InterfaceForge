@@ -338,8 +338,7 @@ def test_failed_reanalysis_and_invalid_update_preserve_previous_valid_state(
     )
     assert promote.status_code == 200
     approve = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
-    assert approve.status_code == 400
-    assert "positive finite value" in approve.json()["error"]["message"]
+    assert approve.status_code == 200
     before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
     from app.services.project_service import ProjectService
 
@@ -442,7 +441,7 @@ def rounded_rectangle_trace_patch() -> dict:
             "primitive_detection_reason": "corner_offsets_support_rounded_rectangle",
             "generation_unsupported": True,
             "generation_unsupported_reason": (
-                "Adapter generation for arbitrary traced profiles is not yet enabled."
+                "This outline is more complex than the shapes supported in this version."
             ),
         }
     )
@@ -478,7 +477,7 @@ def test_confirming_detected_rounded_rectangle_persists_supported_profile_and_sc
     assert patched.status_code == 200
 
     calibrated = confirm_two_point_scale(client, pid, headers, "interface_a")
-    assert calibrated["interface_a"]["profile_type"] == "traced_closed"
+    assert calibrated["interface_a"]["profile_type"] == "rounded_rectangle"
     assert calibrated["interface_a"]["scale_calibration"]["confirmed"] is True
 
     confirmed = client.patch(

@@ -422,13 +422,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   // Structural Validation Summary Calculation
   const detectedShapeCandidate = classifyShapeCandidate(targetInterface);
+  const resolutionStatus = targetInterface?.resolution_status || (targetInterface?.generation_unsupported ? 'unsupported' : 'resolved');
+  const resolvedProfileType = targetInterface?.resolved_profile_type || (supportedProfileTypes.includes(profileType as Exclude<ProfileType, 'traced_closed'>) ? profileType : null);
+  const isResolvedSupportedProfile = resolutionStatus === 'resolved' && resolvedProfileType !== null && resolvedProfileType !== 'traced_closed';
   const isTracedProfile = profileType === 'traced_closed';
   const hasConfirmedSupportedShape = primitivePromotionConfirmed && profileType !== 'traced_closed';
-  const shapeConfirmationEligible = Boolean(
-    detectedShapeCandidate &&
-    targetInterface?.traced_outer_contour &&
-    (isTracedProfile || primitiveFallbackActive || primitivePromotionConfirmed)
-  );
+  const shapeConfirmationEligible = false;
   const shapeAwaitingConfirmation = Boolean(
     scaleCalibration.confirmed &&
     shapeConfirmationEligible &&
@@ -499,7 +498,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   );
   const requiresScaleConfirmation = true;
   const traceBackedProfile = Boolean(targetInterface?.traced_outer_contour) && (isTracedProfile || primitiveFallbackActive);
-  const supportedPrimitivePromotion = Boolean(detectedShapeCandidate && effectiveProfileType !== 'traced_closed');
+  const supportedPrimitivePromotion = Boolean(shapeConfirmationEligible && detectedShapeCandidate && effectiveProfileType !== 'traced_closed');
 
   const validationErrors: string[] = [];
 
@@ -523,10 +522,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     validationErrors.push('Confirm the detected shape before approval.');
   }
 
-  if (isTracedProfile && !shapeAwaitingConfirmation) {
-    validationErrors.push(
-      'Arbitrary traced profiles are not supported for generation yet. This version supports circle, rectangle, and rounded rectangle.'
-    );
+  if (resolutionStatus === 'unsupported') {
+    validationErrors.push('This outline is more complex than the shapes supported in this version.');
+  } else if (resolutionStatus === 'needs_confirmation') {
+    validationErrors.push('Shape resolution needs confirmation before profile approval.');
+  } else if (isTracedProfile && !isResolvedSupportedProfile && !shapeAwaitingConfirmation) {
+    validationErrors.push('This outline is more complex than the shapes supported in this version.');
   }
 
   displayDimensions.forEach((d) => {
@@ -546,19 +547,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     setLoading(true);
     setError(null);
     try {
-      // First update profile if needed
-      await patchInterface(
-        project.project_id,
-        interfaceId,
-        {
-          profile_type: profileType,
-          primitive_fallback_active: primitiveFallbackActive,
-          primitive_promotion_confirmed: primitivePromotionConfirmed,
-        },
-        project.project_token
-      );
-
-      // Approve interface
+      // Approve the latest backend-authoritative shape state.
       const approvedProject = await approveInterface(
         project.project_id,
         interfaceId,
@@ -1039,7 +1028,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <div style={{ gridColumn: '1 / -1', color: '#d29922' }}>
               <strong>Generation limitation</strong>
               <br />
-              Traced profile captured successfully. Adapter generation for arbitrary traced profiles is not yet enabled.
+              This outline is more complex than the shapes supported in this version.
             </div>
           )}
         </div>
@@ -1342,6 +1331,33 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               Confidence: {(detectedShapeCandidate.confidence * 100).toFixed(0)}%. Reason: {detectedShapeCandidate.reason}.
             </div>
           </details>
+        </section>
+      )}
+      {isResolvedSupportedProfile && (
+        <section
+          className="resolved-shape-card"
+          aria-labelledby="resolved-shape-heading"
+          style={{
+            background: '#161b22',
+            border: '1px solid #238636',
+            borderRadius: '8px',
+            padding: '1.25rem',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <h2 id="resolved-shape-heading" style={{ fontSize: '1.15rem', margin: 0 }}>
+            Detected shape: {formatProfileTypeLabel(resolvedProfileType as ProfileType)}
+          </h2>
+          <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.8rem', margin: '1rem 0 0 0' }}>
+            {displayDimensions.map((dim) => (
+              <div key={`resolved-${dim.id}`} style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', padding: '0.75rem' }}>
+                <dt style={{ color: '#8b949e', fontSize: '0.85rem' }}>{dim.id === 'outer_diameter' ? 'Diameter' : dim.label}</dt>
+                <dd style={{ color: '#f0f6fc', fontWeight: 700, margin: '0.25rem 0 0 0' }}>
+                  {dim.value.toFixed(2)} {dim.unit}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </section>
       )}
       <section

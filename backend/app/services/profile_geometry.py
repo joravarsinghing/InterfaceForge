@@ -184,9 +184,74 @@ def _corner_offsets(points: list[Point2D], box: tuple[float, float, float, float
     return offsets
 
 
+
+def _segments_cross(a: Point2D, b: Point2D, c: Point2D, d: Point2D) -> bool:
+    def orient(p: Point2D, q: Point2D, r: Point2D) -> float:
+        return (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+
+    return orient(a, c, d) * orient(b, c, d) < 0 and orient(a, b, c) * orient(a, b, d) < 0
+
+
+def _self_intersects(points: list[Point2D]) -> bool:
+    count = len(points)
+    if count < 4:
+        return False
+    for idx in range(count):
+        a = points[idx]
+        b = points[(idx + 1) % count]
+        for other in range(idx + 2, count):
+            if idx == 0 and other == count - 1:
+                continue
+            c = points[other]
+            d = points[(other + 1) % count]
+            if _segments_cross(a, b, c, d):
+                return True
+    return False
+
+
+def _perimeter(points: list[Point2D]) -> float:
+    return sum(
+        math.hypot(
+            points[(idx + 1) % len(points)].x - points[idx].x,
+            points[(idx + 1) % len(points)].y - points[idx].y,
+        )
+        for idx in range(len(points))
+    )
+
+
+def _polygon_area(points: list[Point2D]) -> float:
+    return abs(
+        sum(
+            points[idx].x * points[(idx + 1) % len(points)].y
+            - points[(idx + 1) % len(points)].x * points[idx].y
+            for idx in range(len(points))
+        )
+    ) / 2.0
+
+
+def _sharp_corner_count(points: list[Point2D], threshold_degrees: float = 38.0) -> int:
+    count = 0
+    for idx, point in enumerate(points):
+        prev = points[idx - 1]
+        nxt = points[(idx + 1) % len(points)]
+        v1 = (prev.x - point.x, prev.y - point.y)
+        v2 = (nxt.x - point.x, nxt.y - point.y)
+        len1 = math.hypot(*v1)
+        len2 = math.hypot(*v2)
+        if len1 <= 1e-6 or len2 <= 1e-6:
+            continue
+        dot = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (len1 * len2)))
+        angle = math.degrees(math.acos(dot))
+        turn = abs(180.0 - angle)
+        if turn >= threshold_degrees:
+            count += 1
+    return count
+
+
 def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveClassification]:
-    box = bbox(points)
-    if box is None or len(points) < 4:
+    finite_points = [p for p in points if math.isfinite(p.x) and math.isfinite(p.y)]
+    box = bbox(finite_points)
+    if box is None or len(finite_points) < 4 or _self_intersects(finite_points):
         return None
     min_x, max_x, min_y, max_y = box
     width = max_x - min_x
@@ -199,17 +264,31 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
     cx = (min_x + max_x) / 2.0
     cy = (min_y + max_y) / 2.0
 
-    radii = [math.hypot(p.x - cx, p.y - cy) for p in points]
+    area = _polygon_area(finite_points)
+    perimeter = _perimeter(finite_points)
+    circularity = (4.0 * math.pi * area / (perimeter * perimeter)) if perimeter > 0 else 0.0
+    sharp_corners = _sharp_corner_count(finite_points)
+
+    radii = [math.hypot(p.x - cx, p.y - cy) for p in finite_points]
     mean_radius = sum(radii) / len(radii)
     radial_rms = math.sqrt(sum((r - mean_radius) ** 2 for r in radii) / len(radii))
     radial_max = max(abs(r - mean_radius) for r in radii)
     aspect_error = abs(width - height) / max_dim
-    circle_score = 1.0 - max(aspect_error / 0.05, (radial_rms / max(mean_radius, 1e-6)) / 0.035)
+    radial_rms_ratio = radial_rms / max(mean_radius, 1e-6)
+    radial_max_ratio = radial_max / max(mean_radius, 1e-6)
+    circle_score = 1.0 - max(
+        aspect_error / 0.05,
+        radial_rms_ratio / 0.035,
+        max(0.0, 0.88 - circularity) / 0.12,
+        max(0, sharp_corners - 2) / 4.0,
+    )
     if (
-        len(points) >= 12
+        len(finite_points) >= 12
         and aspect_error <= 0.05
-        and radial_rms / max(mean_radius, 1e-6) <= 0.035
-        and radial_max / max(mean_radius, 1e-6) <= 0.085
+        and radial_rms_ratio <= 0.035
+        and radial_max_ratio <= 0.085
+        and circularity >= 0.88
+        and sharp_corners <= 2
     ):
         return PrimitiveClassification(
             ProfileType.CIRCLE,
@@ -219,17 +298,17 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
 
     side_tol = 0.025 * max_dim
     corner_tol = 0.06 * max_dim
-    side_distances = _point_side_distances(points, box)
-    on_sides_ratio = sum(1 for d in side_distances if d <= side_tol) / len(points)
+    side_distances = _point_side_distances(finite_points, box)
+    on_sides_ratio = sum(1 for d in side_distances if d <= side_tol) / len(finite_points)
     near_corner_count = sum(
         1
-        for p in points
+        for p in finite_points
         if abs(abs(p.x - cx) - width / 2.0) <= corner_tol
         and abs(abs(p.y - cy) - height / 2.0) <= corner_tol
     )
     unique_side_hits = {
         side
-        for p in points
+        for p in finite_points
         for side, is_hit in (
             ("left", abs(p.x - min_x) <= side_tol),
             ("right", abs(p.x - max_x) <= side_tol),
@@ -239,10 +318,11 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
         if is_hit
     }
     if (
-        len(points) <= 8
+        len(finite_points) <= 8
         and on_sides_ratio >= 0.95
         and near_corner_count >= 4
         and len(unique_side_hits) == 4
+        and sharp_corners >= 4
     ):
         return PrimitiveClassification(
             ProfileType.RECTANGLE,
@@ -250,15 +330,15 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
             reason="all_points_lie_on_four_bbox_sides",
         )
 
-    offsets = _corner_offsets(points, box)
+    offsets = _corner_offsets(finite_points, box)
     radius_px = sum(offsets) / len(offsets) if offsets else 0.0
     radius_ratio = radius_px / max(min_dim, 1e-6)
     radius_spread = (max(offsets) - min(offsets)) / max(radius_px, 1e-6) if offsets else 1.0
-    horizontal_support = any(abs(p.y - min_y) <= side_tol for p in points) and any(
-        abs(p.y - max_y) <= side_tol for p in points
+    horizontal_support = any(abs(p.y - min_y) <= side_tol for p in finite_points) and any(
+        abs(p.y - max_y) <= side_tol for p in finite_points
     )
-    vertical_support = any(abs(p.x - min_x) <= side_tol for p in points) and any(
-        abs(p.x - max_x) <= side_tol for p in points
+    vertical_support = any(abs(p.x - min_x) <= side_tol for p in finite_points) and any(
+        abs(p.x - max_x) <= side_tol for p in finite_points
     )
     rounded_confidence = 1.0 - max(
         max(0.0, radius_spread - 0.35) / 0.65,
@@ -266,12 +346,13 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
         0.0 if on_sides_ratio >= 0.60 else (0.60 - on_sides_ratio) / 0.60,
     )
     if (
-        len(points) >= 8
+        len(finite_points) >= 8
         and horizontal_support
         and vertical_support
         and 0.03 <= radius_ratio <= 0.35
         and radius_spread <= 0.65
         and on_sides_ratio >= 0.55
+        and 2 <= sharp_corners <= 8
         and rounded_confidence >= 0.65
     ):
         return PrimitiveClassification(
@@ -283,7 +364,6 @@ def classify_primitive_candidate(points: list[Point2D]) -> Optional[PrimitiveCla
         )
 
     return None
-
 
 def classify_primitive_from_points(points: list[Point2D]) -> ProfileType | None:
     result = classify_primitive_candidate(points)

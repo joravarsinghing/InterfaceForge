@@ -1,4 +1,4 @@
-﻿"""Two-point trace scale calibration regression tests."""
+"""Two-point trace scale calibration regression tests."""
 
 from fastapi.testclient import TestClient
 
@@ -123,8 +123,8 @@ def test_two_point_calibration_persists_and_hydrates_confirmed_scale(client: Tes
     assert scale["pixel_distance"] == 40.0
     assert scale["scale_factor"] == 1.125
     dims = {d["id"]: d for d in iface["dimensions"]}
-    assert dims["overall_width"]["value"] == 112.5
-    assert dims["overall_height"]["value"] == 56.25
+    assert dims["width"]["value"] == 112.5
+    assert dims["height"]["value"] == 56.25
 
     reloaded = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
     assert reloaded["interface_a"]["scale_calibration"] == scale
@@ -290,7 +290,7 @@ def test_legacy_unmapped_dimensions_do_not_block_or_drive_approval(client: TestC
     approved = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
     assert approved.status_code == 200, approved.json()
     dims = {d["id"]: d for d in approved.json()["data"]["interface_a"]["dimensions"]}
-    assert dims["overall_width"]["value"] == 40.0
+    assert dims["width"]["value"] == 40.0
     assert dims["custom_dim_1"]["feature_ref"] is None
 
 

@@ -41,6 +41,14 @@ class ProfileType(str, Enum):
     TRACED_CLOSED = "traced_closed"
 
 
+class ShapeResolutionStatus(str, Enum):
+    """Authoritative contour-to-generation shape resolution state."""
+
+    RESOLVED = "resolved"
+    NEEDS_CONFIRMATION = "needs_confirmation"
+    UNSUPPORTED = "unsupported"
+
+
 class DimensionProvenance(str, Enum):
     """Provenance tracking for dimension values."""
 
@@ -124,7 +132,7 @@ class Dimension(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critical: bool = True
     feature_ref: Optional[str] = None  # e.g. 'outer_contour', 'region_1', 'bore'
-    source_annotation: Optional[str] = None  # e.g. '40', 'ÃƒËœ16', 'R5'
+    source_annotation: Optional[str] = None  # e.g. '40', 'ÃƒÆ’Ã‹Å“16', 'R5'
     consistency_state: str = "valid"  # 'valid', 'conflict', 'unmapped', 'recalculated'
 
 
@@ -186,6 +194,14 @@ class Interface(BaseModel):
     id: str  # 'interface_a' or 'interface_b'
     source_image_ref: Optional[str] = None
     profile_type: ProfileType = ProfileType.CIRCLE
+    trace_profile_type: Optional[ProfileType] = None
+    resolved_profile_type: Optional[ProfileType] = None
+    resolution_status: ShapeResolutionStatus = ShapeResolutionStatus.RESOLVED
+    resolution_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    resolution_reason: Optional[str] = None
+    resolved_dimensions: dict[str, float] = Field(default_factory=dict)
+    resolution_repaired_at: Optional[str] = None
+    resolution_repair_reason: Optional[str] = None
     profile_points: List[Point2D] = Field(default_factory=list)
     center: Point2D = Field(default_factory=Point2D)
     dimensions: List[Dimension] = Field(default_factory=default_circle_dimensions)
@@ -340,6 +356,12 @@ class InterfacePatchRequest(BaseModel):
 
     source_image_ref: Optional[str] = None
     profile_type: Optional[ProfileType] = None
+    trace_profile_type: Optional[ProfileType] = None
+    resolved_profile_type: Optional[ProfileType] = None
+    resolution_status: Optional[ShapeResolutionStatus] = None
+    resolution_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    resolution_reason: Optional[str] = None
+    resolved_dimensions: Optional[dict[str, float]] = None
     is_complex: Optional[bool] = None
     complex_reason: Optional[str] = None
     profile_points: Optional[List[Point2D]] = None
@@ -498,6 +520,12 @@ class AnalysisResult(BaseModel):
 
     input_type: str = "dimensioned_technical_drawing"
     profile_type: ProfileType
+    trace_profile_type: Optional[ProfileType] = None
+    resolved_profile_type: Optional[ProfileType] = None
+    resolution_status: ShapeResolutionStatus = ShapeResolutionStatus.RESOLVED
+    resolution_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    resolution_reason: Optional[str] = None
+    resolved_dimensions: dict[str, float] = Field(default_factory=dict)
     candidate_points: List[Point2D] = Field(default_factory=list)
     candidate_dimensions: List[Dimension] = Field(default_factory=list)
     provenance: DimensionProvenance = DimensionProvenance.IMAGE_EXTRACTED

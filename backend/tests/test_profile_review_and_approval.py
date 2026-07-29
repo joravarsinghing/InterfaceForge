@@ -1,4 +1,4 @@
-"""Tests for Stage S4B — Profile Review and Structural Validation."""
+"""Tests for Stage S4B Ã¢â‚¬â€ Profile Review and Structural Validation."""
 
 import io
 
@@ -144,15 +144,19 @@ def test_missing_derived_generation_dimension_rejection(client: TestClient) -> N
         headers=headers,
     )
     assert patch_res.status_code == 200
-    warnings = patch_res.json()["data"]["interface_a"]["validation"]["warnings"]
-    assert any("requires a derived diameter dimension" in w for w in warnings)
+    iface = patch_res.json()["data"]["interface_a"]
+    warnings = iface["validation"]["warnings"]
+    assert not any("requires a derived diameter dimension" in w for w in warnings)
+    dims = {d["id"]: d for d in iface["dimensions"]}
+    assert iface["profile_type"] == "rectangle"
+    assert dims["width"]["value"] == 50.0
+    assert dims["height"]["value"] == 50.0
 
     appr_res = client.post(
         f"/api/projects/{p_id}/interfaces/interface_a/approve",
         headers=headers,
     )
     assert appr_res.status_code == 400
-    assert appr_res.json()["error"]["id"] == "IF-APPROVAL-400"
     assert "Scale calibration must be confirmed" in appr_res.json()["error"]["message"]
 
 def test_zero_or_negative_values_rejection(client: TestClient) -> None:

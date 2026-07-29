@@ -1,4 +1,4 @@
-﻿/**
+/**
   * TypeScript contract definitions matching Backend Canonical Design Schema (ADR-001, ADR-005)
   */
 
@@ -30,6 +30,8 @@ export type DimensionProvenance =
   | 'image_extracted'
   | 'system_inferred'
   | 'unresolved';
+
+export type ShapeResolutionStatus = 'resolved' | 'needs_confirmation' | 'unsupported';
 
 export type ConnectionMode = 'coaxial' | 'offset' | 'angled';
 
@@ -112,6 +114,14 @@ export interface InterfaceDefinition {
   id: string;
   source_image_ref?: string | null;
   profile_type: ProfileType;
+  trace_profile_type?: ProfileType | null;
+  resolved_profile_type?: ProfileType | null;
+  resolution_status?: ShapeResolutionStatus;
+  resolution_confidence?: number | null;
+  resolution_reason?: string | null;
+  resolved_dimensions?: Record<string, number>;
+  resolution_repaired_at?: string | null;
+  resolution_repair_reason?: string | null;
   profile_points: Point2D[];
   center: Point2D;
   dimensions: Dimension[];
@@ -146,6 +156,12 @@ export interface InterfaceDefinition {
 export interface InterfacePatchRequest {
   source_image_ref?: string | null;
   profile_type?: string;
+  trace_profile_type?: ProfileType | null;
+  resolved_profile_type?: ProfileType | null;
+  resolution_status?: ShapeResolutionStatus;
+  resolution_confidence?: number | null;
+  resolution_reason?: string | null;
+  resolved_dimensions?: Record<string, number>;
   dimensions?: Dimension[];
   fit_mode?: FitMode;
   traced_outer_contour?: TracedContour | null;
@@ -264,6 +280,12 @@ export interface UploadResponseData {
 export interface AnalysisResult {
   input_type?: string;
   profile_type: ProfileType;
+  trace_profile_type?: ProfileType | null;
+  resolved_profile_type?: ProfileType | null;
+  resolution_status?: ShapeResolutionStatus;
+  resolution_confidence?: number | null;
+  resolution_reason?: string | null;
+  resolved_dimensions?: Record<string, number>;
   candidate_points: Point2D[];
   candidate_dimensions: Dimension[];
   provenance: DimensionProvenance;

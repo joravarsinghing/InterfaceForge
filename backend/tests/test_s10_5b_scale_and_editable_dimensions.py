@@ -1,4 +1,4 @@
-﻿"""Stage S10.5B Backend Unit & Integration Tests â€” Scale Calibration and Editable Dimensions."""
+"""Stage S10.5B Backend Unit & Integration Tests â€” Scale Calibration and Editable Dimensions."""
 
 import math
 import os
@@ -134,7 +134,7 @@ class TestS105BScaleAndEditableDimensions:
         )
         assert app_resp.status_code == 400
         message = app_resp.json()["error"]["message"]
-        assert "arbitrary traced profiles" in message or "positive finite value" in message
+        assert "geometry consistency conflict" in message
 
     def test_dimension_feature_mapping(self):
         """Every dimension includes feature reference and consistency state."""

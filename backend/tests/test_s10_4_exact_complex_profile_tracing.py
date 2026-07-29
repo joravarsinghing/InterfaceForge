@@ -1,4 +1,4 @@
-﻿"""S10.4 Tests: Exact Complex Profile Tracing, Scale Calibration, and Review Pipeline."""
+"""S10.4 Tests: Exact Complex Profile Tracing, Scale Calibration, and Review Pipeline."""
 
 import io
 
@@ -213,7 +213,7 @@ class TestS104ExactComplexProfileTracing:
             },
         )
 
-        # Approve again â€” should succeed
+        # Approve again - resolved rectangle should succeed
         client.patch(
             f"/api/projects/{pid}/interfaces/interface_a",
             headers={"X-Project-Token": token},
@@ -223,8 +223,8 @@ class TestS104ExactComplexProfileTracing:
             f"/api/projects/{pid}/interfaces/interface_a/approve",
             headers={"X-Project-Token": token},
         )
-        assert appr_resp_2.status_code == 400
-        assert "positive finite value" in appr_resp_2.json()["error"]["message"]
+        assert appr_resp_2.status_code == 200, appr_resp_2.json()
+        assert appr_resp_2.json()["data"]["interface_a"]["profile_type"] == "rectangle"
 
     def test_feature_linked_dimensions(self):
         """Dimensions link to geometry features using feature_ref and source_annotation."""

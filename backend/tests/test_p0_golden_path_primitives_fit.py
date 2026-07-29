@@ -1,4 +1,4 @@
-﻿"""P0 golden-path primitive detection and per-interface fit intent tests."""
+"""P0 golden-path primitive detection and per-interface fit intent tests."""
 
 import pytest
 
@@ -43,6 +43,17 @@ def circle_points(radius: float = 50.0, count: int = 32) -> list[Point2D]:
         for idx in range(count)
     ]
 
+
+def ellipse_points(width: float = 120.0, height: float = 92.0, count: int = 40) -> list[Point2D]:
+    import math
+
+    return [
+        Point2D(
+            x=round((width / 2.0) * math.cos(2 * math.pi * idx / count), 4),
+            y=round((height / 2.0) * math.sin(2 * math.pi * idx / count), 4),
+        )
+        for idx in range(count)
+    ]
 
 def rounded_rect_points(width: float = 120.0, height: float = 80.0) -> list[Point2D]:
     return [
@@ -168,6 +179,14 @@ def test_irregular_contour_stays_traced_closed() -> None:
     assert classify_primitive_candidate(irregular_points()) is None
     assert classify_primitive_from_points(irregular_points()) is None
 
+
+def test_near_circular_non_circles_do_not_promote_to_circle() -> None:
+    ellipse = classify_primitive_candidate(ellipse_points())
+    rounded_square = classify_primitive_candidate(rounded_rect_points(width=100.0, height=100.0))
+
+    assert ellipse is None or ellipse.profile_type != ProfileType.CIRCLE
+    assert rounded_square is not None
+    assert rounded_square.profile_type != ProfileType.CIRCLE
 
 def test_rounded_rectangle_radius_estimated_from_trace_when_confident() -> None:
     interface = Interface(
@@ -308,7 +327,7 @@ def test_invalid_fit_inside_geometry_blocks_generation() -> None:
     assert any(issue.id == "IF-MFG-004" for issue in validation.blocking_errors)
 
 
-def test_primitive_promotion_requires_confirmation_before_approval() -> None:
+def test_confident_primitive_trace_auto_resolves_before_approval() -> None:
     service = ProjectService()
     project = service.create_project()
     project.interface_a.profile_type = ProfileType.ROUNDED_RECTANGLE
@@ -343,24 +362,10 @@ def test_primitive_promotion_requires_confirmation_before_approval() -> None:
     project.interface_a.primitive_promotion_confirmed = False
     service.repository.save(project)
 
-    with pytest.raises(
-        InvalidInterfaceApprovalError, match="primitive promotion must be confirmed"
-    ):
-        service.approve_interface(project.project_id, "interface_a", project.project_token)
-
-    from app.models.schema import InterfacePatchRequest
-
-    updated = service.patch_interface(
-        project.project_id,
-        "interface_a",
-        InterfacePatchRequest(primitive_promotion_confirmed=True),
-        project.project_token,
-    )
-    assert updated.interface_a.primitive_promotion_confirmed is True
-
     approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
     assert approved.interface_a.approved is True
-
+    assert approved.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
+    assert approved.interface_a.resolution_status.value == "resolved"
 
 def test_inferred_rounded_rectangle_radius_blocks_approval_until_user_confirmed() -> None:
     service = ProjectService()
@@ -499,7 +504,7 @@ def test_unsupported_traced_closed_cannot_be_approved_for_generation() -> None:
     )
     service.repository.save(project)
 
-    with pytest.raises(InvalidInterfaceApprovalError, match="arbitrary traced profiles"):
+    with pytest.raises(InvalidInterfaceApprovalError, match="more complex than the shapes supported"):
         service.approve_interface(project.project_id, "interface_a", project.project_token)
 
 
@@ -543,7 +548,7 @@ def test_existing_confirmed_traced_closed_promotion_is_repaired_and_stales_model
     assert repaired.current_schema_revision == project.current_schema_revision + 1
 
 
-def test_unconfirmed_traced_closed_is_not_silently_promoted_on_load() -> None:
+def test_confident_traced_closed_is_repaired_on_load() -> None:
     service = ProjectService()
     project = service.create_project()
     project.interface_a.profile_type = ProfileType.TRACED_CLOSED
@@ -558,7 +563,8 @@ def test_unconfirmed_traced_closed_is_not_silently_promoted_on_load() -> None:
 
     loaded = service.get_project(project.project_id, project.project_token)
 
-    assert loaded.interface_a.profile_type == ProfileType.TRACED_CLOSED
+    assert loaded.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
+    assert loaded.interface_a.resolution_status.value == "resolved"
 
 
 def test_scale_snap_prefers_nearby_simplified_node_before_edge_projection() -> None:
