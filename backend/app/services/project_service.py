@@ -1,4 +1,4 @@
-﻿"""Project service layer managing domain workflow state transitions and schema invariants."""
+"""Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
 import logging
@@ -343,6 +343,20 @@ def _confirmed_primitive_promotion_type(interface: Interface) -> ProfileType | N
         return None
     return candidate.profile_type
 
+
+def _supported_primitive_candidate_type(interface: Interface) -> ProfileType | None:
+    if interface.profile_type in (
+        ProfileType.CIRCLE,
+        ProfileType.RECTANGLE,
+        ProfileType.ROUNDED_RECTANGLE,
+    ):
+        return interface.profile_type
+    if interface.traced_outer_contour is None:
+        return None
+    candidate = classify_primitive_candidate(interface.traced_outer_contour.points)
+    if candidate is None:
+        return None
+    return candidate.profile_type
 
 def _normalize_confirmed_primitive_promotion(interface: Interface) -> bool:
     promoted_type = _confirmed_primitive_promotion_type(interface)
@@ -1061,6 +1075,22 @@ class ProjectService:
             target_interface.primitive_detection_reason = patch.primitive_detection_reason
         if patch.fit_mode is not None:
             target_interface.fit_mode = patch.fit_mode
+
+        if patch.primitive_promotion_confirmed is True:
+            promoted_type = _supported_primitive_candidate_type(target_interface)
+            if promoted_type is None:
+                raise InvalidInterfaceApprovalError(
+                    "Cannot confirm detected shape: no supported circle, rectangle, "
+                    "or rounded rectangle candidate is available.",
+                    recovery_steps=[
+                        "Use a cleaner image or keep the profile in traced review mode."
+                    ],
+                )
+            target_interface.profile_type = promoted_type
+            target_interface.primitive_fallback_active = True
+            target_interface.verification_status = "primitive_promotion_confirmed"
+            target_interface.generation_unsupported = False
+            target_interface.generation_unsupported_reason = None
 
         _normalize_confirmed_primitive_promotion(target_interface)
 

@@ -1,4 +1,4 @@
-﻿"""Compressed Core Safety Gate regression tests."""
+"""Compressed Core Safety Gate regression tests."""
 
 import io
 import math
@@ -413,3 +413,184 @@ def test_failed_generation_preserves_last_known_good_model(client: TestClient) -
     assert failed["last_known_good_model_revision"] == 1
     assert failed["model_revisions"][0]["status"] == "current"
     assert failed["model_revisions"][1]["status"] == "failed"
+
+
+def rounded_rectangle_trace_points() -> list[Point2D]:
+    return [
+        Point2D(x=10, y=0),
+        Point2D(x=50, y=0),
+        Point2D(x=90, y=0),
+        Point2D(x=100, y=10),
+        Point2D(x=100, y=30),
+        Point2D(x=100, y=50),
+        Point2D(x=90, y=60),
+        Point2D(x=50, y=60),
+        Point2D(x=10, y=60),
+        Point2D(x=0, y=50),
+        Point2D(x=0, y=30),
+        Point2D(x=0, y=10),
+    ]
+
+
+def rounded_rectangle_trace_patch() -> dict:
+    patch = traced_interface(points=rounded_rectangle_trace_points())
+    patch.update(
+        {
+            "primitive_fallback_active": False,
+            "primitive_promotion_confirmed": False,
+            "primitive_detection_confidence": 0.9,
+            "primitive_detection_reason": "corner_offsets_support_rounded_rectangle",
+            "generation_unsupported": True,
+            "generation_unsupported_reason": (
+                "Adapter generation for arbitrary traced profiles is not yet enabled."
+            ),
+        }
+    )
+    return patch
+
+
+def confirm_two_point_scale(
+    client: TestClient, pid: str, headers: dict[str, str], interface_id: str
+) -> dict:
+    res = client.post(
+        f"/api/projects/{pid}/interfaces/{interface_id}/scale/calibrate",
+        json={
+            "point_a": {"x": 0, "y": 30},
+            "point_b": {"x": 100, "y": 30},
+            "real_distance_mm": 50.0,
+            "confirmed": True,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    return res.json()["data"]
+
+
+def test_confirming_detected_rounded_rectangle_persists_supported_profile_and_scale(
+    client: TestClient,
+) -> None:
+    pid, _token, headers = create_project(client)
+    patched = client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json=rounded_rectangle_trace_patch(),
+        headers=headers,
+    )
+    assert patched.status_code == 200
+
+    calibrated = confirm_two_point_scale(client, pid, headers, "interface_a")
+    assert calibrated["interface_a"]["profile_type"] == "traced_closed"
+    assert calibrated["interface_a"]["scale_calibration"]["confirmed"] is True
+
+    confirmed = client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json={
+            "primitive_fallback_active": True,
+            "primitive_promotion_confirmed": True,
+        },
+        headers=headers,
+    )
+    assert confirmed.status_code == 200
+    iface = confirmed.json()["data"]["interface_a"]
+    assert iface["profile_type"] == "rounded_rectangle"
+    assert iface["primitive_promotion_confirmed"] is True
+    assert iface["scale_calibration"]["confirmed"] is True
+    assert iface["generation_unsupported"] is False
+    assert {"width", "height", "corner_radius"}.issubset({d["id"] for d in iface["dimensions"]})
+
+    refreshed = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
+    assert refreshed["interface_a"]["profile_type"] == "rounded_rectangle"
+    assert refreshed["interface_a"]["scale_calibration"]["confirmed"] is True
+
+
+def test_scale_update_does_not_revert_confirmed_detected_shape(client: TestClient) -> None:
+    pid, _token, headers = create_project(client)
+    client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json=rounded_rectangle_trace_patch(),
+        headers=headers,
+    )
+    confirm_two_point_scale(client, pid, headers, "interface_a")
+    confirmed = client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
+        headers=headers,
+    ).json()["data"]
+    assert confirmed["interface_a"]["profile_type"] == "rounded_rectangle"
+
+    recalibrated = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
+        json={
+            "point_a": {"x": 0, "y": 30},
+            "point_b": {"x": 100, "y": 30},
+            "real_distance_mm": 60.0,
+            "confirmed": True,
+        },
+        headers=headers,
+    ).json()["data"]
+    assert recalibrated["interface_a"]["profile_type"] == "rounded_rectangle"
+    assert recalibrated["interface_a"]["scale_calibration"]["confirmed"] is True
+
+
+def test_approved_promoted_interface_reaches_step3_without_if_conn_008(
+    client: TestClient,
+) -> None:
+    pid, _token, headers = create_project(client)
+    client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json=rounded_rectangle_trace_patch(),
+        headers=headers,
+    )
+    confirm_two_point_scale(client, pid, headers, "interface_a")
+    client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
+        headers=headers,
+    )
+    approve_a = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
+    assert approve_a.status_code == 200
+
+    client.patch(
+        f"/api/projects/{pid}/interfaces/interface_b",
+        json={
+            "profile_type": "circle",
+            "dimensions": [
+                {
+                    "id": "outer_diameter",
+                    "label": "Outer Diameter",
+                    "value": 40.0,
+                    "unit": "mm",
+                    "provenance": "user_entered",
+                    "confidence": 1.0,
+                    "critical": True,
+                    "feature_ref": "outer_contour",
+                }
+            ],
+        },
+        headers=headers,
+    )
+    approve_b = client.post(f"/api/projects/{pid}/interfaces/interface_b/approve", headers=headers)
+    assert approve_b.status_code == 200
+
+    validation = client.post(
+        f"/api/projects/{pid}/validate-connection",
+        json={
+            "connection": {
+                "mode": "coaxial",
+                "length_mm": 60.0,
+                "offset_x_mm": 0.0,
+                "offset_y_mm": 0.0,
+                "angle_deg": 0.0,
+            },
+            "manufacturing": {
+                "process": "fdm",
+                "material": "PETG",
+                "wall_thickness_mm": 2.4,
+                "clearance_a_mm": 0.3,
+                "clearance_b_mm": 0.1,
+            },
+        },
+        headers=headers,
+    )
+    assert validation.status_code == 200
+    errors = validation.json()["data"]["blocking_errors"]
+    assert all(err["id"] != "IF-CONN-008" for err in errors)

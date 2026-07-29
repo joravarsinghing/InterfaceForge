@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SvgProfileViewer } from '../components/SvgProfileViewer';
 import { TracedProfileSvgViewer } from '../components/TracedProfileSvgViewer';
@@ -26,6 +26,136 @@ interface ProfileReviewPageProps {
   onProjectUpdate?: (project: Project) => void;
 }
 
+
+type ShapeCandidate = {
+  profileType: Exclude<ProfileType, 'traced_closed'>;
+  confidence: number;
+  reason: string;
+  cornerRadiusPx?: number;
+};
+
+const supportedProfileTypes = ['circle', 'rectangle', 'rounded_rectangle'] as const;
+
+const formatProfileTypeLabel = (type: ProfileType) => {
+  switch (type) {
+    case 'circle':
+      return 'Circle';
+    case 'rectangle':
+      return 'Rectangle';
+    case 'rounded_rectangle':
+      return 'Rounded rectangle';
+    case 'traced_closed':
+      return 'Traced closed profile';
+    default:
+      return type;
+  }
+};
+
+const shapeActionLabel = (type: ProfileType) =>
+  `Use ${type === 'rounded_rectangle' ? 'Rounded Rectangle' : formatProfileTypeLabel(type)}`;
+
+const finitePoints = (points?: Point2D[]) =>
+  (points || []).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+
+const bboxForPoints = (points: Point2D[]) => {
+  if (points.length === 0) return null;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+};
+
+const classifyShapeCandidate = (iface?: InterfaceDefinition): ShapeCandidate | null => {
+  if (!iface) return null;
+  if (supportedProfileTypes.includes(iface.profile_type as Exclude<ProfileType, 'traced_closed'>)) {
+    return {
+      profileType: iface.profile_type as Exclude<ProfileType, 'traced_closed'>,
+      confidence: iface.primitive_detection_confidence ?? 0.95,
+      reason: iface.primitive_detection_reason || 'stored_supported_profile_type',
+    };
+  }
+
+  const points = finitePoints(iface.traced_outer_contour?.points);
+  const box = bboxForPoints(points);
+  if (!box || points.length < 4) return null;
+  const width = box.maxX - box.minX;
+  const height = box.maxY - box.minY;
+  if (width <= 0 || height <= 0) return null;
+
+  const maxDim = Math.max(width, height);
+  const minDim = Math.min(width, height);
+  const cx = (box.minX + box.maxX) / 2;
+  const cy = (box.minY + box.maxY) / 2;
+  const sideTol = 0.025 * maxDim;
+  const cornerTol = 0.06 * maxDim;
+  const sideDistances = points.map((p) => Math.min(
+    Math.abs(p.x - box.minX),
+    Math.abs(p.x - box.maxX),
+    Math.abs(p.y - box.minY),
+    Math.abs(p.y - box.maxY)
+  ));
+  const onSidesRatio = sideDistances.filter((d) => d <= sideTol).length / points.length;
+  const nearCornerCount = points.filter((p) =>
+    Math.abs(Math.abs(p.x - cx) - width / 2) <= cornerTol &&
+    Math.abs(Math.abs(p.y - cy) - height / 2) <= cornerTol
+  ).length;
+  const sideHits = new Set<string>();
+  points.forEach((p) => {
+    if (Math.abs(p.x - box.minX) <= sideTol) sideHits.add('left');
+    if (Math.abs(p.x - box.maxX) <= sideTol) sideHits.add('right');
+    if (Math.abs(p.y - box.minY) <= sideTol) sideHits.add('bottom');
+    if (Math.abs(p.y - box.maxY) <= sideTol) sideHits.add('top');
+  });
+  if (points.length <= 8 && onSidesRatio >= 0.95 && nearCornerCount >= 4 && sideHits.size === 4) {
+    return { profileType: 'rectangle', confidence: 0.94, reason: 'all_points_lie_on_four_bbox_sides' };
+  }
+
+  const cornerOffsets = [
+    [box.minX, box.minY],
+    [box.maxX, box.minY],
+    [box.maxX, box.maxY],
+    [box.minX, box.maxY],
+  ].map(([x, y]) => {
+    const nearest = points
+      .map((p) => Math.hypot(p.x - x, p.y - y))
+      .sort((a, b) => a - b)
+      .slice(0, 2);
+    return nearest.reduce((sum, value) => sum + value, 0) / Math.max(nearest.length, 1);
+  });
+  const radiusPx = cornerOffsets.reduce((sum, value) => sum + value, 0) / cornerOffsets.length;
+  const radiusRatio = radiusPx / Math.max(minDim, 1e-6);
+  const radiusSpread = (Math.max(...cornerOffsets) - Math.min(...cornerOffsets)) / Math.max(radiusPx, 1e-6);
+  const horizontalSupport = points.some((p) => Math.abs(p.y - box.minY) <= sideTol) && points.some((p) => Math.abs(p.y - box.maxY) <= sideTol);
+  const verticalSupport = points.some((p) => Math.abs(p.x - box.minX) <= sideTol) && points.some((p) => Math.abs(p.x - box.maxX) <= sideTol);
+  const roundedConfidence = 1 - Math.max(
+    Math.max(0, radiusSpread - 0.35) / 0.65,
+    0.03 <= radiusRatio && radiusRatio <= 0.35 ? 0 : 1,
+    onSidesRatio >= 0.6 ? 0 : (0.6 - onSidesRatio) / 0.6
+  );
+  if (
+    points.length >= 8 &&
+    horizontalSupport &&
+    verticalSupport &&
+    radiusRatio >= 0.03 &&
+    radiusRatio <= 0.35 &&
+    radiusSpread <= 0.65 &&
+    onSidesRatio >= 0.55 &&
+    roundedConfidence >= 0.65
+  ) {
+    return {
+      profileType: 'rounded_rectangle',
+      confidence: Math.max(0.65, Math.min(0.9, roundedConfidence)),
+      reason: 'corner_offsets_support_rounded_rectangle',
+      cornerRadiusPx: radiusPx,
+    };
+  }
+
+  return null;
+};
 export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   interfaceId,
   project,
@@ -262,32 +392,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     }
   };
 
-  // Primitive Fallback Toggle Handler
-  const handleTogglePrimitiveFallback = async (active: boolean) => {
-    if (!project) return;
-    setPrimitiveFallbackActive(active);
-    setPrimitivePromotionConfirmed(false);
-    const label = active ? 'Warning: Simplified envelope - not the exact cross-section' : undefined;
-    const vStatus = active ? 'simplified_envelope_only' : 'exact_trace_ready';
-
-    try {
-      const updatedProj = await patchInterface(
-        project.project_id,
-        interfaceId,
-        {
-          primitive_fallback_active: active,
-          primitive_fallback_label: label,
-          primitive_promotion_confirmed: false,
-          verification_status: vStatus,
-        },
-        project.project_token
-      );
-      if (onProjectUpdate) onProjectUpdate(updatedProj);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to update fallback state');
-    }
-  };
-
   const handleConfirmPrimitivePromotion = async () => {
     if (!project) return;
     setPrimitivePromotionConfirmed(true);
@@ -296,32 +400,98 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         project.project_id,
         interfaceId,
         {
+          profile_type: detectedShapeCandidate?.profileType || profileType,
           primitive_fallback_active: true,
           primitive_promotion_confirmed: true,
           verification_status: 'primitive_promotion_confirmed',
         },
         project.project_token
       );
+      const updatedInterface = interfaceId === 'interface_a' ? updatedProj.interface_a : updatedProj.interface_b;
+      setProfileType(updatedInterface.profile_type || detectedShapeCandidate?.profileType || profileType);
+      setDimensions(updatedInterface.dimensions || []);
+      if (updatedInterface.scale_calibration) setScaleCalibration(updatedInterface.scale_calibration);
+      setPrimitiveFallbackActive(!!updatedInterface.primitive_fallback_active);
+      setPrimitivePromotionConfirmed(!!updatedInterface.primitive_promotion_confirmed);
       if (onProjectUpdate) onProjectUpdate(updatedProj);
     } catch (err: unknown) {
       setPrimitivePromotionConfirmed(false);
-      setError(err instanceof Error ? err.message : 'Failed to confirm primitive promotion');
+      setError(err instanceof Error ? err.message : 'Failed to confirm detected shape');
     }
   };
 
   // Structural Validation Summary Calculation
+  const detectedShapeCandidate = classifyShapeCandidate(targetInterface);
   const isTracedProfile = profileType === 'traced_closed';
+  const hasConfirmedSupportedShape = primitivePromotionConfirmed && profileType !== 'traced_closed';
+  const shapeConfirmationEligible = Boolean(
+    detectedShapeCandidate &&
+    targetInterface?.traced_outer_contour &&
+    (isTracedProfile || primitiveFallbackActive || primitivePromotionConfirmed)
+  );
+  const shapeAwaitingConfirmation = Boolean(
+    scaleCalibration.confirmed &&
+    shapeConfirmationEligible &&
+    !hasConfirmedSupportedShape
+  );
+  const effectiveProfileType = shapeAwaitingConfirmation && detectedShapeCandidate
+    ? detectedShapeCandidate.profileType
+    : profileType;
   const visibleDimensionIds =
-    profileType === 'circle'
+    effectiveProfileType === 'circle'
       ? ['outer_diameter', 'diameter']
-      : profileType === 'rectangle'
+      : effectiveProfileType === 'rectangle'
       ? ['width', 'height']
-      : profileType === 'rounded_rectangle'
+      : effectiveProfileType === 'rounded_rectangle'
       ? ['width', 'height', 'corner_radius']
       : ['overall_width', 'overall_height'];
+  const scaleFactor = scaleCalibration.scale_factor ||
+    (scaleCalibration.pixel_distance > 0 ? scaleCalibration.real_distance_mm / scaleCalibration.pixel_distance : 0);
+  const traceBox = bboxForPoints(finitePoints(targetInterface?.traced_outer_contour?.points));
+  const derivedDimensionFallbacks: Record<string, number | undefined> = {};
+  if (scaleCalibration.confirmed && traceBox && scaleFactor > 0) {
+    const derivedWidth = (traceBox.maxX - traceBox.minX) * scaleFactor;
+    const derivedHeight = (traceBox.maxY - traceBox.minY) * scaleFactor;
+    derivedDimensionFallbacks.width = derivedWidth;
+    derivedDimensionFallbacks.height = derivedHeight;
+    derivedDimensionFallbacks.overall_width = derivedWidth;
+    derivedDimensionFallbacks.overall_height = derivedHeight;
+    derivedDimensionFallbacks.outer_diameter = (derivedWidth + derivedHeight) / 2;
+    if (detectedShapeCandidate?.profileType === 'rounded_rectangle' && detectedShapeCandidate.cornerRadiusPx) {
+      derivedDimensionFallbacks.corner_radius = Math.min(
+        detectedShapeCandidate.cornerRadiusPx * scaleFactor,
+        Math.min(derivedWidth, derivedHeight) / 2
+      );
+    }
+  }
+  const dimensionLabelById: Record<string, string> = {
+    outer_diameter: 'Outer Diameter',
+    diameter: 'Diameter',
+    width: 'Width',
+    height: 'Height',
+    corner_radius: 'Corner Radius',
+    overall_width: 'Overall Width',
+    overall_height: 'Overall Height',
+  };
   const displayDimensions = scaleCalibration.confirmed
     ? visibleDimensionIds
-        .map((id) => dimensions.find((dim) => dim.id === id && Number.isFinite(dim.value) && dim.value > 0))
+        .map((id) => {
+          const existing = dimensions.find((dim) => dim.id === id && Number.isFinite(dim.value) && dim.value > 0);
+          if (existing) return existing;
+          const fallback = derivedDimensionFallbacks[id];
+          if (!fallback || !Number.isFinite(fallback) || fallback <= 0) return undefined;
+          return {
+            id,
+            label: dimensionLabelById[id] || id,
+            value: fallback,
+            unit: 'mm',
+            provenance: 'system_inferred' as const,
+            confidence: detectedShapeCandidate?.confidence ?? 0.75,
+            critical: id !== 'corner_radius',
+            feature_ref: 'outer_contour',
+            consistency_state: 'recalculated',
+          };
+        })
         .filter((dim, index, arr): dim is Dimension => Boolean(dim) && arr.findIndex((other) => other?.id === dim?.id) === index)
     : [];
   const legacyDimensions = dimensions.filter(
@@ -329,8 +499,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   );
   const requiresScaleConfirmation = true;
   const traceBackedProfile = Boolean(targetInterface?.traced_outer_contour) && (isTracedProfile || primitiveFallbackActive);
-  const supportedPrimitivePromotion =
-    primitiveFallbackActive && ['circle', 'rectangle', 'rounded_rectangle'].includes(profileType);
+  const supportedPrimitivePromotion = Boolean(detectedShapeCandidate && effectiveProfileType !== 'traced_closed');
 
   const validationErrors: string[] = [];
 
@@ -351,10 +520,10 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   }
 
   if (supportedPrimitivePromotion && !primitivePromotionConfirmed) {
-    validationErrors.push('Detected primitive promotion must be confirmed before approval.');
+    validationErrors.push('Confirm the detected shape before approval.');
   }
 
-  if (isTracedProfile) {
+  if (isTracedProfile && !shapeAwaitingConfirmation) {
     validationErrors.push(
       'Arbitrary traced profiles are not supported for generation yet. This version supports circle, rectangle, and rounded rectangle.'
     );
@@ -463,13 +632,17 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               padding: '0.25rem 0.6rem',
               borderRadius: '4px',
               fontSize: '0.85rem',
-              background: primitiveFallbackActive ? '#9e6a03' : isFormValid ? '#238636' : '#da3633',
+              background: primitivePromotionConfirmed ? '#238636' : primitiveFallbackActive || shapeAwaitingConfirmation ? '#9e6a03' : isFormValid ? '#238636' : '#da3633',
               color: '#ffffff',
             }}
-            title={primitiveFallbackActive ? 'Primitive fallback active' : 'Profile review status'}
+            title={primitivePromotionConfirmed ? 'Supported shape confirmed' : shapeAwaitingConfirmation ? 'Detected shape needs confirmation' : 'Profile review status'}
           >
-            {primitiveFallbackActive
-              ? 'Simplified envelope'
+            {primitivePromotionConfirmed
+              ? 'Shape confirmed'
+              : shapeAwaitingConfirmation
+              ? 'Confirm shape'
+              : primitiveFallbackActive
+              ? 'Trace approximation'
               : isTracedProfile
               ? isFormValid
                 ? 'Trace ready'
@@ -1115,60 +1288,62 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         </section>
       )}
 
-      {/* S10.4 Primitive Fallback Override Option */}
-      {(isTracedProfile || primitiveFallbackActive) && (
+      {/* Shape Confirmation Panel */}
+      {shapeConfirmationEligible && detectedShapeCandidate && targetInterface?.traced_outer_contour && (
         <section
-          className="primitive-fallback-override-card"
+          className="shape-confirmation-card"
+          aria-labelledby="shape-confirmation-heading"
           style={{
             background: '#161b22',
-            border: primitiveFallbackActive ? '1px solid #9e6a03' : '1px solid #30363d',
+            border: primitivePromotionConfirmed ? '1px solid #238636' : '2px solid #f0b72f',
             borderRadius: '8px',
-            padding: '1rem 1.25rem',
+            padding: '1.25rem',
             marginBottom: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '1rem',
           }}
         >
-          <div>
-            <strong style={{ color: '#c9d1d9' }}>Supported Primitive Promotion</strong>
-            <br />
-            <span style={{ fontSize: '0.85rem', color: primitiveFallbackActive ? '#ffab40' : '#8b949e' }}>
-              {primitiveFallbackActive
-                ? primitivePromotionConfirmed
-                  ? `Confirmed ${formatProfileType(profileType)} promotion. Original trace remains stored as provenance.`
-                  : `Confirm ${formatProfileType(profileType)} before approval. Original trace remains stored as provenance.`
-                : 'Traced closed mode is active. This version only generates circle, rectangle, and rounded rectangle profiles.'}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {primitiveFallbackActive && !primitivePromotionConfirmed && (
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <div>
+              <h2 id="shape-confirmation-heading" style={{ fontSize: '1.15rem', margin: 0 }}>
+                Detected shape: {formatProfileTypeLabel(detectedShapeCandidate.profileType)}
+              </h2>
+              <p style={{ color: '#8b949e', fontSize: '0.9rem', margin: '0.35rem 0 0 0' }}>
+                Calibration sets scale. Confirm the supported shape separately before approval.
+              </p>
+            </div>
+            {!primitivePromotionConfirmed ? (
               <button
                 type="button"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary"
                 onClick={handleConfirmPrimitivePromotion}
               >
-                Confirm {formatProfileType(profileType)}
+                {shapeActionLabel(detectedShapeCandidate.profileType)}
               </button>
+            ) : (
+              <span className="badge badge-success" style={{ background: '#238636', color: '#ffffff', borderRadius: '12px', padding: '0.25rem 0.65rem' }}>
+                Shape confirmed
+              </span>
             )}
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => handleTogglePrimitiveFallback(!primitiveFallbackActive)}
-              style={{
-                borderColor: primitiveFallbackActive ? '#ff9100' : '#30363d',
-                color: primitiveFallbackActive ? '#ffab40' : '#c9d1d9',
-              }}
-            >
-              {primitiveFallbackActive ? 'Restore Exact Traced Profile' : 'Use Supported Primitive Approximation'}
-            </button>
-          </div>
+          </header>
+
+          <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.8rem', margin: 0 }}>
+            {displayDimensions.map((dim) => (
+              <div key={`shape-${dim.id}`} style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', padding: '0.75rem' }}>
+                <dt style={{ color: '#8b949e', fontSize: '0.85rem' }}>{dim.label}</dt>
+                <dd style={{ color: '#f0f6fc', fontWeight: 700, margin: '0.25rem 0 0 0' }}>
+                  {dim.value.toFixed(2)} {dim.unit}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <details style={{ marginTop: '0.9rem', color: '#8b949e' }}>
+            <summary style={{ cursor: 'pointer' }}>Technical details</summary>
+            <div style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+              Confidence: {(detectedShapeCandidate.confidence * 100).toFixed(0)}%. Reason: {detectedShapeCandidate.reason}.
+            </div>
+          </details>
         </section>
       )}
-
       <section
         className="dimensions-summary-card"
         aria-labelledby="dimensions-summary-heading"
