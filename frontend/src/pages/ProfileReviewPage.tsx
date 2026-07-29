@@ -9,7 +9,6 @@ import {
   getInterfaceImageUrl,
   patchInterface,
   resetInterfaceScaleCalibration,
-  snapScalePoint,
 } from '../services/api';
 import {
   Dimension,
@@ -202,35 +201,15 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   };
 
   const handleCalibrationPick = async (point: Point2D) => {
-    if (!project) return;
     setCalibrationDraftError(null);
-    try {
-      const snapped = await snapScalePoint(project.project_id, interfaceId, point, project.project_token);
-      const currentA = calibrationPointARef.current;
-      const currentB = calibrationPointBRef.current;
-      const nextA = currentA && !currentB ? currentA : snapped.point;
-      const nextB = currentA && !currentB ? snapped.point : null;
-      setCalibrationPointA(nextA);
-      setCalibrationPointB(nextB);
-      calibrationPointARef.current = nextA;
-      calibrationPointBRef.current = nextB;
-      setScaleCalibration({
-        ...scaleCalibration,
-        method: 'two_point_trace',
-        source: 'user_calibration',
-        reference_dimension: 'two_point_distance',
-        point_a: nextA,
-        point_b: nextB,
-        pixel_distance: nextA && nextB ? Math.hypot(nextA.x - nextB.x, nextA.y - nextB.y) : 0,
-        scale_factor: 0,
-        confirmed: false,
-      });
-      if (nextA && nextB) {
-        await saveTwoPointCalibration(false, undefined, nextA, nextB);
-      }
-    } catch (err: unknown) {
-      setCalibrationDraftError(err instanceof Error ? err.message : 'Failed to snap calibration point');
-    }
+    const currentA = calibrationPointARef.current;
+    const currentB = calibrationPointBRef.current;
+    const nextA = currentA && !currentB ? currentA : point;
+    const nextB = currentA && !currentB ? point : null;
+    setCalibrationPointA(nextA); setCalibrationPointB(nextB);
+    calibrationPointARef.current = nextA; calibrationPointBRef.current = nextB;
+    setScaleCalibration({ ...scaleCalibration, method: 'two_point_trace', source: 'user_calibration', reference_dimension: 'two_point_distance', point_a: nextA, point_b: nextB, pixel_distance: nextA && nextB ? Math.hypot(nextA.x - nextB.x, nextA.y - nextB.y) : 0, scale_factor: 0, confirmed: false });
+    if (nextA && nextB) await saveTwoPointCalibration(false, undefined, nextA, nextB);
   };
 
   const handleResetCalibration = async () => {
@@ -239,6 +218,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     setCalibrationPointB(null);
     calibrationPointARef.current = null;
     calibrationPointBRef.current = null;
+    setCalibrationDraftError(null);
     setScaleCalibration({ ...scaleCalibration, confirmed: false, point_a: null, point_b: null, pixel_distance: 0, scale_factor: 0 });
     try {
       const updatedProj = await resetInterfaceScaleCalibration(project.project_id, interfaceId, project.project_token);
@@ -538,8 +518,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         className="side-by-side-review"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
           gap: '1.5rem',
+          alignItems: 'stretch',
           marginBottom: '1.5rem',
         }}
       >
@@ -547,6 +528,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         <div
           className="review-card source-image-card"
           style={{
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
             background: '#161b22',
             border: '1px solid #30363d',
             borderRadius: '8px',
@@ -597,7 +581,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             className="image-container"
             style={{
               textAlign: 'center',
-              minHeight: '220px',
+              flex: '1 1 auto',
+              minHeight: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -642,7 +627,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                       project?.project_token
                     )}
                     alt={`Original source file for ${interfaceName}`}
-                    style={{ maxHeight: '200px', maxWidth: '100%', objectFit: 'contain' }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '0.5rem' }}
                     onError={() => setImageError(true)}
                   />
                 )
@@ -736,6 +721,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         <div
           className="review-card svg-preview-card"
           style={{
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
             background: '#161b22',
             border: '1px solid #30363d',
             borderRadius: '8px',
@@ -875,7 +863,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               </p>
             )}
             <p style={{ color: '#8b949e', margin: '0.65rem 0 0 0', fontSize: '0.8rem' }}>
-              Each click snaps to the nearest valid profile boundary. Changing points or distance requires approval again.
+              Click the visible boundary nodes. Changing points or distance requires approval again.
             </p>
           </>
         ) : (
@@ -1123,7 +1111,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             Detected shape: {formatProfileTypeLabel(resolvedProfileType as ProfileType)}
           </h2>
           <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.8rem', margin: '1rem 0 0 0' }}>
-            {displayDimensions.map((dim) => (
+            {(scaleCalibration.confirmed ? displayDimensions : []).map((dim) => (
               <div key={`resolved-${dim.id}`} style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', padding: '0.75rem' }}>
                 <dt style={{ color: '#8b949e', fontSize: '0.85rem' }}>{dim.id === 'outer_diameter' ? 'Diameter' : dim.label}</dt>
                 <dd style={{ color: '#f0f6fc', fontWeight: 700, margin: '0.25rem 0 0 0' }}>
@@ -1146,9 +1134,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         }}
       >
         <h2 id="dimensions-summary-heading">Interface Dimensions</h2>
-        {displayDimensions.length > 0 ? (
+        {scaleCalibration.confirmed && displayDimensions.length > 0 ? (
           <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.8rem', margin: '1rem 0 0 0' }}>
-            {displayDimensions.map((dim) => (
+            {(scaleCalibration.confirmed ? displayDimensions : []).map((dim) => (
               <div key={dim.id} style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: '6px', padding: '0.75rem' }}>
                 <dt style={{ color: '#8b949e', fontSize: '0.85rem' }}>{dim.label}</dt>
                 <dd style={{ color: '#f0f6fc', fontWeight: 700, margin: '0.25rem 0 0 0' }}>
@@ -1158,7 +1146,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             ))}
           </dl>
         ) : (
-          <p className="empty-notice">Confirm calibration to show derived dimensions.</p>
+          <p className="empty-notice">Dimensions will be calculated after calibration.</p>
         )}
         {legacyDimensions.length > 0 && (
           <details style={{ marginTop: '1rem', color: '#8b949e' }}>

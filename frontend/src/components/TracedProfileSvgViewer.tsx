@@ -52,19 +52,6 @@ function traceToSvgPoint(
   };
 }
 
-function svgToTracePoint(
-  point: Point2D,
-  minX: number,
-  minY: number,
-  scale: number,
-  drawH: number
-): Point2D {
-  return {
-    x: minX + point.x / scale,
-    y: minY + (drawH - point.y) / scale,
-  };
-}
-
 function toSvgPoints(
   points: { x: number; y: number }[],
   minX: number,
@@ -179,38 +166,6 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
     ? traceToSvgPoint(calibrationPointB, bbox.minX, bbox.minY, scale, drawH)
     : null;
 
-  const handleSvgClick = (event: React.MouseEvent<SVGSVGElement>) => {
-    if (!calibrationMode || !onCalibrationPick) return;
-    const svg = event.currentTarget;
-    let local: Point2D | null = null;
-    if (typeof svg.createSVGPoint === 'function') {
-      const pt = svg.createSVGPoint();
-      pt.x = event.clientX;
-      pt.y = event.clientY;
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return;
-      local = pt.matrixTransform(ctm.inverse());
-    } else {
-      const rect = svg.getBoundingClientRect();
-      const relX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
-      const relY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
-      local = { x: relX * actualW, y: relY * actualH };
-    }
-    const xInGroup = local.x - PADDING;
-    const yInGroup = local.y - PADDING;
-    const nearest = nodeSvgPoints.reduce<{ index: number; distance: number } | null>((best, node, index) => {
-      const distance = Math.hypot(node.x - xInGroup, node.y - yInGroup);
-      if (!best || distance < best.distance) return { index, distance };
-      return best;
-    }, null);
-    const nodeTolerance = Math.max(10, Math.min(actualW, actualH) * 0.035);
-    if (nearest && nearest.distance <= nodeTolerance) {
-      onCalibrationPick(displayOuter.points[nearest.index]);
-      return;
-    }
-    onCalibrationPick(svgToTracePoint({ x: xInGroup, y: yInGroup }, bbox.minX, bbox.minY, scale, drawH));
-  };
-
   return (
     <div
       data-testid="traced-profile-viewer"
@@ -255,7 +210,6 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           cursor: calibrationMode ? 'crosshair' : undefined,
           minHeight: isOverlay ? undefined : minHeight,
         }}
-        onClick={handleSvgClick}
       >
         <g transform={`translate(${PADDING}, ${PADDING})`}>
           <polygon
@@ -327,7 +281,7 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
                   data-testid="trace-node"
                   cx={node.x}
                   cy={node.y}
-                  r={hovered ? 4.8 : selectedA || selectedB ? 5.2 : 3.2}
+                  r={hovered ? 4 : selectedA || selectedB ? 4.2 : 2.6}
                   fill={fill}
                   stroke={stroke}
                   strokeWidth={selectedA || selectedB ? 1.6 : 1.2}
@@ -352,14 +306,14 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           )}
           {markerA && (
             <g pointerEvents="none">
-              <circle cx={markerA.x} cy={markerA.y} r={5} fill="#f85149" stroke="#ffffff" strokeWidth={1.5} />
-              <text x={markerA.x + 8} y={markerA.y - 8} fill="#ffffff" fontSize={11}>A</text>
+              <circle cx={markerA.x} cy={markerA.y} r={4} fill="#f85149" stroke="#ffffff" strokeWidth={1.5} />
+              <text x={markerA.x + 6} y={markerA.y - 6} fill="#ffffff" fontSize={10}>A</text>
             </g>
           )}
           {markerB && (
             <g pointerEvents="none">
-              <circle cx={markerB.x} cy={markerB.y} r={5} fill="#3fb950" stroke="#ffffff" strokeWidth={1.5} />
-              <text x={markerB.x + 8} y={markerB.y - 8} fill="#ffffff" fontSize={11}>B</text>
+              <circle cx={markerB.x} cy={markerB.y} r={4} fill="#3fb950" stroke="#ffffff" strokeWidth={1.5} />
+              <text x={markerB.x + 6} y={markerB.y - 6} fill="#ffffff" fontSize={10}>B</text>
             </g>
           )}
         </g>

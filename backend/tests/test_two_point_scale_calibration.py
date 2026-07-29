@@ -1,4 +1,4 @@
-"""Two-point trace scale calibration regression tests."""
+﻿"""Two-point trace scale calibration regression tests."""
 
 from fastapi.testclient import TestClient
 
@@ -554,3 +554,28 @@ def test_resolved_primitive_boundary_survives_calibration_refresh(client: TestCl
     assert after["calibration_boundary"] == before
     assert after["scale_calibration"]["point_a"] == before["points"][0]
     assert after["scale_calibration"]["point_b"] == before["points"][8]
+
+
+
+def test_exact_circle_boundary_nodes_calibrate_and_far_points_are_rejected(client: TestClient) -> None:
+    pid, headers = setup_primitive(client, "circle")
+    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"]
+    boundary = before["calibration_boundary"]["points"]
+    response = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
+        json={"point_a": boundary[0], "point_b": boundary[2], "real_distance_mm": 40, "confirmed": True},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.json()
+    iface = response.json()["data"]["interface_a"]
+    assert iface["resolved_profile_type"] == "circle"
+    assert iface["scale_calibration"]["point_a"] == boundary[0]
+    assert iface["scale_calibration"]["point_b"] == boundary[2]
+
+    rejected = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
+        json={"point_a": {"x": 9999, "y": 9999}, "point_b": boundary[2], "real_distance_mm": 40, "confirmed": True},
+        headers=headers,
+    )
+    assert rejected.status_code == 400
+    assert "outside the traced profile bounds" in rejected.json()["error"]["message"]

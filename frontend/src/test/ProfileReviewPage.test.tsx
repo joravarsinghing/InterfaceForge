@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileReviewPage } from '../pages/ProfileReviewPage';
@@ -307,9 +307,9 @@ describe('ProfileReviewPage Component', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }));
-    const svg = screen.getByRole('img', { name: /Traced closed profile SVG/i });
-    fireEvent.click(svg);
-    fireEvent.click(svg);
+    const nodes = screen.getAllByTestId('trace-node-hit-target');
+    fireEvent.click(nodes[0]);
+    fireEvent.click(nodes[1]);
 
     await waitFor(() => expect(api.calibrateInterfaceScale).toHaveBeenCalledWith(
       'proj_123',
@@ -458,9 +458,6 @@ describe('Primitive Profile Calibration', () => {
         },
       },
     };
-    vi.mocked(api.snapScalePoint)
-      .mockResolvedValueOnce({ point: { x: -25, y: 0 }, distance_px: 1, feature_id: 'outer_contour' })
-      .mockResolvedValueOnce({ point: { x: 25, y: 0 }, distance_px: 1, feature_id: 'outer_contour' });
     vi.mocked(api.calibrateInterfaceScale).mockResolvedValue({
       ...primitiveProject,
       interface_a: {
@@ -488,6 +485,9 @@ describe('Primitive Profile Calibration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }));
     const svg = screen.getByRole('img', { name: /SVG geometry preview for circle profile/i });
+    const nodes = screen.getAllByTestId('calibration-node-hit-target');
+    fireEvent.click(nodes[0]);
+    await waitFor(() => expect(screen.getByText(/A: -25.00, 0.00/i)).toBeInTheDocument());
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
       left: 0,
       top: 0,
@@ -500,13 +500,11 @@ describe('Primitive Profile Calibration', () => {
       toJSON: () => ({}),
     });
 
-    fireEvent.click(svg, { clientX: 80, clientY: 140 });
-    await waitFor(() => expect(screen.getByText(/A: -25.00, 0.00/i)).toBeInTheDocument());
     const markerA = await screen.findByTestId('calibration-marker-a');
     expect(markerA).toHaveAttribute('cx', '-25');
     expect(markerA).toHaveAttribute('cy', '0');
 
-    fireEvent.click(svg, { clientX: 280, clientY: 140 });
+    fireEvent.click(nodes[2]);
     await waitFor(() => expect(screen.getByText(/B: 25.00, 0.00/i)).toBeInTheDocument());
     expect(await screen.findByTestId('calibration-marker-b')).toHaveAttribute('cx', '25');
     await waitFor(() => expect(api.calibrateInterfaceScale).toHaveBeenCalledWith(
@@ -535,7 +533,7 @@ describe('Primitive Profile Calibration', () => {
         },
       },
     };
-    vi.mocked(api.snapScalePoint).mockRejectedValueOnce(new Error('[IF-APPROVAL-400] Calibration point is too far from the visible profile boundary.'));
+
 
     render(
       <BrowserRouter>
@@ -556,8 +554,8 @@ describe('Primitive Profile Calibration', () => {
       y: 0,
       toJSON: () => ({}),
     });
-    fireEvent.click(svg, { clientX: 180, clientY: 140 });
-    expect(await screen.findByRole('alert')).toHaveTextContent(/too far from the visible profile boundary/i);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(api.snapScalePoint).not.toHaveBeenCalled();
   });
 
   it('uses accurate provider badges for OpenCV and AI-guided analysis', () => {

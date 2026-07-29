@@ -1,4 +1,4 @@
-"""Project service layer managing domain workflow state transitions and schema invariants."""
+﻿"""Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
 import logging
@@ -424,6 +424,26 @@ def _calibration_bbox(interface: Interface) -> tuple[float, float, float, float]
             max(point.y for point in canonical),
         )
     return _trace_bbox(interface)
+
+
+def _canonical_boundary_node(interface: Interface, point: Point2D) -> Point2D:
+    if (
+        interface.profile_type == ProfileType.TRACED_CLOSED
+        or interface.resolved_profile_type is None
+        or not interface.primitive_fallback_active
+    ):
+        return _snap_point_to_trace(interface, point).point
+    _ensure_calibration_boundary(interface)
+    boundary = interface.calibration_boundary
+    if boundary and boundary.points:
+        nearest = min(boundary.points, key=lambda candidate: _distance(candidate, point))
+        if _distance(nearest, point) <= 1e-6:
+            return nearest
+        raise InvalidInterfaceApprovalError(
+            "Calibration point is not a canonical profile boundary node.",
+            recovery_steps=["Select one of the visible boundary nodes."],
+        )
+    return _snap_point_to_trace(interface, point).point
 
 
 def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapResponse:
@@ -1514,9 +1534,9 @@ class ProjectService:
                 recovery_steps=["Enter the measured real-world distance in millimetres."],
             )
 
-        snap_a = _snap_point_to_trace(target_interface, req.point_a)
-        snap_b = _snap_point_to_trace(target_interface, req.point_b)
-        pixel_distance = _distance(snap_a.point, snap_b.point)
+        point_a = _canonical_boundary_node(target_interface, req.point_a)
+        point_b = _canonical_boundary_node(target_interface, req.point_b)
+        pixel_distance = _distance(point_a, point_b)
         if pixel_distance < 1.0:
             raise InvalidInterfaceApprovalError(
                 "Calibration points are identical or too close together to determine scale.",
@@ -1533,8 +1553,8 @@ class ProjectService:
             source="user_calibration",
             method="two_point_trace",
             reference_dimension="two_point_distance",
-            point_a=snap_a.point,
-            point_b=snap_b.point,
+            point_a=point_a,
+            point_b=point_b,
             pixel_distance=pixel_distance,
             real_distance_mm=req.real_distance_mm,
             scale_factor=scale_factor,
