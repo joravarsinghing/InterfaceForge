@@ -71,6 +71,7 @@ from app.services.export_provider import (
 )
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
 from app.services.profile_validation import validate_interface_profile
+from app.services.profile_geometry import classify_primitive_from_points, set_calibrated_primitive_dimensions
 
 logger = logging.getLogger(__name__)
 
@@ -758,13 +759,21 @@ class ProjectService:
         if result.traced_outer_contour is not None:
             target_interface.traced_outer_contour = result.traced_outer_contour
             target_interface.traced_hole_contours = result.traced_hole_contours
-            target_interface.verification_status = "opencv_traced_pending_review"
-            # Mark traced profiles as generation_unsupported (KCL adapter not yet implemented)
-            target_interface.generation_unsupported = True
-            target_interface.generation_unsupported_reason = (
-                "Adapter generation for arbitrary traced profiles is not yet enabled. "
-                "Profile is captured and stored for review only."
-            )
+            detected_primitive = None if result.is_complex else classify_primitive_from_points(result.traced_outer_contour.points)
+            if detected_primitive is not None:
+                target_interface.profile_type = detected_primitive
+                target_interface.verification_status = "primitive_detected_pending_scale_confirmation"
+                target_interface.primitive_fallback_active = True
+                target_interface.primitive_fallback_label = f"Detected {detected_primitive.value} primitive from trace"
+                target_interface.generation_unsupported = False
+                target_interface.generation_unsupported_reason = None
+            else:
+                target_interface.verification_status = "opencv_traced_pending_review"
+                target_interface.generation_unsupported = True
+                target_interface.generation_unsupported_reason = (
+                    "Adapter generation for arbitrary traced profiles is not yet enabled. "
+                    "Profile is captured and stored for review only."
+                )
         else:
             target_interface.traced_outer_contour = None
             target_interface.traced_hole_contours = []
@@ -817,6 +826,24 @@ class ProjectService:
         original_geometry_fingerprint = _profile_geometry_fingerprint(original_interface)
         original_measurement_fingerprint = _measurement_fingerprint(original_interface)
         target_interface = original_interface.model_copy(deep=True)
+        fit_mode_only_update = (
+            patch.fit_mode is not None
+            and patch.source_image_ref is None
+            and patch.profile_type is None
+            and patch.is_complex is None
+            and patch.complex_reason is None
+            and patch.profile_points is None
+            and patch.center is None
+            and patch.dimensions is None
+            and patch.validation is None
+            and patch.traced_outer_contour is None
+            and patch.traced_hole_contours is None
+            and patch.scale_calibration is None
+            and patch.verification_status is None
+            and patch.primitive_fallback_active is None
+            and patch.primitive_fallback_label is None
+            and patch.approved is None
+        )
 
         if interface_id == "interface_b" and not project.interface_a.approved:
             raise MissingPrerequisiteError(
@@ -908,6 +935,8 @@ class ProjectService:
             target_interface.primitive_fallback_active = patch.primitive_fallback_active
         if patch.primitive_fallback_label is not None:
             target_interface.primitive_fallback_label = patch.primitive_fallback_label
+        if patch.fit_mode is not None:
+            target_interface.fit_mode = patch.fit_mode
 
         # Run structural validation
         is_valid, errors, warnings = validate_interface_profile(target_interface)
@@ -964,7 +993,7 @@ class ProjectService:
             target_interface.approved_at = None
 
         # Upstream modification rule: clears approval and increments schema revision
-        if patch.approved is None:
+        if patch.approved is None and not fit_mode_only_update:
             target_interface.approved = False
             target_interface.approved_at = None
 
@@ -1006,9 +1035,9 @@ class ProjectService:
                 recovery_steps=["Approve Interface A first."],
             )
         target_interface = project.interface_a if interface_id == "interface_a" else project.interface_b
-        if target_interface.profile_type != ProfileType.TRACED_CLOSED:
+        if target_interface.traced_outer_contour is None:
             raise InvalidInterfaceApprovalError(
-                "Two-point scale calibration requires a traced closed profile.",
+                "Two-point scale calibration requires traced profile geometry.",
                 recovery_steps=["Run trace analysis before calibrating scale."],
             )
         return _snap_point_to_trace(target_interface, point)
@@ -1035,9 +1064,9 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         ).model_copy(deep=True)
-        if target_interface.profile_type != ProfileType.TRACED_CLOSED:
+        if target_interface.traced_outer_contour is None:
             raise InvalidInterfaceApprovalError(
-                "Two-point scale calibration requires a traced closed profile.",
+                "Two-point scale calibration requires traced profile geometry.",
                 recovery_steps=["Run trace analysis before calibrating scale."],
             )
         if not math.isfinite(req.real_distance_mm) or req.real_distance_mm <= 0:
@@ -1074,7 +1103,10 @@ class ProjectService:
             confirmed=req.confirmed,
         )
         if req.confirmed:
-            _update_derived_dimensions_from_scale(target_interface, scale_factor)
+            if target_interface.profile_type == ProfileType.TRACED_CLOSED:
+                _update_derived_dimensions_from_scale(target_interface, scale_factor)
+            else:
+                set_calibrated_primitive_dimensions(target_interface, scale_factor)
 
         target_interface.approved = False
         target_interface.approved_at = None

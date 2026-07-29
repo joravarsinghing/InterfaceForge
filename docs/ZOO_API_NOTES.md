@@ -97,3 +97,15 @@ In Stage S8.4, native B-Rep geometry construction over WebSocket (`wss://api.zoo
    ```
    - **Response Payload:** `{"resp": {"type": "modeling", "data": {"modeling_response": {"type": "boolean_subtract", "data": {}}}}}`.
 
+
+## 6. 2026-07-29 Live Export Blocker: Boolean Subtraction Export
+
+During the Day 1 AM P0 golden path proof, InterfaceForge successfully analyzed, calibrated, approved, compiled KCL, and generated a current live Zoo model for a circle-to-rounded-rectangle adapter. The model revision stored a live Zoo model id and matching KCL hash.
+
+Live STL and STEP export then failed during the Zoo-native WebSocket export construction after `loft` and `boolean_subtract` with the normalized error:
+
+```text
+IF-EXPORT-001: Zoo-native export failed for 'stl'/'step': ZOO_ENGINE_ERROR: The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue
+```
+
+KCL export succeeded from the stored KCL artifact. STL/STEP were not replaced with mock or local geometry output for proof evidence.

@@ -11,6 +11,7 @@ vi.mock('../services/api', async () => {
     ...actual,
     validateConnectionConfig: vi.fn(),
     updateConnectionConfig: vi.fn(),
+    patchInterface: vi.fn(),
   };
 });
 
@@ -25,6 +26,7 @@ const mockApprovedProject: Project = {
   interface_a: {
     id: 'interface_a',
     profile_type: 'circle',
+    fit_mode: 'fit_over',
     profile_points: [],
     center: { x: 0, y: 0 },
     dimensions: [
@@ -45,6 +47,7 @@ const mockApprovedProject: Project = {
   interface_b: {
     id: 'interface_b',
     profile_type: 'rectangle',
+    fit_mode: 'fit_over',
     profile_points: [],
     center: { x: 0, y: 0 },
     dimensions: [
@@ -104,6 +107,8 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     expect(screen.getByRole('radio', { name: /Coaxial/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Parallel Offset/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Limited Angle/i })).toBeInTheDocument();
+    expect(screen.getAllByText('Fit over the outside').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Fit inside the opening').length).toBeGreaterThan(0);
   });
 
   it('switches mode and updates active fields for Offset and Angled modes', async () => {

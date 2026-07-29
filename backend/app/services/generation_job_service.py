@@ -165,6 +165,8 @@ class GenerationJobService:
                     if executed_job.preview_metadata
                     else None
                 )
+                target_rev.zoo_model_id = executed_job.zoo_model_id
+                target_rev.kcl_hash = executed_job.kcl_hash
             fresh_project.current_model_revision = next_rev_num
             fresh_project.last_known_good_model_revision = next_rev_num
             fresh_project.state = WorkflowState.MODEL_CURRENT

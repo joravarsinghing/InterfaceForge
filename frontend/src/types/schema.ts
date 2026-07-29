@@ -37,6 +37,8 @@ export type ManufacturingProcess = 'fdm' | 'sla' | 'cnc';
 
 export type ProviderMode = 'mock' | 'live';
 
+export type FitMode = 'fit_over' | 'fit_inside';
+
 export type ModelRevisionStatus =
   | 'draft'
   | 'generating'
@@ -113,6 +115,7 @@ export interface InterfaceDefinition {
   profile_points: Point2D[];
   center: Point2D;
   dimensions: Dimension[];
+  fit_mode?: FitMode;
   validation: ProfileValidation;
   approved: boolean;
   approved_at?: string | null;
@@ -141,6 +144,7 @@ export interface InterfacePatchRequest {
   source_image_ref?: string | null;
   profile_type?: string;
   dimensions?: Dimension[];
+  fit_mode?: FitMode;
   traced_outer_contour?: TracedContour | null;
   traced_hole_contours?: TracedContour[];
   scale_calibration?: ScaleCalibration | null;

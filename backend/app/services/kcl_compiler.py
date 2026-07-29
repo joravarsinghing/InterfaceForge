@@ -19,6 +19,7 @@ from app.models.schema import (
     ValidationIssue,
 )
 from app.services.connection_validation import validate_connection_and_manufacturing
+from app.services.profile_geometry import fitted_profile_size
 
 COMPILER_VERSION = "1.0.0"
 
@@ -112,55 +113,17 @@ def _generate_sketch_kcl(
     lines: List[str] = []
 
     if p_type == ProfileType.CIRCLE:
-        outer_dia = _get_dim_val(iface, "outer_diameter", 50.0)
-        if prefix.startswith("a"):
-            eff_dia = (
-                outer_dia + (2.0 * clearance)
-                if is_outer
-                else outer_dia + (2.0 * clearance) - (2.0 * wall_thickness)
-            )
-        else:
-            eff_dia = (
-                outer_dia - (2.0 * clearance)
-                if is_outer
-                else outer_dia - (2.0 * clearance) - (2.0 * wall_thickness)
-            )
-
-        radius = eff_dia / 2.0
+        eff = fitted_profile_size(iface, clearance, wall_thickness, outer=is_outer)
+        radius = eff.width / 2.0
         lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
         lines.append(
             f"  |> circle(center = [{offset_x:.3f}, {offset_y:.3f}], radius = {radius:.3f})"
         )
 
     elif p_type in (ProfileType.RECTANGLE, ProfileType.ROUNDED_RECTANGLE):
-        w = _get_dim_val(iface, "width", 50.0)
-        h = _get_dim_val(iface, "height", 50.0)
-
-        if prefix.startswith("a"):
-            eff_w = (
-                w + (2.0 * clearance)
-                if is_outer
-                else w + (2.0 * clearance) - (2.0 * wall_thickness)
-            )
-            eff_h = (
-                h + (2.0 * clearance)
-                if is_outer
-                else h + (2.0 * clearance) - (2.0 * wall_thickness)
-            )
-        else:
-            eff_w = (
-                w - (2.0 * clearance)
-                if is_outer
-                else w - (2.0 * clearance) - (2.0 * wall_thickness)
-            )
-            eff_h = (
-                h - (2.0 * clearance)
-                if is_outer
-                else h - (2.0 * clearance) - (2.0 * wall_thickness)
-            )
-
-        half_w = eff_w / 2.0
-        half_h = eff_h / 2.0
+        eff = fitted_profile_size(iface, clearance, wall_thickness, outer=is_outer)
+        half_w = eff.width / 2.0
+        half_h = eff.height / 2.0
 
         if p_type == ProfileType.RECTANGLE:
             lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
@@ -173,7 +136,7 @@ def _generate_sketch_kcl(
             lines.append("  |> close(%)")
 
         elif p_type == ProfileType.ROUNDED_RECTANGLE:
-            r = _get_dim_val(iface, "corner_radius", 5.0)
+            r = eff.corner_radius or _get_dim_val(iface, "corner_radius", 5.0)
             r = min(r, half_w * 0.8, half_h * 0.8)  # prevent over-filleting
             lines.append(f"const sketch_{prefix} = startSketchOn({plane_var})")
             lines.append(
@@ -303,7 +266,7 @@ def compile_project_to_kcl(
     if_b = project.interface_b
 
     kcl_lines: List[str] = [
-        "// InterfaceForge — Deterministic KCL Adapter Model",
+        "// InterfaceForge â€” Deterministic KCL Adapter Model",
         f"// Compiler Version: {COMPILER_VERSION}",
         f"// Schema Version: {project.schema_version}",
         f"// Schema Revision: {project.current_schema_revision}",

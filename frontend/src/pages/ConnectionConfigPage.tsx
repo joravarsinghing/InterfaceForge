@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Connection2DViewer } from '../components/Connection2DViewer';
-import { updateConnectionConfig, validateConnectionConfig } from '../services/api';
+import { patchInterface, updateConnectionConfig, validateConnectionConfig } from '../services/api';
 import type {
   Connection,
   ConnectionMode,
@@ -9,6 +9,7 @@ import type {
   InterfaceDefinition,
   Manufacturing,
   ManufacturingProcess,
+  FitMode,
   Project,
 } from '../types/schema';
 
@@ -44,6 +45,8 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
 
   const [connection, setConnection] = useState<Connection>(initialConn);
   const [manufacturing, setManufacturing] = useState<Manufacturing>(initialMfg);
+  const [fitModeA, setFitModeA] = useState<FitMode>(interfaceA?.fit_mode || 'fit_over');
+  const [fitModeB, setFitModeB] = useState<FitMode>(interfaceB?.fit_mode || 'fit_over');
 
   const [validationResult, setValidationResult] = useState<ConnectionValidationResult>({
     is_valid: true,
@@ -157,6 +160,12 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
     setIsSaving(true);
     setSaveError(null);
     try {
+      if (project.interface_a.fit_mode !== fitModeA) {
+        await patchInterface(project.project_id, 'interface_a', { fit_mode: fitModeA }, project.project_token);
+      }
+      if (project.interface_b.fit_mode !== fitModeB) {
+        await patchInterface(project.project_id, 'interface_b', { fit_mode: fitModeB }, project.project_token);
+      }
       const updatedProject = await updateConnectionConfig(
         project.project_id,
         connection,
@@ -233,6 +242,25 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
         </button>
       </section>
 
+      <section className="fit-intent-panel card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
+        <h3 style={{ marginTop: 0, color: '#f0f6fc' }}>Fit Intent</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+          <label style={{ display: 'grid', gap: '0.35rem', color: '#f0f6fc', fontWeight: 'bold' }}>
+            Interface A
+            <select value={fitModeA} onChange={(event) => setFitModeA(event.target.value as FitMode)} style={{ padding: '0.5rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '4px' }}>
+              <option value="fit_over">Fit over the outside</option>
+              <option value="fit_inside">Fit inside the opening</option>
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: '0.35rem', color: '#f0f6fc', fontWeight: 'bold' }}>
+            Interface B
+            <select value={fitModeB} onChange={(event) => setFitModeB(event.target.value as FitMode)} style={{ padding: '0.5rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '4px' }}>
+              <option value="fit_over">Fit over the outside</option>
+              <option value="fit_inside">Fit inside the opening</option>
+            </select>
+          </label>
+        </div>
+      </section>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         {/* Left Column: Form & Mode Cards */}
         <div>

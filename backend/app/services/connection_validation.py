@@ -12,6 +12,7 @@ from app.models.schema import (
     ProfileType,
     ValidationIssue,
 )
+from app.services.profile_geometry import fitted_profile_size
 
 
 def get_interface_outer_bounding_dim(interface: Interface) -> float:
@@ -181,7 +182,7 @@ def validate_connection_and_manufacturing(
                 id="IF-CONN-004",
                 message="Angle must be a finite numerical value in degrees.",
                 field="angle_deg",
-                recovery_steps=["Enter a numerical angle in degrees between 0° and 45°."],
+                recovery_steps=["Enter a numerical angle in degrees between 0Â° and 45Â°."],
             )
         )
     else:
@@ -190,18 +191,18 @@ def validate_connection_and_manufacturing(
             errors.append(
                 ValidationIssue(
                     id="IF-CONN-004",
-                    message=f"Angle ({abs_angle:.1f}°) exceeds maximum MVP limit of 45.0°.",
+                    message=f"Angle ({abs_angle:.1f}Â°) exceeds maximum MVP limit of 45.0Â°.",
                     field="angle_deg",
-                    recovery_steps=["Reduce connection angle to 45.0° or less."],
+                    recovery_steps=["Reduce connection angle to 45.0Â° or less."],
                 )
             )
         elif abs_angle > 30.0:
             warnings.append(
                 ValidationIssue(
                     id="IF-CONN-W003",
-                    message=f"Angle ({abs_angle:.1f}°) > 30.0°. Overhang supports required.",
+                    message=f"Angle ({abs_angle:.1f}Â°) > 30.0Â°. Overhang supports required.",
                     field="angle_deg",
-                    recovery_steps=["Keep angle under 30.0° if supportless printing is preferred."],
+                    recovery_steps=["Keep angle under 30.0Â° if supportless printing is preferred."],
                 )
             )
 
@@ -220,9 +221,9 @@ def validate_connection_and_manufacturing(
             errors.append(
                 ValidationIssue(
                     id="IF-CONN-005",
-                    message="Angle must be 0° for Coaxial connection mode.",
+                    message="Angle must be 0Â° for Coaxial connection mode.",
                     field="angle_deg",
-                    recovery_steps=["Reset angle to 0°, or switch to Angled connection mode."],
+                    recovery_steps=["Reset angle to 0Â°, or switch to Angled connection mode."],
                 )
             )
     elif connection.mode == ConnectionMode.OFFSET:
@@ -230,9 +231,9 @@ def validate_connection_and_manufacturing(
             errors.append(
                 ValidationIssue(
                     id="IF-CONN-005",
-                    message="Angle must be 0° for Offset connection mode.",
+                    message="Angle must be 0Â° for Offset connection mode.",
                     field="angle_deg",
-                    recovery_steps=["Reset angle to 0°, or switch to Angled connection mode."],
+                    recovery_steps=["Reset angle to 0Â°, or switch to Angled connection mode."],
                 )
             )
 
@@ -277,7 +278,44 @@ def validate_connection_and_manufacturing(
                 )
             )
 
-    # 9. Self-intersection & internal void checks
+    # 9. Per-interface fit intent collapse checks
+    for iface_name, iface, clearance, field in [
+        ("Interface A", interface_a, manufacturing.clearance_a_mm, "clearance_a_mm"),
+        ("Interface B", interface_b, manufacturing.clearance_b_mm, "clearance_b_mm"),
+    ]:
+        if iface.profile_type == ProfileType.TRACED_CLOSED:
+            continue
+        outer_size = fitted_profile_size(iface, clearance, manufacturing.wall_thickness_mm, outer=True)
+        inner_size = fitted_profile_size(iface, clearance, manufacturing.wall_thickness_mm, outer=False)
+        if outer_size.width <= 0 or outer_size.height <= 0:
+            errors.append(
+                ValidationIssue(
+                    id="IF-MFG-005",
+                    message=f"{iface_name} fit intent and clearance collapse the adapter outer boundary.",
+                    field=field,
+                    recovery_steps=["Reduce clearance or choose Fit over the outside for this interface."],
+                )
+            )
+        if inner_size.width <= 0 or inner_size.height <= 0:
+            errors.append(
+                ValidationIssue(
+                    id="IF-MFG-004",
+                    message=f"{iface_name} wall thickness closes the adapter passage.",
+                    field="wall_thickness_mm",
+                    recovery_steps=["Reduce wall thickness or clearance so the inner boundary remains positive."],
+                )
+            )
+        if iface.profile_type == ProfileType.ROUNDED_RECTANGLE and outer_size.corner_radius > min(outer_size.width, outer_size.height) / 2.0:
+            errors.append(
+                ValidationIssue(
+                    id="IF-MFG-006",
+                    message=f"{iface_name} rounded-rectangle radius is larger than the fitted boundary can support.",
+                    field=field,
+                    recovery_steps=["Reduce clearance or corner radius before generation."],
+                )
+            )
+
+    # 10. Self-intersection & internal void checks
     bound_a = get_interface_outer_bounding_dim(interface_a)
     bound_b = get_interface_outer_bounding_dim(interface_b)
     min_dim = min(bound_a, bound_b)

@@ -42,3 +42,11 @@
   - **Privacy Wording Correction:** Updated user-facing privacy copy in Footer and documentation to accurately explain local SQLite backend persistence and temporary file storage.
 * **P1/P2 Non-Blocking Notices:**
   - JSDOM test runner emits React Router v7 startTransition future flag warnings during test execution (non-blocking, standard React Router v6 migration notice).
+
+### 2026-07-29 - P0 Golden Path Live STL/STEP Export Blocker
+
+- **Status:** Active blocker for Day 1 AM golden path proof.
+- **Scope:** Live Zoo-native STL and STEP export after successful live model generation for circle -> rounded_rectangle adapter.
+- **Observed:** KCL export is ready, but STL and STEP exports fail with `IF-EXPORT-001` because Zoo Engine returns: `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
+- **Impact:** The workflow is PARTIAL/UNPROVEN for valid STL and STEP downloads in Live mode. Mock or local geometry output must not be used as proof.
+- **Workaround:** None accepted for the P0 proof. Preserve validation and report the blocker.

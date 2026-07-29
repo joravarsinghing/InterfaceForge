@@ -84,6 +84,13 @@ class ProviderMode(str, Enum):
     LIVE = "live"
 
 
+class FitMode(str, Enum):
+    """Per-interface fit intent for interpreting the uploaded boundary."""
+
+    FIT_OVER = "fit_over"
+    FIT_INSIDE = "fit_inside"
+
+
 class Point2D(BaseModel):
     """2D coordinate representation."""
 
@@ -117,7 +124,7 @@ class Dimension(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critical: bool = True
     feature_ref: Optional[str] = None  # e.g. 'outer_contour', 'region_1', 'bore'
-    source_annotation: Optional[str] = None  # e.g. '40', 'Ã˜16', 'R5'
+    source_annotation: Optional[str] = None  # e.g. '40', 'ÃƒËœ16', 'R5'
     consistency_state: str = "valid"  # 'valid', 'conflict', 'unmapped', 'recalculated'
 
 
@@ -182,6 +189,7 @@ class Interface(BaseModel):
     profile_points: List[Point2D] = Field(default_factory=list)
     center: Point2D = Field(default_factory=Point2D)
     dimensions: List[Dimension] = Field(default_factory=default_circle_dimensions)
+    fit_mode: FitMode = FitMode.FIT_OVER
     validation: ProfileValidation = Field(default_factory=ProfileValidation)
     approved: bool = False
     approved_at: Optional[str] = None
@@ -195,7 +203,7 @@ class Interface(BaseModel):
     verification_status: str = "pending_review"
     primitive_fallback_active: bool = False
     primitive_fallback_label: Optional[str] = (
-        None  # 'Simplified envelope â€” not the exact cross-section'
+        None  # 'Simplified envelope Ã¢â‚¬â€ not the exact cross-section'
     )
     analysis_provider_name: Optional[str] = None  # e.g. 'mock', 'gemini'
     generation_unsupported: bool = False  # True if downstream KCL cannot handle this profile yet
@@ -334,6 +342,7 @@ class InterfacePatchRequest(BaseModel):
     profile_points: Optional[List[Point2D]] = None
     center: Optional[Point2D] = None
     dimensions: Optional[List[Dimension]] = None
+    fit_mode: Optional[FitMode] = None
     validation: Optional[ProfileValidation] = None
     traced_outer_contour: Optional[TracedContour] = None
     traced_hole_contours: Optional[List[TracedContour]] = None

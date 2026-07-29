@@ -25,6 +25,7 @@ from app.services.geometry_generator import (
     get_geometry_hash,
     set_prohibit_local_obj,
 )
+from app.services.profile_geometry import fitted_profile_size
 
 
 def current_iso_timestamp() -> str:
@@ -1015,38 +1016,36 @@ class ZooExportProvider(ExportProvider):
                 offset_y = project.connection.offset_y_mm if project else 0.0
                 angle_deg = project.connection.angle_deg if project else 0.0
 
-                if if_a_type == "circle":
-                    outer_dia_a = (
-                        _get_dim_val(project.interface_a, "outer_diameter", 50.0)
-                        if project
-                        else 50.0
-                    )
-                    size_a_outer = outer_dia_a + (2.0 * clearance_a)
-                    size_a_inner = size_a_outer - (2.0 * wall_mm)
+                if project:
+                    outer_a = fitted_profile_size(project.interface_a, clearance_a, wall_mm, outer=True)
+                    inner_a = fitted_profile_size(project.interface_a, clearance_a, wall_mm, outer=False)
+                    outer_b = fitted_profile_size(project.interface_b, clearance_b, wall_mm, outer=True)
+                    inner_b = fitted_profile_size(project.interface_b, clearance_b, wall_mm, outer=False)
+                    size_a_outer = outer_a.width
+                    size_a_inner = inner_a.width
+                    outer_w_a = outer_a.width
+                    outer_h_a = outer_a.height
+                    inner_w_a = inner_a.width
+                    inner_h_a = inner_a.height
+                    size_b_outer = outer_b.width
+                    size_b_inner = inner_b.width
+                    outer_w_b = outer_b.width
+                    outer_h_b = outer_b.height
+                    inner_w_b = inner_b.width
+                    inner_h_b = inner_b.height
                 else:
-                    w_a = _get_dim_val(project.interface_a, "width", 50.0) if project else 50.0
-                    h_a = _get_dim_val(project.interface_a, "height", 50.0) if project else 50.0
-                    outer_w_a = w_a + (2.0 * clearance_a)
-                    outer_h_a = h_a + (2.0 * clearance_a)
-                    inner_w_a = outer_w_a - (2.0 * wall_mm)
-                    inner_h_a = outer_h_a - (2.0 * wall_mm)
-
-                if if_b_type == "circle":
-                    outer_dia_b = (
-                        _get_dim_val(project.interface_b, "outer_diameter", 34.5)
-                        if project
-                        else 34.5
-                    )
-                    size_b_outer = outer_dia_b - (2.0 * clearance_b)
-                    size_b_inner = size_b_outer - (2.0 * wall_mm)
-                else:
-                    w_b = _get_dim_val(project.interface_b, "width", 50.0) if project else 50.0
-                    h_b = _get_dim_val(project.interface_b, "height", 50.0) if project else 50.0
-                    outer_w_b = w_b - (2.0 * clearance_b)
-                    outer_h_b = h_b - (2.0 * clearance_b)
-                    inner_w_b = outer_w_b - (2.0 * wall_mm)
-                    inner_h_b = outer_h_b - (2.0 * wall_mm)
-
+                    size_a_outer = 50.0
+                    size_a_inner = 45.2
+                    outer_w_a = 50.0
+                    outer_h_a = 50.0
+                    inner_w_a = 45.2
+                    inner_h_a = 45.2
+                    size_b_outer = 34.5
+                    size_b_inner = 29.7
+                    outer_w_b = 50.0
+                    outer_h_b = 50.0
+                    inner_w_b = 45.2
+                    inner_h_b = 45.2
                 # 2. Make plane A (Z=0)
                 await send_cmd(
                     {
