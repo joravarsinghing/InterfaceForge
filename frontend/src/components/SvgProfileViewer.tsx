@@ -7,8 +7,125 @@ interface SvgProfileViewerProps {
   points?: Point2D[];
   width?: number;
   height?: number;
+  calibrationMode?: boolean;
   calibrationPointA?: Point2D | null;
   calibrationPointB?: Point2D | null;
+  onCalibrationPick?: (point: Point2D) => void;
+}
+
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+function finitePoint(point: Point2D): boolean {
+  return Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function getDimension(dimensions: Dimension[], ids: string[], fallback: number): number {
+  const match = dimensions.find((dim) => ids.includes(dim.id) && Number.isFinite(dim.value) && dim.value > 0);
+  return match ? match.value : fallback;
+}
+
+function primitiveBoundaryPoints(profileType: ProfileType, dimensions: Dimension[], points: Point2D[] = []): Point2D[] {
+  const finitePoints = points.filter(finitePoint);
+  if (finitePoints.length >= 4) return finitePoints;
+
+  const outerDiameter = getDimension(dimensions, ['outer_diameter', 'diameter'], 50);
+  const rectWidth = getDimension(dimensions, ['width', 'overall_width'], 60);
+  const rectHeight = getDimension(dimensions, ['height', 'overall_height'], 40);
+  const cornerRadius = Math.min(getDimension(dimensions, ['corner_radius'], 5), rectWidth / 2, rectHeight / 2);
+
+  if (profileType === 'circle') {
+    const radius = outerDiameter / 2;
+    return Array.from({ length: 64 }, (_, i) => {
+      const angle = (2 * Math.PI * i) / 64;
+      return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
+    });
+  }
+
+  const halfW = rectWidth / 2;
+  const halfH = rectHeight / 2;
+  if (profileType === 'rectangle' || cornerRadius <= 0) {
+    return [
+      { x: -halfW, y: -halfH },
+      { x: halfW, y: -halfH },
+      { x: halfW, y: halfH },
+      { x: -halfW, y: halfH },
+    ];
+  }
+
+  const centers = [
+    { x: halfW - cornerRadius, y: halfH - cornerRadius, start: 0, end: Math.PI / 2 },
+    { x: -halfW + cornerRadius, y: halfH - cornerRadius, start: Math.PI / 2, end: Math.PI },
+    { x: -halfW + cornerRadius, y: -halfH + cornerRadius, start: Math.PI, end: (3 * Math.PI) / 2 },
+    { x: halfW - cornerRadius, y: -halfH + cornerRadius, start: (3 * Math.PI) / 2, end: 2 * Math.PI },
+  ];
+  return centers.flatMap((center) =>
+    Array.from({ length: 9 }, (_, i) => {
+      const angle = center.start + ((center.end - center.start) * i) / 8;
+      return {
+        x: center.x + cornerRadius * Math.cos(angle),
+        y: center.y + cornerRadius * Math.sin(angle),
+      };
+    })
+  );
+}
+
+function boundsFor(points: Point2D[]): Bounds {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+}
+
+function paddedBounds(bounds: Bounds): Bounds {
+  const width = bounds.maxX - bounds.minX || 1;
+  const height = bounds.maxY - bounds.minY || 1;
+  const pad = Math.max(width, height) * 0.18 + 8;
+  return {
+    minX: bounds.minX - pad,
+    maxX: bounds.maxX + pad,
+    minY: bounds.minY - pad,
+    maxY: bounds.maxY + pad,
+  };
+}
+
+function clientPointToViewBoxPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point2D | null {
+  if (typeof svg.createSVGPoint === 'function') {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    return pt.matrixTransform(ctm.inverse());
+  }
+
+  const rect = svg.getBoundingClientRect();
+  const rawViewBox = (svg.getAttribute('viewBox') || '0 0 1 1').split(/\s+/).map((value) => parseFloat(value));
+  const viewBox = {
+    x: rawViewBox[0] || 0,
+    y: rawViewBox[1] || 0,
+    width: rawViewBox[2] || 1,
+    height: rawViewBox[3] || 1,
+  };
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const scale = Math.min(rect.width / viewBox.width, rect.height / viewBox.height);
+  const renderedW = viewBox.width * scale;
+  const renderedH = viewBox.height * scale;
+  const offsetX = (rect.width - renderedW) / 2;
+  const offsetY = (rect.height - renderedH) / 2;
+  return {
+    x: viewBox.x + (clientX - rect.left - offsetX) / scale,
+    y: viewBox.y + (clientY - rect.top - offsetY) / scale,
+  };
+}
+
+function pathData(points: Point2D[]): string {
+  if (points.length === 0) return '';
+  const [first, ...rest] = points;
+  return `M ${first.x.toFixed(3)} ${first.y.toFixed(3)} ${rest.map((point) => `L ${point.x.toFixed(3)} ${point.y.toFixed(3)}`).join(' ')} Z`;
 }
 
 export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
@@ -17,214 +134,87 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
   points = [],
   width = 360,
   height = 280,
+  calibrationMode = false,
   calibrationPointA = null,
   calibrationPointB = null,
+  onCalibrationPick,
 }) => {
-  // Extract dimension values with defaults
-  const outerDiameterDim = dimensions.find(
-    (d) => d.id === 'outer_diameter' || d.id === 'diameter'
-  );
-  const widthDim = dimensions.find((d) => d.id === 'width');
-  const heightDim = dimensions.find((d) => d.id === 'height');
-  const radiusDim = dimensions.find((d) => d.id === 'corner_radius');
+  const boundaryPoints = primitiveBoundaryPoints(profileType, dimensions, points);
+  const bounds = paddedBounds(boundsFor(boundaryPoints));
+  const viewBoxWidth = bounds.maxX - bounds.minX;
+  const viewBoxHeight = bounds.maxY - bounds.minY;
+  const markerA = calibrationPointA && finitePoint(calibrationPointA) ? calibrationPointA : null;
+  const markerB = calibrationPointB && finitePoint(calibrationPointB) ? calibrationPointB : null;
 
-  const outerDiameter = outerDiameterDim ? Math.max(1, outerDiameterDim.value) : 50;
-  const rectWidth = widthDim ? Math.max(1, widthDim.value) : 60;
-  const rectHeight = heightDim ? Math.max(1, heightDim.value) : 40;
-  const cornerRadius = radiusDim ? Math.max(0, radiusDim.value) : 5;
+  const outerDiameter = getDimension(dimensions, ['outer_diameter', 'diameter'], 50);
+  const rectWidth = getDimension(dimensions, ['width', 'overall_width'], 60);
+  const rectHeight = getDimension(dimensions, ['height', 'overall_height'], 40);
+  const cornerRadius = getDimension(dimensions, ['corner_radius'], 5);
 
-  // Scale geometry to fit comfortably inside 200x200 viewBox
-  const maxDim =
-    profileType === 'circle'
-      ? outerDiameter
-      : Math.max(rectWidth, rectHeight);
-  const scale = maxDim > 0 ? 120 / maxDim : 1;
-
-  const scaledRadius = (outerDiameter / 2) * scale;
-  const scaledWidth = rectWidth * scale;
-  const scaledHeight = rectHeight * scale;
-  const scaledCornerRadius = Math.min(
-    cornerRadius * scale,
-    Math.min(scaledWidth, scaledHeight) / 2
-  );
-
-  const markerA =
-    calibrationPointA && Number.isFinite(calibrationPointA.x) && Number.isFinite(calibrationPointA.y)
-      ? { x: calibrationPointA.x * scale, y: calibrationPointA.y * scale }
-      : null;
-  const markerB =
-    calibrationPointB && Number.isFinite(calibrationPointB.x) && Number.isFinite(calibrationPointB.y)
-      ? { x: calibrationPointB.x * scale, y: calibrationPointB.y * scale }
-      : null;
+  const handleClick = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!calibrationMode || !onCalibrationPick) return;
+    const point = clientPointToViewBoxPoint(event.currentTarget, event.clientX, event.clientY);
+    if (point) onCalibrationPick(point);
+  };
 
   return (
     <div className="svg-profile-viewer" style={{ textAlign: 'center' }}>
       <svg
         width={width}
         height={height}
-        viewBox="-100 -100 200 200"
+        viewBox={`${bounds.minX} ${bounds.minY} ${viewBoxWidth} ${viewBoxHeight}`}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`SVG geometry preview for ${profileType} profile`}
+        onClick={handleClick}
         style={{
           background: '#0d1117',
           borderRadius: '8px',
           border: '1px solid #30363d',
           maxWidth: '100%',
           height: 'auto',
+          cursor: calibrationMode ? 'crosshair' : undefined,
         }}
       >
         <title>{`${profileType} Profile Preview`}</title>
-        <desc>{`Vector visualization of ${profileType} profile with dimension annotations.`}</desc>
+        <desc>Primitive profile in canonical profile coordinates. Calibration clicks and stored markers use this same coordinate space.</desc>
 
-        {/* Grid and Axes */}
         <defs>
-          <pattern
-            id="grid-pattern"
-            width="20"
-            height="20"
-            patternUnits="userSpaceOnUse"
-          >
-            <path
-              d="M 20 0 L 0 0 0 20"
-              fill="none"
-              stroke="#21262d"
-              strokeWidth="0.5"
-            />
+          <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#21262d" strokeWidth="0.5" />
           </pattern>
         </defs>
-        <rect x="-100" y="-100" width="200" height="200" fill="url(#grid-pattern)" />
-        <line x1="-90" y1="0" x2="90" y2="0" stroke="#30363d" strokeWidth="1" strokeDasharray="4 4" />
-        <line x1="0" y1="-90" x2="0" y2="90" stroke="#30363d" strokeWidth="1" strokeDasharray="4 4" />
+        <rect x={bounds.minX} y={bounds.minY} width={viewBoxWidth} height={viewBoxHeight} fill="url(#grid-pattern)" />
+        <line x1={bounds.minX} y1="0" x2={bounds.maxX} y2="0" stroke="#30363d" strokeWidth="1" strokeDasharray="4 4" />
+        <line x1="0" y1={bounds.minY} x2="0" y2={bounds.maxY} stroke="#30363d" strokeWidth="1" strokeDasharray="4 4" />
 
-        {/* Shape Rendering */}
-        {profileType === 'circle' && (
-          <g>
-            <circle
-              cx="0"
-              cy="0"
-              r={scaledRadius}
-              fill="rgba(56, 139, 253, 0.15)"
-              stroke="#58a6ff"
-              strokeWidth="2.5"
-            />
-            {/* Dimension Line & Label */}
-            <line
-              x1={-scaledRadius}
-              y1="0"
-              x2={scaledRadius}
-              y2="0"
-              stroke="#f0883e"
-              strokeWidth="1.5"
-              strokeDasharray="3 3"
-            />
-            <text
-              x="0"
-              y="-8"
-              fill="#f0883e"
-              fontSize="10"
-              fontWeight="bold"
-              textAnchor="middle"
-            >
-                {outerDiameter} mm
-            </text>
-          </g>
-        )}
+        <path
+          d={pathData(boundaryPoints)}
+          fill="rgba(56, 139, 253, 0.15)"
+          stroke="#58a6ff"
+          strokeWidth="2.5"
+          vectorEffect="non-scaling-stroke"
+        />
 
-        {profileType === 'rectangle' && (
-          <g>
-            <rect
-              x={-scaledWidth / 2}
-              y={-scaledHeight / 2}
-              width={scaledWidth}
-              height={scaledHeight}
-              fill="rgba(56, 139, 253, 0.15)"
-              stroke="#58a6ff"
-              strokeWidth="2.5"
-            />
-            {/* Width Dimension */}
-            <text
-              x="0"
-              y={-scaledHeight / 2 - 6}
-              fill="#f0883e"
-              fontSize="10"
-              fontWeight="bold"
-              textAnchor="middle"
-            >
+        {profileType === 'circle' ? (
+          <text x="0" y={bounds.minY + 18} fill="#f0883e" fontSize="10" fontWeight="bold" textAnchor="middle">
+            {outerDiameter} mm
+          </text>
+        ) : (
+          <>
+            <text x="0" y={bounds.minY + 18} fill="#f0883e" fontSize="10" fontWeight="bold" textAnchor="middle">
               W: {rectWidth} mm
             </text>
-            {/* Height Dimension */}
-            <text
-              x={scaledWidth / 2 + 8}
-              y="4"
-              fill="#f0883e"
-              fontSize="10"
-              fontWeight="bold"
-              textAnchor="start"
-            >
+            <text x={bounds.maxX - 8} y="4" fill="#f0883e" fontSize="10" fontWeight="bold" textAnchor="end">
               H: {rectHeight} mm
             </text>
-          </g>
+            {profileType === 'rounded_rectangle' && (
+              <text x="0" y={bounds.maxY - 10} fill="#79c0ff" fontSize="9" textAnchor="middle">
+                r: {cornerRadius} mm
+              </text>
+            )}
+          </>
         )}
-
-        {profileType === 'rounded_rectangle' && (
-          <g>
-            <rect
-              x={-scaledWidth / 2}
-              y={-scaledHeight / 2}
-              width={scaledWidth}
-              height={scaledHeight}
-              rx={scaledCornerRadius}
-              ry={scaledCornerRadius}
-              fill="rgba(56, 139, 253, 0.15)"
-              stroke="#58a6ff"
-              strokeWidth="2.5"
-            />
-            {/* Width Dimension */}
-            <text
-              x="0"
-              y={-scaledHeight / 2 - 6}
-              fill="#f0883e"
-              fontSize="10"
-              fontWeight="bold"
-              textAnchor="middle"
-            >
-              W: {rectWidth} mm
-            </text>
-            {/* Height Dimension */}
-            <text
-              x={scaledWidth / 2 + 8}
-              y="4"
-              fill="#f0883e"
-              fontSize="10"
-              fontWeight="bold"
-              textAnchor="start"
-            >
-              H: {rectHeight} mm
-            </text>
-            {/* Corner Radius */}
-            <text
-              x="0"
-              y={scaledHeight / 2 + 16}
-              fill="#79c0ff"
-              fontSize="9"
-              textAnchor="middle"
-            >
-              r: {cornerRadius} mm
-            </text>
-          </g>
-        )}
-
-        {/* Candidate Points overlay */}
-        {points.length > 0 &&
-          points.map((pt, idx) => (
-            <circle
-              key={idx}
-              cx={pt.x * scale}
-              cy={pt.y * scale}
-              r="2"
-              fill="#a5d6ff"
-            />
-          ))}
 
         {markerA && markerB && (
           <line
@@ -235,24 +225,24 @@ export const SvgProfileViewer: React.FC<SvgProfileViewerProps> = ({
             stroke="#f0f6fc"
             strokeWidth="1.6"
             strokeDasharray="5 3"
+            vectorEffect="non-scaling-stroke"
             pointerEvents="none"
           />
         )}
         {markerA && (
           <g pointerEvents="none">
-            <circle cx={markerA.x} cy={markerA.y} r="5" fill="#f85149" stroke="#ffffff" strokeWidth="1.5" />
+            <circle data-testid="calibration-marker-a" cx={markerA.x} cy={markerA.y} r="5" fill="#f85149" stroke="#ffffff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             <text x={markerA.x + 8} y={markerA.y - 8} fill="#ffffff" fontSize="11">A</text>
           </g>
         )}
         {markerB && (
           <g pointerEvents="none">
-            <circle cx={markerB.x} cy={markerB.y} r="5" fill="#3fb950" stroke="#ffffff" strokeWidth="1.5" />
+            <circle data-testid="calibration-marker-b" cx={markerB.x} cy={markerB.y} r="5" fill="#3fb950" stroke="#ffffff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             <text x={markerB.x + 8} y={markerB.y - 8} fill="#ffffff" fontSize="11">B</text>
           </g>
         )}
 
-        {/* Center Point */}
-        <circle cx="0" cy="0" r="3" fill="#f0883e" />
+        <circle cx="0" cy="0" r="3" fill="#f0883e" vectorEffect="non-scaling-stroke" />
       </svg>
     </div>
   );

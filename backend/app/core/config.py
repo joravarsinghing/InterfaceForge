@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     generation_timeout_seconds: float = 30.0
 
     # Vision Analysis Provider Configuration per ADR-003, ADR-009, and S7.1
-    analysis_provider: str = "mock"
+    analysis_provider: str = "opencv"
     gemini_api_key: str = ""
     gemini_vision_model: str = "gemini-3.5-flash-lite"
     gemini_vision_fallback_model: str = "gemini-3.6-flash"
@@ -62,11 +62,13 @@ class Settings(BaseSettings):
     def get_effective_analysis_provider(self) -> str:
         """Validate analysis provider settings safely.
 
-        If 'gemini' is specified without an API key, safely fall back to 'mock'.
+        If Gemini guidance is specified without an API key, fall back to OpenCV-only.
         """
-        provider = (self.analysis_provider or "mock").lower()
-        if provider == "gemini" and not self.gemini_api_key:
-            return "mock"
+        provider = (self.analysis_provider or "opencv").lower()
+        if provider in {"gemini", "ai_guided", "gemini_guided_opencv"} and not self.gemini_api_key:
+            return "opencv"
+        if provider not in {"opencv", "mock", "gemini", "ai_guided", "gemini_guided_opencv"}:
+            return "opencv"
         return provider
 
     def get_effective_export_provider(self) -> str:

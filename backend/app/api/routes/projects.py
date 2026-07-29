@@ -73,8 +73,6 @@ def create_project(req: Optional[ProjectCreateRequest] = None) -> Dict[str, Any]
     return {"success": True, "data": create_dto.model_dump()}
 
 
-
-
 @router.get("/provider-mode", response_model=StandardResponse)
 def get_default_provider_mode() -> Dict[str, Any]:
     """Return default mock provider status before a project exists."""
@@ -99,6 +97,8 @@ def validate_default_provider_mode(req: ProviderModeUpdateRequest) -> Dict[str, 
             ],
         )
     return {"success": True, "data": mode_status.model_dump()}
+
+
 @router.get("/{project_id}/provider-mode", response_model=StandardResponse)
 def get_project_provider_mode(
     project_id: str,
@@ -141,6 +141,7 @@ def update_project_provider_mode(
             "provider_status": mode_status.model_dump(),
         },
     }
+
 
 @router.get("/{project_id}", response_model=StandardResponse)
 def get_project(
@@ -330,16 +331,15 @@ def analyze_interface_image(
     project_id: str,
     interface_id: str,
     provider: Optional[str] = Query(
-        None, description="Optional provider override ('mock' or 'gemini')"
+        None, description="Optional provider override ('opencv', 'mock', or 'gemini')"
     ),
     x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
 ) -> Dict[str, Any]:
-    """Run mock or AI analysis on uploaded interface image to extract profile candidates."""
+    """Run OpenCV-only, mock, or optional AI-guided analysis on an uploaded image."""
     service = get_service()
-    project = service.get_project(project_id=project_id, project_token=x_project_token)
-    project_mode = project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode)
-    provider_name = provider or ("gemini" if project_mode == "live" and service.get_provider_mode_status(project).analysis_provider == "gemini" else None)
-    active_provider = get_analysis_provider(provider_name) if provider_name else None
+    service.get_project(project_id=project_id, project_token=x_project_token)
+    provider_name = provider or "opencv"
+    active_provider = get_analysis_provider(provider_name)
     result = service.analyze_interface_image(
         project_id=project_id,
         interface_id=interface_id,
@@ -367,11 +367,7 @@ def patch_interface(
     return {"success": True, "data": project.model_dump()}
 
 
-
-
-@router.post(
-    "/{project_id}/interfaces/{interface_id}/scale/snap", response_model=StandardResponse
-)
+@router.post("/{project_id}/interfaces/{interface_id}/scale/snap", response_model=StandardResponse)
 def snap_interface_scale_point(
     project_id: str,
     interface_id: str,
@@ -721,7 +717,11 @@ async def propose_revision(
     service = get_service()
     project = service.get_project(project_id, project_token=x_project_token)
     agent_svc = get_agent_service()
-    project_mode = project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode)
+    project_mode = (
+        project.provider_mode.value
+        if hasattr(project.provider_mode, "value")
+        else str(project.provider_mode)
+    )
     provider_name = req.provider or ("zoo" if project_mode == "live" else "mock")
     proposal = await agent_svc.propose_revision(
         project_id=project_id,

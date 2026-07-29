@@ -1,4 +1,4 @@
-﻿"""
+"""
 Focused tests for Stage S10.5G.1 â€” Gemini Annotation Mask Coordinate Pipeline.
 
 Tests cover:
@@ -359,7 +359,7 @@ class TestProviderProvenance:
         assert hasattr(result, "region_count")
 
     def test_gemini_provider_sets_provider_used_on_success(self):
-        """GeminiAnalysisProvider.analyze sets provider_used='gemini' on success."""
+        """GeminiAnalysisProvider.analyze records guidance-assisted OpenCV provenance."""
         import json
 
         from app.services.analysis_provider import GeminiAnalysisProvider
@@ -417,7 +417,7 @@ class TestProviderProvenance:
 
             test_png = make_png(10, 10)
             result = provider.analyze(test_png, "test_image.png")
-            assert result.provider_used == "gemini"
+            assert result.provider_used == "gemini_guided_opencv"
             assert result.request_id is not None
             assert result.fallback_used is False
 

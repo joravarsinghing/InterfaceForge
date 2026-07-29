@@ -306,7 +306,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   if (!targetInterface?.traced_outer_contour) {
     validationErrors.push(
-      'Calibration requires traced edge data. Replace the image or re-run analysis before approval.'
+      'Calibration requires profile edge data. Replace the image or re-run analysis before approval.'
     );
   }
 
@@ -385,10 +385,14 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   const getAnalysisProviderLabel = () => {
     const prov = targetInterface?.analysis_provider_name;
-    if (!prov || prov === 'mock') return 'Mock analysis';
-    if (prov === 'gemini') return 'Gemini Vision';
-    return prov;
+    if (prov === 'gemini_guided_opencv' || prov === 'gemini') return 'AI guidance used';
+    if (prov === 'mock') return 'Mock analysis';
+    return 'OpenCV profile detection';
   };
+
+  const analysisProviderIsAiGuided =
+    targetInterface?.analysis_provider_name === 'gemini_guided_opencv' ||
+    targetInterface?.analysis_provider_name === 'gemini';
   return (
     <div className="profile-review-page container">
       <header className="page-header" style={{ marginBottom: '1.5rem' }}>
@@ -404,10 +408,10 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               padding: '0.25rem 0.6rem',
               borderRadius: '4px',
               fontSize: '0.85rem',
-              background: targetInterface?.analysis_provider_name === 'gemini' ? '#1f6feb' : '#6e7681',
+              background: analysisProviderIsAiGuided ? '#1f6feb' : '#6e7681',
               color: '#ffffff',
             }}
-            title={targetInterface?.analysis_provider_name === 'gemini' ? 'Analysis ran using Gemini Vision' : 'Analysis provider'}
+            title={analysisProviderIsAiGuided ? 'Gemini supplied optional guidance; OpenCV tracing remains authoritative' : 'Deterministic OpenCV profile detection'}
           >
             {getAnalysisProviderLabel()}
           </span>
@@ -726,9 +730,11 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <SvgProfileViewer
               profileType={profileType}
               dimensions={dimensions}
-              points={targetInterface?.profile_points}
+              points={targetInterface?.traced_outer_contour?.points ?? targetInterface?.profile_points}
+              calibrationMode={calibrationMode}
               calibrationPointA={calibrationPointA}
               calibrationPointB={calibrationPointB}
+              onCalibrationPick={handleCalibrationPick}
             />
           )}
         </div>
@@ -861,7 +867,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         </header>
 
         <p style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '1rem' }}>
-          Pick two points on the traced edge, enter the real distance between them, then confirm calibration.
+          Pick two points on the visible profile edge, enter the real distance between them, then confirm calibration.
         </p>
 
         {targetInterface?.traced_outer_contour ? (
@@ -923,12 +929,12 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               </p>
             )}
             <p style={{ color: '#8b949e', margin: '0.65rem 0 0 0', fontSize: '0.8rem' }}>
-              Each click snaps to the nearest valid trace segment. Changing points or distance requires approval again.
+              Each click snaps to the nearest valid profile boundary. Changing points or distance requires approval again.
             </p>
           </>
         ) : (
           <p style={{ color: '#f0b72f', margin: 0 }}>
-            Calibration needs traced edge data. Replace the image or re-run analysis to calibrate this profile.
+            Calibration needs profile edge data. Replace the image or re-run analysis to calibrate this profile.
           </p>
         )}
       </section>

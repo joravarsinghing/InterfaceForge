@@ -503,6 +503,23 @@ class MockAnalysisProvider(AnalysisProvider):
         )
 
 
+class OpenCVAnalysisProvider(MockAnalysisProvider):
+    """Deterministic OpenCV-first provider for clean profile analysis."""
+
+    def analyze(self, image_bytes: bytes, filename: str) -> AnalysisResult:
+        result = super().analyze(image_bytes, filename)
+        result.analysis_provider_name = "opencv"
+        result.provider_used = "opencv"
+        if not result.traced_outer_contour:
+            from app.services.profile_geometry import primitive_boundary_contour
+
+            result.traced_outer_contour = primitive_boundary_contour(
+                result.profile_type, result.candidate_dimensions, result.candidate_points
+            )
+            result.traced_hole_contours = []
+        return result
+
+
 class GeminiAnalysisProvider(AnalysisProvider):
     """Vision-capable AI analysis provider powered by Gemini guidance + OpenCV profile tracing."""
 
@@ -630,8 +647,8 @@ class GeminiAnalysisProvider(AnalysisProvider):
             primary_result.fallback_triggered = False
             primary_result.fallback_used = False
             primary_result.usage_metadata = primary_usage
-            primary_result.analysis_provider_name = "gemini"
-            primary_result.provider_used = "gemini"
+            primary_result.analysis_provider_name = "gemini_guided_opencv"
+            primary_result.provider_used = "gemini_guided_opencv"
             primary_result.request_id = req_id
             return primary_result
 
@@ -667,8 +684,8 @@ class GeminiAnalysisProvider(AnalysisProvider):
             fb_result.fallback_triggered = True
             fb_result.fallback_used = True
             fb_result.usage_metadata = fb_usage
-            fb_result.analysis_provider_name = "gemini"
-            fb_result.provider_used = "gemini"
+            fb_result.analysis_provider_name = "gemini_guided_opencv"
+            fb_result.provider_used = "gemini_guided_opencv"
             fb_result.request_id = req_id + "_fb"
             return fb_result
         except Exception as fb_exc:
@@ -989,6 +1006,8 @@ class GeminiAnalysisProvider(AnalysisProvider):
 def get_analysis_provider(provider_name: Optional[str] = None) -> AnalysisProvider:
     """Factory function to get active AnalysisProvider instance."""
     selected = (provider_name or settings.get_effective_analysis_provider()).lower()
-    if selected == "gemini":
+    if selected in {"gemini", "ai_guided", "gemini_guided_opencv"}:
         return GeminiAnalysisProvider()
-    return MockAnalysisProvider()
+    if selected == "mock":
+        return MockAnalysisProvider()
+    return OpenCVAnalysisProvider()

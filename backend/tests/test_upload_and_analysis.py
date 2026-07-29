@@ -1,4 +1,4 @@
-"""Tests for Image Upload and Mock Analysis Provider (Stage S4A)."""
+"""Tests for image upload and deterministic analysis providers."""
 
 import io
 
@@ -188,6 +188,16 @@ def test_mock_analysis_rectangle_and_rounded(client: TestClient) -> None:
     assert len(rect_anal["candidate_dimensions"]) == 2
 
     # Interface A approve
+    client.post(
+        f"/api/projects/{p_id}/interfaces/interface_a/scale/calibrate",
+        json={
+            "point_a": {"x": -30, "y": -20},
+            "point_b": {"x": 30, "y": -20},
+            "real_distance_mm": 60,
+            "confirmed": True,
+        },
+        headers=headers,
+    )
     client.post(f"/api/projects/{p_id}/interfaces/interface_a/approve", headers=headers)
 
     # Interface B upload rounded rectangle
@@ -254,3 +264,107 @@ def test_malformed_provider_response(client: TestClient) -> None:
     assert json_data["success"] is False
     assert json_data["error"]["id"] == "IF-ANALYSIS-400"
     assert "malformed response" in json_data["error"]["message"]
+
+
+def test_clean_profile_uses_opencv_without_gemini_by_default(
+    client: TestClient, monkeypatch
+) -> None:
+    from app.services.analysis_provider import GeminiAnalysisProvider
+
+    def fail_if_called(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("Gemini should not run for default clean-profile analysis")
+
+    monkeypatch.setattr(GeminiAnalysisProvider, "analyze", fail_if_called)
+    res = client.post("/api/projects")
+    project = res.json()["data"]
+    headers = {"X-Project-Token": project["project_token"]}
+    png_bytes = create_sample_png_bytes()
+    client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/upload",
+        files={"file": ("valid_circle.png", png_bytes, "image/png")},
+        headers=headers,
+    )
+    analyze = client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/analyze",
+        headers=headers,
+    )
+    assert analyze.status_code == 200, analyze.json()
+    data = analyze.json()["data"]
+    assert data["analysis_provider_name"] == "opencv"
+    stored = client.get(f"/api/projects/{project['project_id']}", headers=headers).json()["data"]
+    assert stored["interface_a"]["analysis_provider_name"] == "opencv"
+    assert stored["interface_a"]["traced_outer_contour"] is not None
+
+
+def test_explicit_ai_guidance_uses_gemini_guided_opencv(client: TestClient, monkeypatch) -> None:
+    from app.services.analysis_provider import GeminiAnalysisProvider
+
+    def fake_analyze(self, image_bytes: bytes, filename: str):  # type: ignore[no-untyped-def]
+        from app.services.analysis_provider import OpenCVAnalysisProvider
+
+        result = OpenCVAnalysisProvider().analyze(image_bytes, filename)
+        result.analysis_provider_name = "gemini_guided_opencv"
+        result.provider_used = "gemini_guided_opencv"
+        return result
+
+    monkeypatch.setattr(GeminiAnalysisProvider, "analyze", fake_analyze)
+    res = client.post("/api/projects")
+    project = res.json()["data"]
+    headers = {"X-Project-Token": project["project_token"]}
+    png_bytes = create_sample_png_bytes()
+    client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/upload",
+        files={"file": ("valid_circle.png", png_bytes, "image/png")},
+        headers=headers,
+    )
+    analyze = client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/analyze?provider=gemini",
+        headers=headers,
+    )
+    assert analyze.status_code == 200, analyze.json()
+    assert analyze.json()["data"]["analysis_provider_name"] == "gemini_guided_opencv"
+
+
+def test_gemini_failure_does_not_break_default_opencv_workflow(
+    client: TestClient, monkeypatch
+) -> None:
+    from app.services.analysis_provider import GeminiAnalysisProvider
+
+    def fail_if_called(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("Gemini unavailable")
+
+    monkeypatch.setattr(GeminiAnalysisProvider, "analyze", fail_if_called)
+    res = client.post("/api/projects")
+    project = res.json()["data"]
+    headers = {"X-Project-Token": project["project_token"]}
+    png_bytes = create_sample_png_bytes()
+    client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/upload",
+        files={"file": ("valid_rectangle.png", png_bytes, "image/png")},
+        headers=headers,
+    )
+    analyze = client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/analyze",
+        headers=headers,
+    )
+    assert analyze.status_code == 200, analyze.json()
+    assert analyze.json()["data"]["analysis_provider_name"] == "opencv"
+    assert analyze.json()["data"]["profile_type"] == ProfileType.RECTANGLE
+
+
+def test_mock_provider_override_keeps_mock_provenance(client: TestClient) -> None:
+    res = client.post("/api/projects")
+    project = res.json()["data"]
+    headers = {"X-Project-Token": project["project_token"]}
+    png_bytes = create_sample_png_bytes()
+    client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/upload",
+        files={"file": ("valid_circle.png", png_bytes, "image/png")},
+        headers=headers,
+    )
+    analyze = client.post(
+        f"/api/projects/{project['project_id']}/interfaces/interface_a/analyze?provider=mock",
+        headers=headers,
+    )
+    assert analyze.status_code == 200, analyze.json()
+    assert analyze.json()["data"]["analysis_provider_name"] == "mock"

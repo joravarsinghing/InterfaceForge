@@ -11,6 +11,7 @@ from app.models.schema import (
     Interface,
     Point2D,
     ProfileType,
+    TracedContour,
 )
 
 
@@ -45,6 +46,89 @@ def primitive_size(interface: Interface) -> ProfileSize:
     height = dimension_value(interface, "height", 50.0)
     radius = dimension_value(interface, "corner_radius", 0.0)
     return ProfileSize(width=width, height=height, corner_radius=radius)
+
+
+def primitive_boundary_points(
+    profile_type: ProfileType,
+    dimensions: list[Dimension],
+    candidate_points: list[Point2D] | None = None,
+) -> list[Point2D]:
+    """Return canonical profile-space boundary points for primitive calibration."""
+    finite_candidates = [
+        p for p in (candidate_points or []) if math.isfinite(p.x) and math.isfinite(p.y)
+    ]
+    if len(finite_candidates) >= 4:
+        return finite_candidates
+
+    temp = Interface(id="primitive_boundary", profile_type=profile_type, dimensions=dimensions)
+    size = primitive_size(temp)
+    half_w = size.width / 2.0
+    half_h = size.height / 2.0
+
+    if profile_type == ProfileType.CIRCLE:
+        radius = max(size.width, 1.0) / 2.0
+        return [
+            Point2D(
+                x=round(radius * math.cos(2.0 * math.pi * i / 64), 4),
+                y=round(radius * math.sin(2.0 * math.pi * i / 64), 4),
+            )
+            for i in range(64)
+        ]
+
+    if profile_type == ProfileType.RECTANGLE:
+        return [
+            Point2D(x=-half_w, y=-half_h),
+            Point2D(x=half_w, y=-half_h),
+            Point2D(x=half_w, y=half_h),
+            Point2D(x=-half_w, y=half_h),
+        ]
+
+    if profile_type == ProfileType.ROUNDED_RECTANGLE:
+        radius = min(max(size.corner_radius, 0.0), half_w, half_h)
+        if radius <= 0:
+            return [
+                Point2D(x=-half_w, y=-half_h),
+                Point2D(x=half_w, y=-half_h),
+                Point2D(x=half_w, y=half_h),
+                Point2D(x=-half_w, y=half_h),
+            ]
+        points: list[Point2D] = []
+        centers = [
+            (half_w - radius, half_h - radius, 0.0, math.pi / 2.0),
+            (-half_w + radius, half_h - radius, math.pi / 2.0, math.pi),
+            (-half_w + radius, -half_h + radius, math.pi, 3.0 * math.pi / 2.0),
+            (half_w - radius, -half_h + radius, 3.0 * math.pi / 2.0, 2.0 * math.pi),
+        ]
+        for cx, cy, start, end in centers:
+            for i in range(9):
+                angle = start + (end - start) * i / 8.0
+                points.append(
+                    Point2D(
+                        x=round(cx + radius * math.cos(angle), 4),
+                        y=round(cy + radius * math.sin(angle), 4),
+                    )
+                )
+        return points
+
+    return finite_candidates
+
+
+def primitive_boundary_contour(
+    profile_type: ProfileType,
+    dimensions: list[Dimension],
+    candidate_points: list[Point2D] | None = None,
+) -> TracedContour | None:
+    points = primitive_boundary_points(profile_type, dimensions, candidate_points)
+    if len(points) < 4:
+        return None
+    return TracedContour(
+        id="outer_contour",
+        points=points,
+        is_closed=True,
+        classification="outer_contour",
+        provenance="opencv_primitive",
+        confidence=1.0,
+    )
 
 
 def fitted_profile_size(

@@ -518,4 +518,5 @@ class TestTracedAnalysisEndToEnd:
         iface_data = project_resp.json()["data"]["interface_a"]
         assert iface_data["profile_type"] == "circle"
         assert iface_data.get("generation_unsupported") is False
-        assert iface_data.get("traced_outer_contour") is None
+        assert iface_data.get("traced_outer_contour") is not None
+        assert iface_data["traced_outer_contour"]["provenance"] == "opencv_primitive"

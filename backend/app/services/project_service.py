@@ -72,6 +72,7 @@ from app.services.export_provider import (
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
 from app.services.profile_geometry import (
     classify_primitive_candidate,
+    primitive_boundary_contour,
     set_calibrated_primitive_dimensions,
 )
 from app.services.profile_validation import validate_interface_profile
@@ -294,6 +295,17 @@ def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapRespo
             "Cannot calibrate scale: trace segments are degenerate.",
             recovery_steps=["Re-run analysis or upload a cleaner interface image."],
         )
+    bbox = _trace_bbox(interface)
+    max_dim = 1.0
+    if bbox is not None:
+        min_x, max_x, min_y, max_y = bbox
+        max_dim = max(max_x - min_x, max_y - min_y, 1.0)
+    tolerance = max(4.0, max_dim * 0.08)
+    if best[0] > tolerance:
+        raise InvalidInterfaceApprovalError(
+            "Calibration point is too far from the visible profile boundary.",
+            recovery_steps=["Select a point on or near the visible profile edge."],
+        )
     return ScaleSnapResponse(point=best[1], distance_px=best[0], feature_id=best[2])
 
 
@@ -411,12 +423,11 @@ class ProjectService:
             if selected == ProviderMode.LIVE and live_available
             else ProviderMode.MOCK
         )
-        analysis_provider = (
-            "gemini" if effective == ProviderMode.LIVE and settings.gemini_api_key else "mock"
-        )
+        analysis_provider = "opencv"
         if effective == ProviderMode.LIVE:
             message = (
-                "Live Zoo providers are active for future generation, export, and Agent requests."
+                "Live Zoo providers are active for future generation, export, "
+                "and Agent requests; clean-profile analysis uses OpenCV by default."
             )
         elif selected == ProviderMode.LIVE:
             message = (
@@ -757,7 +768,7 @@ class ProjectService:
             with open(target_interface.source_image_ref, "rb") as f:
                 image_bytes = f.read()
 
-        active_provider = provider or get_analysis_provider()
+        active_provider = provider or get_analysis_provider("opencv")
         result = active_provider.analyze(image_bytes, filename)
 
         target_interface.profile_type = result.profile_type
@@ -779,9 +790,9 @@ class ProjectService:
             target_interface.traced_outer_contour = result.traced_outer_contour
             target_interface.traced_hole_contours = result.traced_hole_contours
             primitive_candidate = (
-                None
-                if result.is_complex
-                else classify_primitive_candidate(result.traced_outer_contour.points)
+                classify_primitive_candidate(result.traced_outer_contour.points)
+                if result.profile_type == ProfileType.TRACED_CLOSED and not result.is_complex
+                else None
             )
             if primitive_candidate is not None:
                 target_interface.profile_type = primitive_candidate.profile_type
@@ -796,7 +807,7 @@ class ProjectService:
                 )
                 target_interface.generation_unsupported = False
                 target_interface.generation_unsupported_reason = None
-            else:
+            elif result.profile_type == ProfileType.TRACED_CLOSED:
                 target_interface.profile_type = ProfileType.TRACED_CLOSED
                 target_interface.primitive_fallback_active = False
                 target_interface.primitive_promotion_confirmed = False
@@ -808,8 +819,21 @@ class ProjectService:
                     "Adapter generation for arbitrary traced profiles is not yet enabled. "
                     "Profile is captured and stored for review only."
                 )
+            else:
+                target_interface.profile_type = result.profile_type
+                target_interface.primitive_fallback_active = False
+                target_interface.primitive_promotion_confirmed = False
+                target_interface.primitive_detection_confidence = None
+                target_interface.primitive_detection_reason = None
+                target_interface.primitive_fallback_label = None
+                target_interface.verification_status = "opencv_primitive_pending_review"
+                target_interface.generation_unsupported = False
+                target_interface.generation_unsupported_reason = None
         else:
-            target_interface.traced_outer_contour = None
+            primitive_contour = primitive_boundary_contour(
+                result.profile_type, result.candidate_dimensions, result.candidate_points
+            )
+            target_interface.traced_outer_contour = primitive_contour
             target_interface.traced_hole_contours = []
             target_interface.verification_status = "pending_review"
             target_interface.generation_unsupported = False

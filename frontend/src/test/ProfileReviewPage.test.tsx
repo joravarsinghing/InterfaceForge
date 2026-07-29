@@ -416,3 +416,157 @@ describe('ProfileReviewPage Component', () => {
     expect(screen.getByRole('button', { name: /Recalibrate/i })).toBeInTheDocument();
   });
 });
+
+
+const primitiveContour = {
+  id: 'outer_contour',
+  points: [
+    { x: -25, y: 0 },
+    { x: 0, y: 25 },
+    { x: 25, y: 0 },
+    { x: 0, y: -25 },
+  ],
+  is_closed: true,
+  classification: 'outer_contour' as const,
+  provenance: 'opencv_primitive',
+  confidence: 1,
+  point_count: 4,
+};
+
+describe('Primitive Profile Calibration', () => {
+  it('registers first and second primitive calibration points immediately without double-scaling markers', async () => {
+    const primitiveProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        analysis_provider_name: 'opencv',
+        traced_outer_contour: primitiveContour,
+        scale_calibration: {
+          source: 'user_calibration',
+          method: 'two_point_trace',
+          reference_dimension: 'two_point_distance',
+          pixel_distance: 0,
+          real_distance_mm: 40,
+          scale_factor: 0,
+          confidence: 1,
+          confirmed: false,
+        },
+      },
+    };
+    vi.mocked(api.snapScalePoint)
+      .mockResolvedValueOnce({ point: { x: -25, y: 0 }, distance_px: 1, feature_id: 'outer_contour' })
+      .mockResolvedValueOnce({ point: { x: 25, y: 0 }, distance_px: 1, feature_id: 'outer_contour' });
+    vi.mocked(api.calibrateInterfaceScale).mockResolvedValue({
+      ...primitiveProject,
+      interface_a: {
+        ...primitiveProject.interface_a,
+        scale_calibration: {
+          source: 'user_calibration',
+          method: 'two_point_trace',
+          reference_dimension: 'two_point_distance',
+          point_a: { x: -25, y: 0 },
+          point_b: { x: 25, y: 0 },
+          pixel_distance: 50,
+          real_distance_mm: 40,
+          scale_factor: 0.8,
+          confidence: 1,
+          confirmed: false,
+        },
+      },
+    });
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={primitiveProject} />
+      </BrowserRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }));
+    const svg = screen.getByRole('img', { name: /SVG geometry preview for circle profile/i });
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 360,
+      height: 280,
+      right: 360,
+      bottom: 280,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(svg, { clientX: 80, clientY: 140 });
+    await waitFor(() => expect(screen.getByText(/A: -25.00, 0.00/i)).toBeInTheDocument());
+    const markerA = await screen.findByTestId('calibration-marker-a');
+    expect(markerA).toHaveAttribute('cx', '-25');
+    expect(markerA).toHaveAttribute('cy', '0');
+
+    fireEvent.click(svg, { clientX: 280, clientY: 140 });
+    await waitFor(() => expect(screen.getByText(/B: 25.00, 0.00/i)).toBeInTheDocument());
+    expect(await screen.findByTestId('calibration-marker-b')).toHaveAttribute('cx', '25');
+    await waitFor(() => expect(api.calibrateInterfaceScale).toHaveBeenCalledWith(
+      'proj_123',
+      'interface_a',
+      expect.objectContaining({ point_a: { x: -25, y: 0 }, point_b: { x: 25, y: 0 }, confirmed: false }),
+      'tok_abc'
+    ));
+  });
+
+  it('shows backend snap errors for primitive clicks outside boundary tolerance', async () => {
+    const primitiveProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        traced_outer_contour: primitiveContour,
+        scale_calibration: {
+          source: 'user_calibration',
+          method: 'two_point_trace',
+          reference_dimension: 'two_point_distance',
+          pixel_distance: 0,
+          real_distance_mm: 40,
+          scale_factor: 0,
+          confidence: 1,
+          confirmed: false,
+        },
+      },
+    };
+    vi.mocked(api.snapScalePoint).mockRejectedValueOnce(new Error('[IF-APPROVAL-400] Calibration point is too far from the visible profile boundary.'));
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={primitiveProject} />
+      </BrowserRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }));
+    const svg = screen.getByRole('img', { name: /SVG geometry preview for circle profile/i });
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 360,
+      height: 280,
+      right: 360,
+      bottom: 280,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.click(svg, { clientX: 180, clientY: 140 });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/too far from the visible profile boundary/i);
+  });
+
+  it('uses accurate provider badges for OpenCV and AI-guided analysis', () => {
+    const { rerender } = render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={{ ...mockProject, interface_a: { ...mockProject.interface_a, analysis_provider_name: 'opencv' } }} />
+      </BrowserRouter>
+    );
+    expect(screen.getAllByText('OpenCV profile detection').length).toBeGreaterThan(0);
+    rerender(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={{ ...mockProject, interface_a: { ...mockProject.interface_a, analysis_provider_name: 'gemini_guided_opencv' } }} />
+      </BrowserRouter>
+    );
+    expect(screen.getAllByText('AI guidance used').length).toBeGreaterThan(0);
+  });
+});
