@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SvgProfileViewer } from '../components/SvgProfileViewer';
 import { TracedProfileSvgViewer } from '../components/TracedProfileSvgViewer';
@@ -83,6 +83,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const [primitiveFallbackActive, setPrimitiveFallbackActive] = useState<boolean>(
     targetInterface?.primitive_fallback_active || false
   );
+  const [primitivePromotionConfirmed, setPrimitivePromotionConfirmed] = useState<boolean>(
+    targetInterface?.primitive_promotion_confirmed || false
+  );
 
   // Sync state when project updates
   useEffect(() => {
@@ -100,6 +103,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         calibrationPointBRef.current = pointB;
       }
       setPrimitiveFallbackActive(!!targetInterface.primitive_fallback_active);
+      setPrimitivePromotionConfirmed(!!targetInterface.primitive_promotion_confirmed);
       if (targetInterface.approved) {
         setIsEditing(false);
       }
@@ -262,6 +266,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const handleTogglePrimitiveFallback = async (active: boolean) => {
     if (!project) return;
     setPrimitiveFallbackActive(active);
+    setPrimitivePromotionConfirmed(false);
     const label = active ? 'Warning: Simplified envelope - not the exact cross-section' : undefined;
     const vStatus = active ? 'simplified_envelope_only' : 'exact_trace_ready';
 
@@ -272,6 +277,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         {
           primitive_fallback_active: active,
           primitive_fallback_label: label,
+          primitive_promotion_confirmed: false,
           verification_status: vStatus,
         },
         project.project_token
@@ -279,6 +285,27 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       if (onProjectUpdate) onProjectUpdate(updatedProj);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to update fallback state');
+    }
+  };
+
+  const handleConfirmPrimitivePromotion = async () => {
+    if (!project) return;
+    setPrimitivePromotionConfirmed(true);
+    try {
+      const updatedProj = await patchInterface(
+        project.project_id,
+        interfaceId,
+        {
+          primitive_fallback_active: true,
+          primitive_promotion_confirmed: true,
+          verification_status: 'primitive_promotion_confirmed',
+        },
+        project.project_token
+      );
+      if (onProjectUpdate) onProjectUpdate(updatedProj);
+    } catch (err: unknown) {
+      setPrimitivePromotionConfirmed(false);
+      setError(err instanceof Error ? err.message : 'Failed to confirm primitive promotion');
     }
   };
 
@@ -301,6 +328,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     (dim) => !visibleDimensionIds.includes(dim.id) || !dim.feature_ref || dim.consistency_state === 'unmapped'
   );
   const requiresScaleConfirmation = true;
+  const traceBackedProfile = Boolean(targetInterface?.traced_outer_contour) && (isTracedProfile || primitiveFallbackActive);
+  const supportedPrimitivePromotion =
+    primitiveFallbackActive && ['circle', 'rectangle', 'rounded_rectangle'].includes(profileType);
 
   const validationErrors: string[] = [];
 
@@ -318,6 +348,16 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   if (displayDimensions.length < visibleDimensionIds.filter((id) => id !== 'diameter').length) {
     validationErrors.push('Derived profile dimensions are not ready yet. Confirm calibration first.');
+  }
+
+  if (supportedPrimitivePromotion && !primitivePromotionConfirmed) {
+    validationErrors.push('Detected primitive promotion must be confirmed before approval.');
+  }
+
+  if (isTracedProfile) {
+    validationErrors.push(
+      'Arbitrary traced profiles are not supported for generation yet. This version supports circle, rectangle, and rounded rectangle.'
+    );
   }
 
   displayDimensions.forEach((d) => {
@@ -344,6 +384,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         {
           profile_type: profileType,
           primitive_fallback_active: primitiveFallbackActive,
+          primitive_promotion_confirmed: primitivePromotionConfirmed,
         },
         project.project_token
       );
@@ -711,21 +752,24 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           }}
         >
           <h2>
-            {targetInterface?.profile_type === 'traced_closed'
-              ? 'Traced SVG Profile'
-              : 'Clean SVG Profile'}
+            {traceBackedProfile ? 'Traced SVG Profile' : 'Clean SVG Profile'}
           </h2>
-          {targetInterface?.profile_type === 'traced_closed' ? (
-            <TracedProfileSvgViewer
-              outerContour={targetInterface.traced_outer_contour}
-              holeContours={targetInterface.traced_hole_contours ?? []}
-              width={300}
-              height={280}
-              calibrationMode={calibrationMode}
-              calibrationPointA={calibrationPointA}
-              calibrationPointB={calibrationPointB}
-              onCalibrationPick={handleCalibrationPick}
-            />
+          {traceBackedProfile ? (
+            <>
+              {calibrationMode && (
+                <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: '0 0 0.5rem 0' }}>
+                  Select two visible points on the profile edge.
+                </p>
+              )}
+              <TracedProfileSvgViewer
+                outerContour={targetInterface?.traced_outer_contour}
+                holeContours={targetInterface?.traced_hole_contours ?? []}
+                calibrationMode={calibrationMode}
+                calibrationPointA={calibrationPointA}
+                calibrationPointB={calibrationPointB}
+                onCalibrationPick={handleCalibrationPick}
+              />
+            </>
           ) : (
             <SvgProfileViewer
               profileType={profileType}
@@ -939,7 +983,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         )}
       </section>
       {/* S10.4 Internal Negative Regions Review Panel */}
-      {isTracedProfile && (
+      {(isTracedProfile || primitiveFallbackActive) && (
         <section
           className="internal-regions-card"
           style={{
@@ -1072,7 +1116,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       )}
 
       {/* S10.4 Primitive Fallback Override Option */}
-      {isTracedProfile && (
+      {(isTracedProfile || primitiveFallbackActive) && (
         <section
           className="primitive-fallback-override-card"
           style={{
@@ -1089,26 +1133,39 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           }}
         >
           <div>
-            <strong style={{ color: '#c9d1d9' }}>Primitive Envelope Fallback</strong>
+            <strong style={{ color: '#c9d1d9' }}>Supported Primitive Promotion</strong>
             <br />
             <span style={{ fontSize: '0.85rem', color: primitiveFallbackActive ? '#ffab40' : '#8b949e' }}>
               {primitiveFallbackActive
-                ? 'Warning: Simplified envelope - not the exact cross-section'
-                : 'Traced closed mode is active. You may optionally simplify to a bounding primitive.'}
+                ? primitivePromotionConfirmed
+                  ? `Confirmed ${formatProfileType(profileType)} promotion. Original trace remains stored as provenance.`
+                  : `Confirm ${formatProfileType(profileType)} before approval. Original trace remains stored as provenance.`
+                : 'Traced closed mode is active. This version only generates circle, rectangle, and rounded rectangle profiles.'}
             </span>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => handleTogglePrimitiveFallback(!primitiveFallbackActive)}
-            style={{
-              borderColor: primitiveFallbackActive ? '#ff9100' : '#30363d',
-              color: primitiveFallbackActive ? '#ffab40' : '#c9d1d9',
-            }}
-          >
-            {primitiveFallbackActive ? 'Restore Exact Traced Profile' : 'Use Simplified Primitive Envelope'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {primitiveFallbackActive && !primitivePromotionConfirmed && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleConfirmPrimitivePromotion}
+              >
+                Confirm {formatProfileType(profileType)}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleTogglePrimitiveFallback(!primitiveFallbackActive)}
+              style={{
+                borderColor: primitiveFallbackActive ? '#ff9100' : '#30363d',
+                color: primitiveFallbackActive ? '#ffab40' : '#c9d1d9',
+              }}
+            >
+              {primitiveFallbackActive ? 'Restore Exact Traced Profile' : 'Use Supported Primitive Approximation'}
+            </button>
+          </div>
         </section>
       )}
 

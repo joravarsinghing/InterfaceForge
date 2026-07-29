@@ -1,4 +1,4 @@
-"""P0 golden-path primitive detection and per-interface fit intent tests."""
+﻿"""P0 golden-path primitive detection and per-interface fit intent tests."""
 
 import pytest
 
@@ -12,6 +12,8 @@ from app.models.schema import (
     Interface,
     Manufacturing,
     ManufacturingProcess,
+    ModelRevision,
+    ModelRevisionStatus,
     Point2D,
     ProfileType,
     Project,
@@ -417,3 +419,165 @@ def test_inferred_rounded_rectangle_radius_blocks_approval_until_user_confirmed(
     )
     approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
     assert approved.interface_a.approved is True
+
+
+def _confirmed_trace_project(profile_type: ProfileType, points: list[Point2D]) -> ProjectService:
+    service = ProjectService()
+    project = service.create_project()
+    project.interface_a.profile_type = profile_type
+    project.interface_a.traced_outer_contour = TracedContour(
+        id="outer_contour",
+        points=points,
+        classification="outer_contour",
+        provenance="analysis",
+    )
+    project.interface_a.scale_calibration = ScaleCalibration(
+        source="user_calibration",
+        method="two_point_trace",
+        point_a=points[0],
+        point_b=points[1],
+        pixel_distance=100.0,
+        real_distance_mm=50.0,
+        scale_factor=0.5,
+        confirmed=True,
+    )
+    set_calibrated_primitive_dimensions(project.interface_a, 0.5)
+    project.interface_a.primitive_fallback_active = True
+    project.interface_a.primitive_promotion_confirmed = True
+    service.repository.save(project)
+    return service
+
+
+def test_confirmed_circle_promotion_persists_circle_and_passes_connection_validation() -> None:
+    service = _confirmed_trace_project(ProfileType.CIRCLE, circle_points())
+    approved = service.approve_interface(
+        service.repository.list_all()[-1].project_id,
+        "interface_a",
+        service.repository.list_all()[-1].project_token,
+    )
+    assert approved.interface_a.profile_type == ProfileType.CIRCLE
+    assert approved.interface_a.traced_outer_contour is not None
+
+
+def test_confirmed_rectangle_promotion_persists_rectangle() -> None:
+    service = _confirmed_trace_project(
+        ProfileType.RECTANGLE,
+        [Point2D(x=-40, y=-20), Point2D(x=40, y=-20), Point2D(x=40, y=20), Point2D(x=-40, y=20)],
+    )
+    project = service.repository.list_all()[-1]
+    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
+    assert approved.interface_a.profile_type == ProfileType.RECTANGLE
+
+
+def test_confirmed_rounded_rectangle_promotion_persists_rounded_rectangle() -> None:
+    service = _confirmed_trace_project(ProfileType.ROUNDED_RECTANGLE, rounded_rect_points())
+    project = service.repository.list_all()[-1]
+    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
+    assert approved.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
+    assert approved.interface_a.traced_outer_contour is not None
+
+
+def test_unsupported_traced_closed_cannot_be_approved_for_generation() -> None:
+    service = ProjectService()
+    project = service.create_project()
+    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
+    project.interface_a.traced_outer_contour = TracedContour(
+        id="outer_contour",
+        points=irregular_points(),
+        classification="outer_contour",
+        provenance="analysis",
+    )
+    project.interface_a.scale_calibration = ScaleCalibration(
+        source="user_calibration",
+        method="two_point_trace",
+        point_a=irregular_points()[0],
+        point_b=irregular_points()[1],
+        pixel_distance=100.0,
+        real_distance_mm=50.0,
+        scale_factor=0.5,
+        confirmed=True,
+    )
+    service.repository.save(project)
+
+    with pytest.raises(InvalidInterfaceApprovalError, match="arbitrary traced profiles"):
+        service.approve_interface(project.project_id, "interface_a", project.project_token)
+
+
+def test_existing_confirmed_traced_closed_promotion_is_repaired_and_stales_model() -> None:
+    service = ProjectService()
+    project = service.create_project()
+    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
+    project.interface_a.traced_outer_contour = TracedContour(
+        id="outer_contour",
+        points=rounded_rect_points(),
+        classification="outer_contour",
+        provenance="analysis",
+    )
+    project.interface_a.scale_calibration = ScaleCalibration(
+        source="user_calibration",
+        method="two_point_trace",
+        point_a=rounded_rect_points()[0],
+        point_b=rounded_rect_points()[1],
+        pixel_distance=100.0,
+        real_distance_mm=50.0,
+        scale_factor=0.5,
+        confirmed=True,
+    )
+    project.interface_a.primitive_fallback_active = True
+    project.interface_a.primitive_promotion_confirmed = True
+    project.current_model_revision = 1
+    project.model_revisions.append(
+        ModelRevision(
+            model_revision=1,
+            schema_revision=project.current_schema_revision,
+            status=ModelRevisionStatus.CURRENT,
+        )
+    )
+    service.repository.save(project)
+
+    repaired = service.get_project(project.project_id, project.project_token)
+
+    assert repaired.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
+    assert repaired.interface_a.traced_outer_contour is not None
+    assert repaired.model_revisions[0].status == ModelRevisionStatus.STALE
+    assert repaired.current_schema_revision == project.current_schema_revision + 1
+
+
+def test_unconfirmed_traced_closed_is_not_silently_promoted_on_load() -> None:
+    service = ProjectService()
+    project = service.create_project()
+    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
+    project.interface_a.traced_outer_contour = TracedContour(
+        id="outer_contour",
+        points=rounded_rect_points(),
+        classification="outer_contour",
+        provenance="analysis",
+    )
+    project.interface_a.primitive_promotion_confirmed = False
+    service.repository.save(project)
+
+    loaded = service.get_project(project.project_id, project.project_token)
+
+    assert loaded.interface_a.profile_type == ProfileType.TRACED_CLOSED
+
+
+def test_scale_snap_prefers_nearby_simplified_node_before_edge_projection() -> None:
+    service = ProjectService()
+    project = service.create_project()
+    project.interface_a.traced_outer_contour = TracedContour(
+        id="outer_contour",
+        points=[Point2D(x=0, y=0), Point2D(x=100, y=0), Point2D(x=100, y=100), Point2D(x=0, y=100)],
+        classification="outer_contour",
+        provenance="analysis",
+    )
+    service.repository.save(project)
+
+    snapped = service.snap_scale_point(
+        project.project_id,
+        "interface_a",
+        Point2D(x=2, y=1),
+        project.project_token,
+    )
+
+    assert snapped.point == Point2D(x=0, y=0)
+    assert snapped.feature_id == "outer_contour"

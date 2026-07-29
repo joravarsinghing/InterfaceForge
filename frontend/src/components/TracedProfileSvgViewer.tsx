@@ -1,9 +1,8 @@
-/**
+﻿/**
   * TracedProfileSvgViewer renders traced closed profile outer contour and inner holes as SVG.
-  * S10.3 read-only display for review page.
   */
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { Point2D, TracedContour } from '../types/schema';
 
 interface TracedProfileSvgViewerProps {
@@ -21,9 +20,6 @@ interface TracedProfileSvgViewerProps {
   onCalibrationPick?: (point: Point2D) => void;
 }
 
-/**
-  * Compute the bounding box of all points across outer and hole contours.
-  */
 function computeBBox(
   outer: TracedContour | null | undefined,
   holes: TracedContour[]
@@ -43,20 +39,29 @@ function computeBBox(
   };
 }
 
-/**
-  * Convert contour points to an SVG polygon points string, scaled to viewport.
-  */
 function traceToSvgPoint(
   point: { x: number; y: number },
   minX: number,
   minY: number,
-  scaleX: number,
-  scaleY: number,
-  svgHeight: number
+  scale: number,
+  drawH: number
 ): Point2D {
   return {
-    x: (point.x - minX) * scaleX,
-    y: svgHeight - (point.y - minY) * scaleY,
+    x: (point.x - minX) * scale,
+    y: drawH - (point.y - minY) * scale,
+  };
+}
+
+function svgToTracePoint(
+  point: Point2D,
+  minX: number,
+  minY: number,
+  scale: number,
+  drawH: number
+): Point2D {
+  return {
+    x: minX + point.x / scale,
+    y: minY + (drawH - point.y) / scale,
   };
 }
 
@@ -64,25 +69,30 @@ function toSvgPoints(
   points: { x: number; y: number }[],
   minX: number,
   minY: number,
-  scaleX: number,
-  scaleY: number,
-  svgHeight: number
+  scale: number,
+  drawH: number
 ): string {
   return points
     .map((p) => {
-      const svgPoint = traceToSvgPoint(p, minX, minY, scaleX, scaleY, svgHeight);
+      const svgPoint = traceToSvgPoint(p, minX, minY, scale, drawH);
       return `${svgPoint.x.toFixed(2)},${svgPoint.y.toFixed(2)}`;
     })
     .join(' ');
 }
 
-const PADDING = 20;
+function samePoint(a: Point2D | null | undefined, b: Point2D): boolean {
+  if (!a) return false;
+  return Math.hypot(a.x - b.x, a.y - b.y) <= 0.01;
+}
+
+const PADDING = 24;
+const MIN_RESPONSIVE_HEIGHT = 360;
 
 export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
   outerContour,
   holeContours = [],
-  width = 320,
-  height = 300,
+  width,
+  height,
   highlightFeatureId,
   onSelectFeature,
   isOverlay = false,
@@ -92,7 +102,7 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
   calibrationPointB = null,
   onCalibrationPick,
 }) => {
-  // If isExample or no outerContour, render a clear example demonstration profile illustration
+  const [hoveredNodeIndex, setHoveredNodeIndex] = useState<number | null>(null);
   const displayOuter = isExample || !outerContour || outerContour.points.length < 3
     ? {
         id: 'outer_contour',
@@ -146,33 +156,29 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
   const bbox = computeBBox(displayOuter, displayHoles);
   if (!bbox) return null;
 
-  const drawW = width - PADDING * 2;
-  const drawH = height - PADDING * 2;
   const rangeX = bbox.maxX - bbox.minX || 1;
   const rangeY = bbox.maxY - bbox.minY || 1;
-  const scaleX = drawW / rangeX;
-  const scaleY = drawH / rangeY;
-  const scale = Math.min(scaleX, scaleY);
-
-  const outerSvg = toSvgPoints(
-    displayOuter.points,
-    bbox.minX,
-    bbox.minY,
-    scale,
-    scale,
-    drawH
-  );
-
+  const requestedWidth = width ?? 640;
+  const requestedHeight = height ?? Math.max(MIN_RESPONSIVE_HEIGHT, Math.round(requestedWidth * 0.68));
+  const drawW = Math.max(1, requestedWidth - PADDING * 2);
+  const drawH = Math.max(1, requestedHeight - PADDING * 2);
+  const scale = Math.min(drawW / rangeX, drawH / rangeY);
   const actualW = rangeX * scale + PADDING * 2;
   const actualH = rangeY * scale + PADDING * 2;
+  const aspectRatio = actualW / actualH;
+  const minHeight = height ?? MIN_RESPONSIVE_HEIGHT;
+
+  const outerSvg = toSvgPoints(displayOuter.points, bbox.minX, bbox.minY, scale, drawH);
+  const nodeSvgPoints = displayOuter.points.map((p) => traceToSvgPoint(p, bbox.minX, bbox.minY, scale, drawH));
 
   const isOuterHighlighted = highlightFeatureId === 'outer_contour';
   const markerA = calibrationPointA
-    ? traceToSvgPoint(calibrationPointA, bbox.minX, bbox.minY, scale, scale, drawH)
+    ? traceToSvgPoint(calibrationPointA, bbox.minX, bbox.minY, scale, drawH)
     : null;
   const markerB = calibrationPointB
-    ? traceToSvgPoint(calibrationPointB, bbox.minX, bbox.minY, scale, scale, drawH)
+    ? traceToSvgPoint(calibrationPointB, bbox.minX, bbox.minY, scale, drawH)
     : null;
+
   const handleSvgClick = (event: React.MouseEvent<SVGSVGElement>) => {
     if (!calibrationMode || !onCalibrationPick) return;
     const svg = event.currentTarget;
@@ -186,32 +192,36 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
       local = pt.matrixTransform(ctm.inverse());
     } else {
       const rect = svg.getBoundingClientRect();
-      const attrViewBox = (svg.getAttribute('viewBox') || `0 0 ${actualW} ${actualH}`)
-        .split(/\s+/)
-        .map((value) => parseFloat(value));
-      const viewBox = {
-        x: attrViewBox[0] || 0,
-        y: attrViewBox[1] || 0,
-        width: attrViewBox[2] || actualW,
-        height: attrViewBox[3] || actualH,
-      };
       const relX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
       const relY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
-      local = {
-        x: viewBox.x + relX * viewBox.width,
-        y: viewBox.y + relY * viewBox.height,
-      };
+      local = { x: relX * actualW, y: relY * actualH };
     }
     const xInGroup = local.x - PADDING;
     const yInGroup = local.y - PADDING;
-    onCalibrationPick({
-      x: bbox.minX + xInGroup / scale,
-      y: bbox.minY + (drawH - yInGroup) / scale,
-    });
+    const nearest = nodeSvgPoints.reduce<{ index: number; distance: number } | null>((best, node, index) => {
+      const distance = Math.hypot(node.x - xInGroup, node.y - yInGroup);
+      if (!best || distance < best.distance) return { index, distance };
+      return best;
+    }, null);
+    const nodeTolerance = Math.max(10, Math.min(actualW, actualH) * 0.035);
+    if (nearest && nearest.distance <= nodeTolerance) {
+      onCalibrationPick(displayOuter.points[nearest.index]);
+      return;
+    }
+    onCalibrationPick(svgToTracePoint({ x: xInGroup, y: yInGroup }, bbox.minX, bbox.minY, scale, drawH));
   };
 
   return (
-    <div style={{ position: 'relative', width, height }}>
+    <div
+      data-testid="traced-profile-viewer"
+      style={{
+        position: 'relative',
+        width: width ? `${width}px` : '100%',
+        maxWidth: '100%',
+        minHeight: isOverlay ? undefined : minHeight,
+        aspectRatio: `${aspectRatio}`,
+      }}
+    >
       {isExample && (
         <div
           style={{
@@ -232,8 +242,8 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
         </div>
       )}
       <svg
-        width={width}
-        height={height}
+        width="100%"
+        height="100%"
         viewBox={`0 0 ${actualW} ${actualH}`}
         preserveAspectRatio="xMidYMid meet"
         aria-label="Traced closed profile SVG"
@@ -243,11 +253,11 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           background: isOverlay ? 'transparent' : '#0d1117',
           borderRadius: isOverlay ? 0 : 6,
           cursor: calibrationMode ? 'crosshair' : undefined,
+          minHeight: isOverlay ? undefined : minHeight,
         }}
         onClick={handleSvgClick}
       >
         <g transform={`translate(${PADDING}, ${PADDING})`}>
-          {/* Outer contour polygon */}
           <polygon
             points={outerSvg}
             fill={isOuterHighlighted ? 'rgba(0, 229, 255, 0.25)' : '#00e5ff22'}
@@ -257,27 +267,23 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
             onClick={() => onSelectFeature?.('outer_contour')}
           />
 
-          {/* Inner hole/cavity polygons */}
           {displayHoles.map((hole, i) => {
             const holeId = hole.id || `region_${i + 1}`;
             const isHighlighted = highlightFeatureId === holeId;
-            const pts = toSvgPoints(hole.points, bbox.minX, bbox.minY, scale, scale, drawH);
-
-            let strokeColor = '#00e676'; // green for included
+            const pts = toSvgPoints(hole.points, bbox.minX, bbox.minY, scale, drawH);
+            let strokeColor = '#00e676';
             let fillColor = 'rgba(0, 230, 118, 0.25)';
             if (hole.decision === 'ignore') {
-              strokeColor = '#ff9100'; // orange for ignored
+              strokeColor = '#ff9100';
               fillColor = 'rgba(255, 145, 0, 0.25)';
             } else if (hole.decision === 'unsure') {
-              strokeColor = '#d500f9'; // purple for unsure
+              strokeColor = '#d500f9';
               fillColor = 'rgba(213, 0, 249, 0.25)';
             }
-
             if (isHighlighted) {
               strokeColor = '#ffffff';
               fillColor = 'rgba(255, 255, 255, 0.4)';
             }
-
             return (
               <polygon
                 key={holeId}
@@ -292,6 +298,45 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
             );
           })}
 
+          {nodeSvgPoints.map((node, index) => {
+            const tracePoint = displayOuter.points[index];
+            const selectedA = samePoint(calibrationPointA, tracePoint);
+            const selectedB = samePoint(calibrationPointB, tracePoint);
+            const hovered = hoveredNodeIndex === index;
+            const visible = calibrationMode || selectedA || selectedB;
+            const fill = selectedA ? '#f85149' : selectedB ? '#3fb950' : hovered ? '#ffffff' : '#f0b72f';
+            const stroke = selectedA || selectedB ? '#ffffff' : hovered ? '#f0b72f' : '#0d1117';
+            return (
+              <g key={`node-${index}`}>
+                <circle
+                  data-testid="trace-node-hit-target"
+                  cx={node.x}
+                  cy={node.y}
+                  r={11}
+                  fill="transparent"
+                  pointerEvents={calibrationMode ? 'all' : 'none'}
+                  onMouseEnter={() => setHoveredNodeIndex(index)}
+                  onMouseLeave={() => setHoveredNodeIndex(null)}
+                  onClick={(event) => {
+                    if (!calibrationMode || !onCalibrationPick) return;
+                    event.stopPropagation();
+                    onCalibrationPick(tracePoint);
+                  }}
+                />
+                <circle
+                  data-testid="trace-node"
+                  cx={node.x}
+                  cy={node.y}
+                  r={hovered ? 4.8 : selectedA || selectedB ? 5.2 : 3.2}
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth={selectedA || selectedB ? 1.6 : 1.2}
+                  opacity={visible ? 1 : 0.18}
+                  pointerEvents="none"
+                />
+              </g>
+            );
+          })}
 
           {markerA && markerB && (
             <line
@@ -319,28 +364,16 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           )}
         </g>
 
-        {/* Bottom Legend */}
         {!isOverlay && (
           <g transform={`translate(8, ${actualH - 24})`}>
             <rect x={0} y={0} width={12} height={4} fill="#00e5ff" rx={1} />
-            <text x={16} y={5} fill="#8b949e" fontSize={9}>
-              Outer boundary
-            </text>
-
+            <text x={16} y={5} fill="#8b949e" fontSize={9}>Outer boundary</text>
             <rect x={100} y={0} width={12} height={4} fill="#00e676" rx={1} />
-            <text x={116} y={5} fill="#8b949e" fontSize={9}>
-              Included opening
-            </text>
-
+            <text x={116} y={5} fill="#8b949e" fontSize={9}>Included opening</text>
             <rect x={180} y={0} width={10} height={4} fill="#ff9100" rx={1} />
-            <text x={194} y={5} fill="#8b949e" fontSize={8}>
-              Ignored region
-            </text>
-
+            <text x={194} y={5} fill="#8b949e" fontSize={8}>Ignored region</text>
             <rect x={255} y={0} width={10} height={4} fill="#d500f9" rx={1} />
-            <text x={269} y={5} fill="#8b949e" fontSize={8}>
-              Uncertain contour
-            </text>
+            <text x={269} y={5} fill="#8b949e" fontSize={8}>Uncertain contour</text>
           </g>
         )}
       </svg>

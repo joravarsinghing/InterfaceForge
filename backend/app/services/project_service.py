@@ -1,4 +1,4 @@
-"""Project service layer managing domain workflow state transitions and schema invariants."""
+﻿"""Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
 import logging
@@ -277,6 +277,32 @@ def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapRespo
             "Cannot calibrate scale: no valid trace segments are available.",
             recovery_steps=["Re-run analysis or upload a cleaner interface image."],
         )
+
+    bbox = _trace_bbox(interface)
+    max_dim = 1.0
+    if bbox is not None:
+        min_x, max_x, min_y, max_y = bbox
+        max_dim = max(max_x - min_x, max_y - min_y, 1.0)
+    node_tolerance = max(3.0, max_dim * 0.035)
+    edge_tolerance = max(4.0, max_dim * 0.08)
+
+    best_node: tuple[float, Point2D, str] | None = None
+    contours = [interface.traced_outer_contour] if interface.traced_outer_contour else []
+    contours.extend(interface.traced_hole_contours or [])
+    for contour in contours:
+        if getattr(contour, "decision", "include") != "include":
+            continue
+        for idx, vertex in enumerate(contour.points or []):
+            if not _finite_point(vertex):
+                continue
+            dist = _distance(point, vertex)
+            if best_node is None or dist < best_node[0]:
+                best_node = (dist, vertex, contour.id or "trace_geometry")
+    if best_node is not None and best_node[0] <= node_tolerance:
+        return ScaleSnapResponse(
+            point=best_node[1], distance_px=best_node[0], feature_id=best_node[2]
+        )
+
     best: tuple[float, Point2D, str] | None = None
     for a, b, feature_id in segments:
         dx = b.x - a.x
@@ -295,19 +321,44 @@ def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapRespo
             "Cannot calibrate scale: trace segments are degenerate.",
             recovery_steps=["Re-run analysis or upload a cleaner interface image."],
         )
-    bbox = _trace_bbox(interface)
-    max_dim = 1.0
-    if bbox is not None:
-        min_x, max_x, min_y, max_y = bbox
-        max_dim = max(max_x - min_x, max_y - min_y, 1.0)
-    tolerance = max(4.0, max_dim * 0.08)
-    if best[0] > tolerance:
+    if best[0] > edge_tolerance:
         raise InvalidInterfaceApprovalError(
             "Calibration point is too far from the visible profile boundary.",
             recovery_steps=["Select a point on or near the visible profile edge."],
         )
     return ScaleSnapResponse(point=best[1], distance_px=best[0], feature_id=best[2])
 
+
+def _confirmed_primitive_promotion_type(interface: Interface) -> ProfileType | None:
+    if not interface.primitive_promotion_confirmed or interface.traced_outer_contour is None:
+        return None
+    if interface.profile_type in (
+        ProfileType.CIRCLE,
+        ProfileType.RECTANGLE,
+        ProfileType.ROUNDED_RECTANGLE,
+    ):
+        return interface.profile_type
+    candidate = classify_primitive_candidate(interface.traced_outer_contour.points)
+    if candidate is None:
+        return None
+    return candidate.profile_type
+
+
+def _normalize_confirmed_primitive_promotion(interface: Interface) -> bool:
+    promoted_type = _confirmed_primitive_promotion_type(interface)
+    if promoted_type is None:
+        return False
+    changed = interface.profile_type != promoted_type or interface.generation_unsupported
+    interface.profile_type = promoted_type
+    interface.primitive_fallback_active = True
+    interface.verification_status = "primitive_promotion_confirmed"
+    interface.generation_unsupported = False
+    interface.generation_unsupported_reason = None
+    if interface.scale_calibration and interface.scale_calibration.confirmed:
+        before = _measurement_fingerprint(interface)
+        set_calibrated_primitive_dimensions(interface, interface.scale_calibration.scale_factor)
+        changed = changed or before != _measurement_fingerprint(interface)
+    return changed
 
 def _upsert_scaled_dimension(
     interface: Interface, dim_id: str, label: str, value: float, feature_ref: str
@@ -375,8 +426,17 @@ class ProjectService:
         if project_token is not None and project_token != project.project_token:
             raise InvalidProjectTokenError()
 
-        return project
+        repaired = False
+        for interface in (project.interface_a, project.interface_b):
+            if interface.profile_type == ProfileType.TRACED_CLOSED:
+                repaired = _normalize_confirmed_primitive_promotion(interface) or repaired
+        if repaired:
+            project.current_schema_revision += 1
+            self._mark_current_model_stale_if_exists(project)
+            project.updated_at = current_iso_timestamp()
+            project = self.repository.save(project)
 
+        return project
     def _mark_current_model_stale_if_exists(self, project: Project) -> None:
         """Mark current model revision as stale if it exists."""
         if project.current_model_revision is not None:
@@ -1002,6 +1062,8 @@ class ProjectService:
         if patch.fit_mode is not None:
             target_interface.fit_mode = patch.fit_mode
 
+        _normalize_confirmed_primitive_promotion(target_interface)
+
         # Run structural validation
         is_valid, errors, warnings = validate_interface_profile(target_interface)
         if patch.validation is not None:
@@ -1025,10 +1087,12 @@ class ProjectService:
         explicit_scale_confirmation = (
             patch.scale_calibration is not None and patch.scale_calibration.confirmed
         )
+        promotion_confirmation_update = patch.primitive_promotion_confirmed is True
         if (
             (geometry_changed or (patch.dimensions is not None and measurement_changed))
             and target_interface.scale_calibration
             and not explicit_scale_confirmation
+            and not promotion_confirmation_update
         ):
             target_interface.scale_calibration.confirmed = False
 
@@ -1240,7 +1304,10 @@ class ProjectService:
         target_interface = (
             project.interface_a if interface_id == "interface_a" else project.interface_b
         )
-
+        promotion_changed = _normalize_confirmed_primitive_promotion(target_interface)
+        if promotion_changed:
+            project.current_schema_revision += 1
+            self._mark_current_model_stale_if_exists(project)
         if (
             target_interface.profile_type == ProfileType.TRACED_CLOSED
             and target_interface.scale_calibration is None
@@ -1299,6 +1366,16 @@ class ProjectService:
             raise InvalidInterfaceApprovalError(
                 f"Cannot approve {interface_id}: profile has structural validation errors "
                 f"({errors[0]})."
+            )
+
+        if target_interface.profile_type == ProfileType.TRACED_CLOSED:
+            raise InvalidInterfaceApprovalError(
+                "Cannot approve interface: arbitrary traced profiles are not supported "
+                "for generation yet.",
+                recovery_steps=[
+                    "Use a clean circle, rectangle, or rounded rectangle image.",
+                    "Replace the image or confirm an eligible supported primitive approximation.",
+                ],
             )
 
         now = current_iso_timestamp()

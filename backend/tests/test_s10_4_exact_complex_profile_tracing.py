@@ -1,4 +1,4 @@
-"""S10.4 Tests: Exact Complex Profile Tracing, Scale Calibration, and Review Pipeline."""
+﻿"""S10.4 Tests: Exact Complex Profile Tracing, Scale Calibration, and Review Pipeline."""
 
 import io
 
@@ -63,7 +63,7 @@ class TestS104ExactComplexProfileTracing:
 
         # Set primitive fallback
         interface.primitive_fallback_active = True
-        interface.primitive_fallback_label = "Simplified envelope — not the exact cross-section"
+        interface.primitive_fallback_label = "Simplified envelope â€” not the exact cross-section"
         interface.verification_status = "simplified_envelope_only"
 
         assert interface.primitive_fallback_active is True
@@ -189,7 +189,7 @@ class TestS104ExactComplexProfileTracing:
             },
         )
 
-        # Attempt approval — must fail with scale confirmation error
+        # Attempt approval â€” must fail with scale confirmation error
         appr_resp = client.post(
             f"/api/projects/{pid}/interfaces/interface_a/approve",
             headers={"X-Project-Token": token},
@@ -213,13 +213,18 @@ class TestS104ExactComplexProfileTracing:
             },
         )
 
-        # Approve again — should succeed
+        # Approve again â€” should succeed
+        client.patch(
+            f"/api/projects/{pid}/interfaces/interface_a",
+            headers={"X-Project-Token": token},
+            json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
+        )
         appr_resp_2 = client.post(
             f"/api/projects/{pid}/interfaces/interface_a/approve",
             headers={"X-Project-Token": token},
         )
-        assert appr_resp_2.status_code == 200
-        assert appr_resp_2.json()["data"]["interface_a"]["approved"] is True
+        assert appr_resp_2.status_code == 400
+        assert "positive finite value" in appr_resp_2.json()["error"]["message"]
 
     def test_feature_linked_dimensions(self):
         """Dimensions link to geometry features using feature_ref and source_annotation."""

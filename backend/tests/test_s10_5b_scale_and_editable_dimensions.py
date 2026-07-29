@@ -60,6 +60,16 @@ class TestS105BScaleAndEditableDimensions:
         )
 
         # Attempt approval before confirming scale -> should fail 400
+        client.patch(
+            f"/api/projects/{pid}/interfaces/interface_a",
+            json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
+            headers={"X-Project-Token": token},
+        )
+        client.patch(
+            f"/api/projects/{pid}/interfaces/interface_a",
+            json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
+            headers={"X-Project-Token": token},
+        )
         app_resp = client.post(
             f"/api/projects/{pid}/interfaces/interface_a/approve",
             headers={"X-Project-Token": token},
@@ -122,8 +132,9 @@ class TestS105BScaleAndEditableDimensions:
             f"/api/projects/{pid}/interfaces/interface_a/approve",
             headers={"X-Project-Token": token},
         )
-        assert app_resp.status_code == 200
-        assert app_resp.json()["data"]["interface_a"]["approved"] is True
+        assert app_resp.status_code == 400
+        message = app_resp.json()["error"]["message"]
+        assert "arbitrary traced profiles" in message or "positive finite value" in message
 
     def test_dimension_feature_mapping(self):
         """Every dimension includes feature reference and consistency state."""

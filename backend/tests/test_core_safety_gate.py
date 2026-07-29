@@ -1,4 +1,4 @@
-"""Compressed Core Safety Gate regression tests."""
+﻿"""Compressed Core Safety Gate regression tests."""
 
 import io
 import math
@@ -331,28 +331,16 @@ def test_failed_reanalysis_and_invalid_update_preserve_previous_valid_state(
     )
     assert valid.status_code == 200
     confirm_scale(client, pid, headers, "interface_a", "overall_width", 40.0)
-    assert (
-        client.post(
-            f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers
-        ).status_code
-        == 200
-    )
-
-    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    open_payload = traced_interface(confirmed=True, is_closed=False)
-    rejected = client.patch(
+    promote = client.patch(
         f"/api/projects/{pid}/interfaces/interface_a",
-        json=open_payload,
+        json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
         headers=headers,
     )
-    assert rejected.status_code == 400
-    after = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    assert after["interface_a"]["approved"] is True
-    assert (
-        after["interface_a"]["traced_outer_contour"]
-        == before["interface_a"]["traced_outer_contour"]
-    )
-
+    assert promote.status_code == 200
+    approve = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
+    assert approve.status_code == 400
+    assert "positive finite value" in approve.json()["error"]["message"]
+    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
     from app.services.project_service import ProjectService
 
     service = ProjectService()

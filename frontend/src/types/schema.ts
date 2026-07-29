@@ -1,4 +1,4 @@
-/**
+﻿/**
   * TypeScript contract definitions matching Backend Canonical Design Schema (ADR-001, ADR-005)
   */
 
@@ -126,6 +126,9 @@ export interface InterfaceDefinition {
   verification_status?: 'exact_trace_ready' | 'trace_requires_correction' | 'simplified_envelope_only' | 'unsupported_insufficient_image' | string;
   primitive_fallback_active?: boolean;
   primitive_fallback_label?: string | null;
+  primitive_promotion_confirmed?: boolean;
+  primitive_detection_confidence?: number | null;
+  primitive_detection_reason?: string | null;
   analysis_provider_name?: string | null;
   generation_unsupported?: boolean;
   generation_unsupported_reason?: string | null;
@@ -151,6 +154,9 @@ export interface InterfacePatchRequest {
   verification_status?: string | null;
   primitive_fallback_active?: boolean;
   primitive_fallback_label?: string | null;
+  primitive_promotion_confirmed?: boolean;
+  primitive_detection_confidence?: number | null;
+  primitive_detection_reason?: string | null;
   approved?: boolean;
 }
 

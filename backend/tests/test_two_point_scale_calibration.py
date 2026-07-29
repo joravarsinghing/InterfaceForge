@@ -1,4 +1,4 @@
-"""Two-point trace scale calibration regression tests."""
+﻿"""Two-point trace scale calibration regression tests."""
 
 from fastapi.testclient import TestClient
 
@@ -73,6 +73,20 @@ def setup_traced(client: TestClient) -> tuple[str, dict[str, str]]:
     return pid, headers
 
 
+
+def confirm_supported_rectangle_promotion(
+    client: TestClient, pid: str, headers: dict[str, str]
+) -> None:
+    res = client.patch(
+        f"/api/projects/{pid}/interfaces/interface_a",
+        json={
+            "primitive_fallback_active": True,
+            "primitive_promotion_confirmed": True,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.json()
+
 def test_snap_projects_click_to_nearest_trace_segment(client: TestClient) -> None:
     pid, headers = setup_traced(client)
     res = client.post(
@@ -146,6 +160,7 @@ def test_unconfirmed_calibration_blocks_approval_then_confirmed_allows_it(
         headers=headers,
     )
     assert confirmed.status_code == 200
+    confirm_supported_rectangle_promotion(client, pid, headers)
     approved = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
     assert approved.status_code == 200
 
@@ -214,6 +229,7 @@ def test_reselection_and_real_distance_edit_invalidate_existing_approval(
         },
         headers=headers,
     )
+    confirm_supported_rectangle_promotion(client, pid, headers)
     assert (
         client.post(
             f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers
@@ -270,6 +286,7 @@ def test_legacy_unmapped_dimensions_do_not_block_or_drive_approval(client: TestC
         headers=headers,
     )
     assert confirmed.status_code == 200
+    confirm_supported_rectangle_promotion(client, pid, headers)
     approved = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
     assert approved.status_code == 200, approved.json()
     dims = {d["id"]: d for d in approved.json()["data"]["interface_a"]["dimensions"]}
