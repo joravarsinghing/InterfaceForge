@@ -1,4 +1,4 @@
-﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileReviewPage } from '../pages/ProfileReviewPage';
@@ -111,6 +111,34 @@ describe('ProfileReviewPage Component', () => {
     expect(screen.queryByRole('button', { name: /Update Profile/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Confirm Scale/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Update & Confirm/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the approved OpenCV contour when legacy classification is circle', () => {
+    const tracedProject: Project = {
+      ...mockProject,
+      interface_a: {
+        ...mockProject.interface_a,
+        traced_outer_contour: {
+          id: 'outer_contour',
+          points: [{ x: -30, y: -20 }, { x: 30, y: -20 }, { x: 22, y: 20 }, { x: -22, y: 20 }],
+          is_closed: true,
+          classification: 'outer_contour',
+          decision: 'include',
+          provenance: 'opencv_traced',
+          confidence: 1,
+          point_count: 4,
+        },
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <ProfileReviewPage interfaceId="interface_a" project={tracedProject} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Traced SVG Profile/i)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Traced closed profile SVG/i })).toBeInTheDocument();
   });
 
   it('shows detected profile type and raw scale only in collapsed technical details', () => {
@@ -484,8 +512,8 @@ describe('Primitive Profile Calibration', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }));
-    const svg = screen.getByRole('img', { name: /SVG geometry preview for circle profile/i });
-    const nodes = screen.getAllByTestId('calibration-node-hit-target');
+    const svg = screen.getByRole('img', { name: /Traced closed profile SVG/i });
+    const nodes = screen.getAllByTestId('trace-node-hit-target');
     fireEvent.click(nodes[0]);
     await waitFor(() => expect(screen.getByText(/A: -25.00, 0.00/i)).toBeInTheDocument());
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
@@ -501,12 +529,13 @@ describe('Primitive Profile Calibration', () => {
     });
 
     const markerA = await screen.findByTestId('calibration-marker-a');
-    expect(markerA).toHaveAttribute('cx', '-25');
-    expect(markerA).toHaveAttribute('cy', '0');
+    expect(Number(markerA.getAttribute('cx'))).toBeGreaterThan(0);
+    expect(Number(markerA.getAttribute('cy'))).toBeGreaterThan(0);
 
     fireEvent.click(nodes[2]);
     await waitFor(() => expect(screen.getByText(/B: 25.00, 0.00/i)).toBeInTheDocument());
-    expect(await screen.findByTestId('calibration-marker-b')).toHaveAttribute('cx', '25');
+    const markerB = await screen.findByTestId('calibration-marker-b');
+    expect(Number(markerB.getAttribute('cx'))).toBeGreaterThan(Number(markerA.getAttribute('cx')));
     await waitFor(() => expect(api.calibrateInterfaceScale).toHaveBeenCalledWith(
       'proj_123',
       'interface_a',
@@ -542,7 +571,7 @@ describe('Primitive Profile Calibration', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }));
-    const svg = screen.getByRole('img', { name: /SVG geometry preview for circle profile/i });
+    const svg = screen.getByRole('img', { name: /Traced closed profile SVG/i });
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
       left: 0,
       top: 0,

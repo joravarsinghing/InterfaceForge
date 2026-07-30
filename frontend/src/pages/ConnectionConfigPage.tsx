@@ -634,6 +634,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               ...project!,
               connection,
               manufacturing,
+              loft_plan: validationResult.loft_plan ?? project!.loft_plan,
               interface_a: { ...project!.interface_a, fit_mode: fitModeA },
               interface_b: { ...project!.interface_b, fit_mode: fitModeB },
             }}
@@ -749,3 +750,4 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
     </div>
   );
 };
+

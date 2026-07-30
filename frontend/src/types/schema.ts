@@ -1,4 +1,4 @@
-/**
+﻿/**
   * TypeScript contract definitions matching Backend Canonical Design Schema (ADR-001, ADR-005)
   */
 
@@ -23,7 +23,8 @@ export type ProfileType =
   | 'circle'
   | 'rectangle'
   | 'rounded_rectangle'
-  | 'traced_closed';
+  | 'traced_closed'
+  | 'custom_closed';
 
 export type DimensionProvenance =
   | 'user_entered'
@@ -245,6 +246,42 @@ export interface ModelRevision {
   generated_at: string;
 }
 
+export interface LoftPoint extends Point2D {}
+export interface LoftSection { z_mm: number; outer: LoftPoint[]; inner: LoftPoint[]; }
+export interface LoftPlan {
+  schema_revision: string;
+  geometry_hash: string;
+  point_count: number;
+  winding: string;
+  seam_index: number;
+  outer_a: LoftPoint[];
+  outer_b: LoftPoint[];
+  inner_a: LoftPoint[];
+  inner_b: LoftPoint[];
+  outer_shift: number;
+  outer_reversed: boolean;
+  inner_shift: number;
+  inner_reversed: boolean;
+  sections: LoftSection[];
+}
+export interface LoftPoint extends Point2D {}
+export interface LoftSection { z_mm: number; outer: LoftPoint[]; inner: LoftPoint[]; }
+export interface LoftPlan {
+  schema_revision: string;
+  geometry_hash: string;
+  point_count: number;
+  winding: string;
+  seam_index: number;
+  outer_a: LoftPoint[];
+  outer_b: LoftPoint[];
+  inner_a: LoftPoint[];
+  inner_b: LoftPoint[];
+  outer_shift: number;
+  outer_reversed: boolean;
+  inner_shift: number;
+  inner_reversed: boolean;
+  sections: LoftSection[];
+}
 export interface Project {
   project_id: string;
   project_token: string;
@@ -261,6 +298,7 @@ export interface Project {
   interface_b: InterfaceDefinition;
   connection: Connection;
   manufacturing: Manufacturing;
+  loft_plan?: LoftPlan | null;
   model_revisions: ModelRevision[];
 }
 
@@ -332,6 +370,7 @@ export interface ConnectionValidationResult {
   blocking_errors: ValidationIssue[];
   warnings: ValidationIssue[];
   recommended_values: Record<string, number>;
+  loft_plan?: LoftPlan | null;
 }
 
 export interface KCLCompileResult {
@@ -448,3 +487,6 @@ export interface RevisionConfirmResponse {
   project: Project;
   job: GenerationJob;
 }
+
+
+

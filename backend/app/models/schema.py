@@ -1,4 +1,4 @@
-"""Canonical design schema and versioned models per ADR-001 and ADR-005."""
+﻿"""Canonical design schema and versioned models per ADR-001 and ADR-005."""
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -39,6 +39,7 @@ class ProfileType(str, Enum):
     RECTANGLE = "rectangle"
     ROUNDED_RECTANGLE = "rounded_rectangle"
     TRACED_CLOSED = "traced_closed"
+    CUSTOM_CLOSED = "custom_closed"
 
 
 class ShapeResolutionStatus(str, Enum):
@@ -187,6 +188,31 @@ class TracedContour(BaseModel):
     def model_post_init(self, __context: object) -> None:
         self.point_count = len(self.points)
 
+class LoftSection(BaseModel):
+    """One authoritative, closed section consumed by preview, mock mesh, and KCL."""
+
+    z_mm: float
+    outer: List[Point2D]
+    inner: List[Point2D]
+
+
+class LoftPlan(BaseModel):
+    """Persisted correspondence and section plan for an arbitrary-profile loft."""
+
+    schema_revision: str = "loft-plan-v1"
+    geometry_hash: str
+    point_count: int
+    winding: str = "ccw"
+    seam_index: int = 0
+    outer_a: List[Point2D]
+    outer_b: List[Point2D]
+    inner_a: List[Point2D]
+    inner_b: List[Point2D]
+    outer_shift: int = 0
+    outer_reversed: bool = False
+    inner_shift: int = 0
+    inner_reversed: bool = False
+    sections: List[LoftSection]
 
 class CalibrationBoundary(BaseModel):
     """Backend-owned boundary shared by rendering, snapping, and calibration."""
@@ -313,6 +339,7 @@ class Project(BaseModel):
     interface_b: Interface = Field(default_factory=lambda: Interface(id="interface_b"))
     connection: Connection = Field(default_factory=Connection)
     manufacturing: Manufacturing = Field(default_factory=Manufacturing)
+    loft_plan: Optional[LoftPlan] = None
     model_revisions: List[ModelRevision] = Field(default_factory=list)
 
 
@@ -633,3 +660,5 @@ class RevisionConfirmRequest(BaseModel):
     """Request payload for confirming parameter changes."""
 
     changes: List[ParameterChange]
+
+

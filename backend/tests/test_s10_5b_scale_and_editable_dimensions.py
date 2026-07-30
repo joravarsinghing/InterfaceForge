@@ -1,4 +1,4 @@
-"""Stage S10.5B Backend Unit & Integration Tests â€” Scale Calibration and Editable Dimensions."""
+"""Stage S10.5B Backend Unit & Integration Tests ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Scale Calibration and Editable Dimensions."""
 
 import math
 import os

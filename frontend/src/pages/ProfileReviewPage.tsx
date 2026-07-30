@@ -261,7 +261,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
 
   // Structural Validation Summary Calculation
   const resolutionStatus = targetInterface?.resolution_status || (targetInterface?.generation_unsupported ? 'unsupported' : 'resolved');
-  const resolvedProfileType = targetInterface?.resolved_profile_type || (supportedProfileTypes.includes(profileType as Exclude<ProfileType, 'traced_closed'>) ? profileType : null);
+  const resolvedProfileType = targetInterface?.resolved_profile_type || (profileType !== 'custom_closed' && supportedProfileTypes.includes(profileType as Exclude<ProfileType, 'traced_closed' | 'custom_closed'>) ? profileType : null);
   const isResolvedSupportedProfile = resolutionStatus === 'resolved' && resolvedProfileType !== null && resolvedProfileType !== 'traced_closed';
   const isTracedProfile = profileType === 'traced_closed';
   const shapeAwaitingConfirmation = false;
@@ -306,7 +306,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     (dim) => !visibleDimensionIds.includes(dim.id) || !dim.feature_ref || dim.consistency_state === 'unmapped'
   );
   const requiresScaleConfirmation = true;
-  const traceBackedProfile = Boolean(targetInterface?.traced_outer_contour) && !isResolvedSupportedProfile;
+  // The approved OpenCV contour is authoritative even when legacy shape resolution says circle/rectangle.
+  const traceBackedProfile = Boolean(targetInterface?.traced_outer_contour?.points?.length);
   const supportedPrimitivePromotion = false;
 
   const validationErrors: string[] = [];

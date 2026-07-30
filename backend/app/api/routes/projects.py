@@ -1,4 +1,4 @@
-"""API routes for canonical project and workflow state management."""
+﻿"""API routes for canonical project and workflow state management."""
 
 from typing import Any, Dict, Optional
 
@@ -514,9 +514,16 @@ def validate_connection(
         manufacturing=target_mfg,
         project_token=x_project_token,
     )
-    return {"success": True, "data": validation.model_dump()}
-
-
+    data = validation.model_dump()
+    if validation.is_valid and target_conn is not None and target_mfg is not None:
+        plan = service.preview_loft_plan(
+            project_id=project_id,
+            connection=target_conn,
+            manufacturing=target_mfg,
+            project_token=x_project_token,
+        )
+        data["loft_plan"] = plan.model_dump() if plan is not None else None
+    return {"success": True, "data": data}
 @router.put("/{project_id}/connection-config", response_model=StandardResponse)
 def update_connection_config(
     project_id: str,
@@ -763,3 +770,4 @@ async def confirm_revision(
             "job": job,
         },
     }
+

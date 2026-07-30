@@ -9,8 +9,10 @@ from app.models.schema import (
     Manufacturing,
     ManufacturingProcess,
     ModelRevisionStatus,
+    Point2D,
     ProfileType,
     Project,
+    TracedContour,
 )
 from app.services.kcl_compiler import COMPILER_VERSION, compile_project_to_kcl
 from app.services.project_service import ProjectService
@@ -192,6 +194,30 @@ def test_angled_compilation(tmp_path):
     assert "angle_deg = 15.000" in result.kcl_code
     assert "|> rotate(axis = [1.000, 0.000, 0.000], angle = 15.000deg)" in result.kcl_code
 
+
+def test_arbitrary_closed_profiles_compile_to_polyline_sketches(tmp_path):
+    project = create_base_approved_project(
+        p_type_a=ProfileType.TRACED_CLOSED,
+        p_type_b=ProfileType.CUSTOM_CLOSED,
+    )
+    triangle = [Point2D(x=0.0, y=0.0), Point2D(x=60.0, y=0.0), Point2D(x=30.0, y=40.0)]
+    irregular = [
+        Point2D(x=0.0, y=0.0),
+        Point2D(x=48.0, y=0.0),
+        Point2D(x=55.0, y=14.0),
+        Point2D(x=38.0, y=36.0),
+        Point2D(x=8.0, y=30.0),
+    ]
+    project.interface_a.traced_outer_contour = TracedContour(points=triangle, is_closed=True)
+    project.interface_b.traced_outer_contour = TracedContour(points=irregular, is_closed=True)
+
+    result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
+
+    assert result.success is True
+    assert result.kcl_code is not None
+    assert result.kcl_code.count("startProfile(at =") == 4
+    assert result.kcl_code.count("|> close()") == 4
+    assert "IF-KCL-001" not in result.kcl_code
 
 def test_invalid_unsupported_profile(tmp_path):
     project = create_base_approved_project()

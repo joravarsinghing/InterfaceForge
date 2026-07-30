@@ -1,4 +1,4 @@
-﻿/**
+/**
   * TracedProfileSvgViewer renders traced closed profile outer contour and inner holes as SVG.
   */
 
@@ -44,11 +44,13 @@ function traceToSvgPoint(
   minX: number,
   minY: number,
   scale: number,
-  drawH: number
+  offsetX: number,
+  offsetY: number,
+  contentH: number
 ): Point2D {
   return {
-    x: (point.x - minX) * scale,
-    y: drawH - (point.y - minY) * scale,
+    x: offsetX + (point.x - minX) * scale,
+    y: offsetY + contentH - (point.y - minY) * scale,
   };
 }
 
@@ -57,14 +59,16 @@ function toSvgPoints(
   minX: number,
   minY: number,
   scale: number,
-  drawH: number
+  offsetX: number,
+  offsetY: number,
+  contentH: number
 ): string {
   return points
     .map((p) => {
-      const svgPoint = traceToSvgPoint(p, minX, minY, scale, drawH);
+      const svgPoint = traceToSvgPoint(p, minX, minY, scale, offsetX, offsetY, contentH);
       return `${svgPoint.x.toFixed(2)},${svgPoint.y.toFixed(2)}`;
     })
-    .join(' ');
+    .join(" ");
 }
 
 function samePoint(a: Point2D | null | undefined, b: Point2D): boolean {
@@ -150,20 +154,24 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
   const drawW = Math.max(1, requestedWidth - PADDING * 2);
   const drawH = Math.max(1, requestedHeight - PADDING * 2);
   const scale = Math.min(drawW / rangeX, drawH / rangeY);
-  const actualW = rangeX * scale + PADDING * 2;
-  const actualH = rangeY * scale + PADDING * 2;
+  const contentW = rangeX * scale;
+  const contentH = rangeY * scale;
+  const offsetX = PADDING + Math.max(0, (drawW - contentW) / 2);
+  const offsetY = PADDING + Math.max(0, (drawH - contentH) / 2);
+  const actualW = requestedWidth;
+  const actualH = requestedHeight;
   const aspectRatio = actualW / actualH;
   const minHeight = height ?? MIN_RESPONSIVE_HEIGHT;
 
-  const outerSvg = toSvgPoints(displayOuter.points, bbox.minX, bbox.minY, scale, drawH);
-  const nodeSvgPoints = displayOuter.points.map((p) => traceToSvgPoint(p, bbox.minX, bbox.minY, scale, drawH));
+  const outerSvg = toSvgPoints(displayOuter.points, bbox.minX, bbox.minY, scale, offsetX, offsetY, contentH);
+  const nodeSvgPoints = displayOuter.points.map((p) => traceToSvgPoint(p, bbox.minX, bbox.minY, scale, offsetX, offsetY, contentH));
 
   const isOuterHighlighted = highlightFeatureId === 'outer_contour';
   const markerA = calibrationPointA
-    ? traceToSvgPoint(calibrationPointA, bbox.minX, bbox.minY, scale, drawH)
+    ? traceToSvgPoint(calibrationPointA, bbox.minX, bbox.minY, scale, offsetX, offsetY, contentH)
     : null;
   const markerB = calibrationPointB
-    ? traceToSvgPoint(calibrationPointB, bbox.minX, bbox.minY, scale, drawH)
+    ? traceToSvgPoint(calibrationPointB, bbox.minX, bbox.minY, scale, offsetX, offsetY, contentH)
     : null;
 
   return (
@@ -211,7 +219,7 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           minHeight: isOverlay ? undefined : minHeight,
         }}
       >
-        <g transform={`translate(${PADDING}, ${PADDING})`}>
+        <g>
           <polygon
             points={outerSvg}
             fill={isOuterHighlighted ? 'rgba(0, 229, 255, 0.25)' : '#00e5ff22'}
@@ -224,7 +232,7 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           {displayHoles.map((hole, i) => {
             const holeId = hole.id || `region_${i + 1}`;
             const isHighlighted = highlightFeatureId === holeId;
-            const pts = toSvgPoints(hole.points, bbox.minX, bbox.minY, scale, drawH);
+            const pts = toSvgPoints(hole.points, bbox.minX, bbox.minY, scale, offsetX, offsetY, contentH);
             let strokeColor = '#00e676';
             let fillColor = 'rgba(0, 230, 118, 0.25)';
             if (hole.decision === 'ignore') {
@@ -306,13 +314,13 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           )}
           {markerA && (
             <g pointerEvents="none">
-              <circle cx={markerA.x} cy={markerA.y} r={4} fill="#f85149" stroke="#ffffff" strokeWidth={1.5} />
+              <circle data-testid="calibration-marker-a" cx={markerA.x} cy={markerA.y} r={4} fill="#f85149" stroke="#ffffff" strokeWidth={1.5} />
               <text x={markerA.x + 6} y={markerA.y - 6} fill="#ffffff" fontSize={10}>A</text>
             </g>
           )}
           {markerB && (
             <g pointerEvents="none">
-              <circle cx={markerB.x} cy={markerB.y} r={4} fill="#3fb950" stroke="#ffffff" strokeWidth={1.5} />
+              <circle data-testid="calibration-marker-b" cx={markerB.x} cy={markerB.y} r={4} fill="#3fb950" stroke="#ffffff" strokeWidth={1.5} />
               <text x={markerB.x + 6} y={markerB.y - 6} fill="#ffffff" fontSize={10}>B</text>
             </g>
           )}

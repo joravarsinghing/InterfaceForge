@@ -60,7 +60,7 @@ def project_with_image(client, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# S10.3.1 — Image Serving Endpoint
+# S10.3.1 Ã¢â‚¬â€ Image Serving Endpoint
 # ---------------------------------------------------------------------------
 
 
@@ -114,7 +114,7 @@ class TestImageServingEndpoint:
             f"/api/projects/{project_id}/interfaces/interface_a/image",
             headers={"X-Project-Token": token},
         )
-        # Missing prerequisite → 400
+        # Missing prerequisite Ã¢â€ â€™ 400
         assert resp.status_code in (400, 404)
         assert "success" in resp.json()
         assert resp.json()["success"] is False
@@ -140,7 +140,7 @@ class TestImageServingEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# S10.3.2 — Analysis Provenance Badge
+# S10.3.2 Ã¢â‚¬â€ Analysis Provenance Badge
 # ---------------------------------------------------------------------------
 
 
@@ -212,7 +212,7 @@ class TestAnalysisProvenanceBadge:
 
 
 # ---------------------------------------------------------------------------
-# S10.3.3 — Traced Closed Profile Foundation
+# S10.3.3 Ã¢â‚¬â€ Traced Closed Profile Foundation
 # ---------------------------------------------------------------------------
 
 
@@ -449,7 +449,7 @@ class TestTracedProfileValidation:
 
 
 # ---------------------------------------------------------------------------
-# S10.3.4 — End-to-End: Analyze with Traced Fixture
+# S10.3.4 Ã¢â‚¬â€ End-to-End: Analyze with Traced Fixture
 # ---------------------------------------------------------------------------
 
 
@@ -490,7 +490,7 @@ class TestTracedAnalysisEndToEnd:
         )
         iface_data = project_resp.json()["data"]["interface_a"]
         assert iface_data["profile_type"] == "traced_closed"
-        assert iface_data["generation_unsupported"] is True
+        assert iface_data["generation_unsupported"] is False
         assert iface_data["traced_outer_contour"] is not None
         assert len(iface_data.get("traced_hole_contours", [])) >= 1
         assert iface_data["analysis_provider_name"] == "mock"

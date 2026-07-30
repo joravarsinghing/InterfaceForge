@@ -10,6 +10,8 @@ import math
 from typing import List, Sequence, Tuple
 
 from app.models.schema import Interface, ProfileType, Project
+from app.services.loft_plan import ensure_loft_plan
+from app.services.contour_loft import align_contours_with_diagnostics
 
 _PROHIBIT_LOCAL_OBJ_GENERATION: bool = False
 _LOCAL_OBJ_CALL_COUNT: int = 0
@@ -55,6 +57,14 @@ def _sample_profile_2d(
     """Return a continuous CCW perimeter, seam-anchored at the +X midpoint."""
     count = max(int(num_segments), 4)
     p_type = iface.profile_type
+    if iface.traced_outer_contour is not None or p_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED):
+        contour = iface.traced_outer_contour
+        if contour is None or len(contour.points) < 3:
+            raise ValueError('Approved custom_closed profile has no authoritative outer contour.')
+        points = normalize_contour([(point.x, point.y) for point in contour.points])
+        if is_outer:
+            return resample_closed(points, count)
+        return resample_closed(inward_offset(points, wall_thickness + clearance), count)
     if p_type == ProfileType.CIRCLE:
         diameter = _get_dim_val(iface, "outer_diameter", 50.0)
         effective = diameter + 2.0 * clearance
@@ -161,118 +171,47 @@ def align_ring_correspondence(
     target: Sequence[Tuple[float, float]],
     preserve_zero_rotation: bool = False,
 ) -> List[Tuple[float, float]]:
-    """Cyclically align equal, same-winding, simple rings by minimum distance."""
-    if len(source) != len(target) or len(source) < 3:
-        raise ValueError("Loft correspondence requires equal ring counts.")
-    if not ring_is_simple(source) or not ring_is_simple(target):
-        raise ValueError("Loft correspondence rejects self-crossing rings.")
-    if ring_signed_area(source) * ring_signed_area(target) <= 0:
-        raise ValueError("Loft correspondence requires matching winding.")
-    shifts = [0] if preserve_zero_rotation else range(len(target))
-    shift = min(
-        shifts,
-        key=lambda offset: sum(
-            math.dist(source[i], target[(i + offset) % len(target)]) ** 2
-            for i in range(len(source))
-        ),
+    """Compatibility wrapper around the validated contour correspondence search."""
+    aligned, _diagnostics = align_contours_with_diagnostics(
+        source, target, coaxial=preserve_zero_rotation
     )
-    return [target[(i + shift) % len(target)] for i in range(len(target))]
+    return aligned
 
 
 def generate_adapter_obj(project: Project) -> str:
-    """Generate 3D Wavefront OBJ payload representing the model's exact geometry.
-
-    Used ONLY for isolated mock testing. Prohibited in production export paths per S8.2.
-    """
+    """Generate the offline mock mesh from the exact persisted LoftPlan."""
     global _LOCAL_OBJ_CALL_COUNT
     _LOCAL_OBJ_CALL_COUNT += 1
-
     if _PROHIBIT_LOCAL_OBJ_GENERATION:
-        raise RuntimeError(
-            "PRODUCTION EXPORT VIOLATION: Local generate_adapter_obj() called "
-            "in production export path per ADR-001/S8.2."
-        )
-
-    if_a = project.interface_a
-    if_b = project.interface_b
-    conn = project.connection
-    mfg = project.manufacturing
-
-    # Determine segment count based on profile complexity
-    n = 16
-
-    outer_a_2d = _sample_profile_2d(if_a, True, mfg.wall_thickness_mm, mfg.clearance_a_mm, n)
-    inner_a_2d = _sample_profile_2d(if_a, False, mfg.wall_thickness_mm, mfg.clearance_a_mm, n)
-
-    outer_b_2d = _sample_profile_2d(if_b, True, mfg.wall_thickness_mm, mfg.clearance_b_mm, n)
-    inner_b_2d = _sample_profile_2d(if_b, False, mfg.wall_thickness_mm, mfg.clearance_b_mm, n)
-
-    outer_b_2d = align_ring_correspondence(outer_a_2d, outer_b_2d, conn.mode.value == "coaxial")
-    inner_b_2d = align_ring_correspondence(inner_a_2d, inner_b_2d, conn.mode.value == "coaxial")
-
+        raise RuntimeError("PRODUCTION EXPORT VIOLATION: Local generate_adapter_obj() called in production export path per ADR-001/S8.2.")
+    plan = ensure_loft_plan(project)
+    n = plan.point_count
     vertices: List[Tuple[float, float, float]] = []
-
-    # Interface A vertices at Z = 0
-    for x, y in outer_a_2d:
-        vertices.append((x, y, 0.0))
-    for x, y in inner_a_2d:
-        vertices.append((x, y, 0.0))
-
-    # Interface B transformation (offset_x, offset_y, Z = length, angle_deg)
-    ang_rad = math.radians(conn.angle_deg)
-    cos_a = math.cos(ang_rad)
-    sin_a = math.sin(ang_rad)
-
-    def transform_b(x: float, y: float) -> Tuple[float, float, float]:
-        ry = y * cos_a
-        rz = y * sin_a
-        return (x + conn.offset_x_mm, ry + conn.offset_y_mm, rz + conn.length_mm)
-
-    for x, y in outer_b_2d:
-        vertices.append(transform_b(x, y))
-    for x, y in inner_b_2d:
-        vertices.append(transform_b(x, y))
-
+    for section in plan.sections:
+        vertices.extend((p.x, p.y, section.z_mm) for p in section.outer)
+        vertices.extend((p.x, p.y, section.z_mm) for p in section.inner)
     faces: List[Tuple[int, int, int]] = []
-    for i in range(n):
-        next_i = (i + 1) % n
-
-        # Outer wall quad -> 2 triangles
-        v_oa1 = i + 1
-        v_oa2 = next_i + 1
-        v_ob1 = 2 * n + i + 1
-        v_ob2 = 2 * n + next_i + 1
-        faces.append((v_oa1, v_oa2, v_ob2))
-        faces.append((v_oa1, v_ob2, v_ob1))
-
-        # Inner wall quad -> 2 triangles
-        v_ia1 = n + i + 1
-        v_ia2 = n + next_i + 1
-        v_ib1 = 3 * n + i + 1
-        v_ib2 = 3 * n + next_i + 1
-        faces.append((v_ib1, v_ib2, v_ia2))
-        faces.append((v_ib1, v_ia2, v_ia1))
-
-        # Bottom rim ring (Z=0)
-        faces.append((v_oa1, v_ia1, v_ia2))
-        faces.append((v_oa1, v_ia2, v_oa2))
-
-        # Top rim ring
-        faces.append((v_ob1, v_ob2, v_ib2))
-        faces.append((v_ob1, v_ib2, v_ib1))
-
-    obj_lines = [
-        f"# InterfaceForge OBJ Export for Project {project.project_id}",
-        f"# Rev: {project.current_model_revision}",
-    ]
-    for v in vertices:
-        obj_lines.append(f"v {v[0]:.4f} {v[1]:.4f} {v[2]:.4f}")
-    for f in faces:
-        obj_lines.append(f"f {f[0]} {f[1]} {f[2]}")
-
-    return "\n".join(obj_lines)
-
-
+    rings = len(plan.sections)
+    for k in range(rings - 1):
+        oa, ob = k * 2 * n, (k + 1) * 2 * n
+        ia, ib = oa + n, ob + n
+        for i in range(n):
+            j = (i + 1) % n
+            faces.extend([(oa+i+1, oa+j+1, ob+j+1), (oa+i+1, ob+j+1, ob+i+1)])
+            faces.extend([(ib+i+1, ib+j+1, ia+j+1), (ib+i+1, ia+j+1, ia+i+1)])
+        if k == 0:
+            for i in range(n):
+                j = (i + 1) % n
+                faces.extend([(i+1, n+i+1, n+j+1), (i+1, n+j+1, j+1)])
+        if k == rings - 2:
+            for i in range(n):
+                j = (i + 1) % n
+                faces.extend([(ob+i+1, ob+j+1, ib+j+1), (ob+i+1, ib+j+1, ib+i+1)])
+    lines = [f"# InterfaceForge OBJ Export for Project {project.project_id}", f"# LoftPlan hash={plan.geometry_hash} sections={len(plan.sections)} points={n}", f"# CORRESPONDENCE outer shift={plan.outer_shift} reversed={plan.outer_reversed}", f"# CORRESPONDENCE inner shift={plan.inner_shift} reversed={plan.inner_reversed}"]
+    lines.extend(f"# CORRESPONDENCE_LINE outer {i} {a.x:.6f} {a.y:.6f} -> {b.x:.6f} {b.y:.6f}" for i, (a, b) in enumerate(zip(plan.outer_a, plan.outer_b)))
+    lines.extend(f"v {x:.6f} {y:.6f} {z:.6f}" for x,y,z in vertices)
+    lines.extend(f"f {a} {b} {c}" for a,b,c in faces)
+    return "\n".join(lines)
 def get_geometry_hash(obj_content: str) -> str:
     """Compute SHA-256 hash string for 3D model geometry payload."""
     return hashlib.sha256(obj_content.encode("utf-8")).hexdigest()
@@ -364,3 +303,6 @@ def render_mesh_svg(obj_content: str, job_id: str) -> str:
         f'<text x="12" y="18" fill="#3fb950" font-family="monospace" font-size="11">INTERFACEFORGE 3D PREVIEW - ISOMETRIC MESH</text><text x="12" y="292" fill="#88aa99" font-family="monospace" font-size="10">JOB: {job_id[:12]}</text></svg>'  # noqa: E501
     )
     return "".join(lines)
+
+
+

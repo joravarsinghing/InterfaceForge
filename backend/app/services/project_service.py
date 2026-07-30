@@ -1,4 +1,4 @@
-"""Project service layer managing domain workflow state transitions and schema invariants."""
+﻿"""Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
 import logging
@@ -39,6 +39,7 @@ from app.models.schema import (
     FormatExportDetail,
     Interface,
     InterfacePatchRequest,
+    LoftPlan,
     Manufacturing,
     ManufacturingUpdateRequest,
     ModelFailRequest,
@@ -72,6 +73,7 @@ from app.services.export_provider import (
     validate_artifact_content,
 )
 from app.services.kcl_compiler import KCLCompileResult, compile_project_to_kcl
+from app.services.loft_plan import ensure_loft_plan
 from app.services.profile_geometry import (
     bbox,
     classify_primitive_candidate,
@@ -273,7 +275,7 @@ def _distance(a: Point2D, b: Point2D) -> float:
 
 
 def _canonical_primitive_trace_points(interface: Interface) -> list[Point2D] | None:
-    if interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES:
+    if _uses_trace_calibration(interface) or interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES:
         return None
     outer = interface.traced_outer_contour
     if outer is None or len(outer.points) < 4:
@@ -349,9 +351,20 @@ def _canonical_primitive_trace_points(interface: Interface) -> list[Point2D] | N
     return points
 
 
+def _uses_trace_calibration(interface: Interface) -> bool:
+    """Use the approved contour for calibration unless primitive fallback is explicit."""
+    return bool(
+        interface.traced_outer_contour
+        and not interface.primitive_fallback_active
+        and (
+            interface.profile_type == ProfileType.TRACED_CLOSED
+            or (interface.trace_profile_type == ProfileType.TRACED_CLOSED and getattr(interface.traced_outer_contour, "provenance", "") != "opencv_primitive")
+        )
+    )
+
 def _ensure_calibration_boundary(interface: Interface) -> None:
     """Create the one canonical primitive boundary and retain it on the interface."""
-    if interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES:
+    if _uses_trace_calibration(interface) or interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES:
         return
     if interface.calibration_boundary and len(interface.calibration_boundary.points) >= 4:
         return
@@ -395,6 +408,11 @@ def _ensure_calibration_boundary(interface: Interface) -> None:
 
 
 def _calibration_geometry_segments(interface: Interface) -> list[tuple[Point2D, Point2D, str]]:
+    if _uses_trace_calibration(interface):
+        return [
+            (a, b, "canonical_primitive_boundary")
+            for a, b, _feature_id in _trace_geometry_segments(interface)
+        ]
     _ensure_calibration_boundary(interface)
     canonical = (
         interface.calibration_boundary.points
@@ -410,7 +428,9 @@ def _calibration_geometry_segments(interface: Interface) -> list[tuple[Point2D, 
 
 
 def _calibration_bbox(interface: Interface) -> tuple[float, float, float, float] | None:
-    _ensure_calibration_boundary(interface)
+    if _uses_trace_calibration(interface):
+        return _trace_bbox(interface)
+        _ensure_calibration_boundary(interface)
     canonical = (
         interface.calibration_boundary.points
         if interface.calibration_boundary
@@ -488,7 +508,7 @@ def _snap_point_to_trace(interface: Interface, point: Point2D) -> ScaleSnapRespo
                     continue
                 dist = _distance(point, vertex)
                 if best_node is None or dist < best_node[0]:
-                    best_node = (dist, vertex, contour.id or "trace_geometry")
+                    best_node = (dist, vertex, "canonical_primitive_boundary")
     if best_node is not None and best_node[0] <= node_tolerance:
         return ScaleSnapResponse(
             point=best_node[1], distance_px=best_node[0], feature_id=best_node[2]
@@ -679,6 +699,22 @@ def _apply_authoritative_shape_resolution(
         interface.generation_unsupported_reason = (
             "This outline needs shape confirmation before generation."
         )
+    elif has_trace:
+        # A valid closed contour is a supported arbitrary profile, even when it
+        # does not fit the legacy primitive classifier.
+        interface.profile_type = ProfileType.TRACED_CLOSED
+        interface.resolved_profile_type = ProfileType.CUSTOM_CLOSED
+        interface.resolution_status = ShapeResolutionStatus.RESOLVED
+        interface.resolution_confidence = 1.0
+        interface.resolution_reason = "Closed OpenCV contour accepted as an arbitrary profile."
+        interface.primitive_fallback_active = False
+        interface.primitive_fallback_label = None
+        interface.primitive_promotion_confirmed = False
+        interface.primitive_detection_confidence = None
+        interface.primitive_detection_reason = None
+        interface.verification_status = "arbitrary_contour_resolved"
+        interface.generation_unsupported = False
+        interface.generation_unsupported_reason = None
     elif original_profile_type in SUPPORTED_GENERATION_PROFILE_TYPES and not has_trace:
         interface.resolved_profile_type = original_profile_type
         interface.resolution_status = ShapeResolutionStatus.RESOLVED
@@ -765,7 +801,8 @@ class ProjectService:
         return project
 
     def _mark_current_model_stale_if_exists(self, project: Project) -> None:
-        """Mark current model revision as stale if it exists."""
+        """Mark current model revision as stale and invalidate derived loft geometry."""
+        project.loft_plan = None
         if project.current_model_revision is not None:
             for rev in project.model_revisions:
                 if (
@@ -1672,7 +1709,11 @@ class ProjectService:
             )
         if (
             target_interface.resolution_status != ShapeResolutionStatus.RESOLVED
-            or target_interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES
+            or (
+                target_interface.profile_type not in SUPPORTED_GENERATION_PROFILE_TYPES
+                and target_interface.profile_type != ProfileType.CUSTOM_CLOSED
+                and target_interface.resolved_profile_type != ProfileType.CUSTOM_CLOSED
+            )
         ):
             message = "This outline is more complex than the shapes supported in this version."
             if target_interface.resolution_status == ShapeResolutionStatus.NEEDS_CONFIRMATION:
@@ -1732,6 +1773,22 @@ class ProjectService:
             project.interface_a, project.interface_b, target_conn, target_mfg
         )
 
+    def preview_loft_plan(
+        self,
+        project_id: str,
+        connection: Connection,
+        manufacturing: Manufacturing,
+        project_token: Optional[str] = None,
+    ) -> Optional[LoftPlan]:
+        """Build the authoritative candidate plan for the unsaved Step 3 preview."""
+        project = self._verify_project_and_token(project_id, project_token)
+        if not (project.interface_a.approved and project.interface_b.approved):
+            return None
+        candidate = project.model_copy(deep=True)
+        candidate.connection = connection
+        candidate.manufacturing = manufacturing
+        candidate.loft_plan = None
+        return ensure_loft_plan(candidate)
     def update_connection(
         self, project_id: str, req: ConnectionUpdateRequest, project_token: Optional[str] = None
     ) -> Project:
@@ -1864,6 +1921,8 @@ class ProjectService:
         else:
             project.state = WorkflowState.CONNECTION_CONFIGURED
 
+        # Persist the exact plan that Step 3 preview received.
+        project.loft_plan = ensure_loft_plan(project)
         project.updated_at = current_iso_timestamp()
         return self.repository.save(project)
 
@@ -2388,3 +2447,7 @@ class ProjectService:
             self.repository.save(project)
 
         return result
+
+
+
+

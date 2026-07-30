@@ -1,4 +1,4 @@
-"""Deterministic KCL Compiler and Service Layer (Stage S5A).
+﻿"""Deterministic KCL Compiler and Service Layer (Stage S5A).
 
 Converts validated canonical project data into deterministic, readable KCL code
 without calling Zoo per ADR-001 and ADR-002.
@@ -19,6 +19,7 @@ from app.models.schema import (
     ValidationIssue,
 )
 from app.services.connection_validation import validate_connection_and_manufacturing
+from app.services.loft_plan import ensure_loft_plan
 from app.services.profile_geometry import fitted_profile_size
 
 COMPILER_VERSION = "1.0.0"
@@ -152,63 +153,22 @@ def _validate_finite_numbers(project: Project) -> List[ValidationIssue]:
     return issues
 
 
-def _generate_sketch_kcl(
-    iface: Interface,
-    prefix: str,
-    plane_var: str,
-    offset_x: float,
-    offset_y: float,
-    is_outer: bool,
-    clearance: float,
-    wall_thickness: float,
-    rotation_angle_deg: float = 0.0,
-) -> str:
-    """Generates KCL code string for a single profile sketch."""
-    p_type = iface.profile_type
-    lines: List[str] = []
-
-    if p_type == ProfileType.CIRCLE:
-        eff = fitted_profile_size(iface, clearance, wall_thickness, outer=is_outer)
-        radius = eff.width / 2.0
-        lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
-        lines.append(
-            f"  |> circle(center = [{offset_x:.3f}, {offset_y:.3f}], radius = {radius:.3f})"
-        )
-
-    elif p_type in (ProfileType.RECTANGLE, ProfileType.ROUNDED_RECTANGLE):
-        eff = fitted_profile_size(iface, clearance, wall_thickness, outer=is_outer)
-        half_w = eff.width / 2.0
-        half_h = eff.height / 2.0
-
-        if p_type == ProfileType.RECTANGLE:
-            lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
-            lines.append(
-                f"  |> rectangle(center = [{offset_x:.3f}, {offset_y:.3f}], "
-                f"width = {eff.width:.3f}, height = {eff.height:.3f})"
-            )
-
-        elif p_type == ProfileType.ROUNDED_RECTANGLE:
-            r = eff.corner_radius or _get_dim_val(iface, "corner_radius", 5.0)
-            r = min(r, half_w * 0.8, half_h * 0.8)  # prevent over-filleting
-            lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
-            lines.append(f"  |> startProfile(at = [{offset_x + half_w:.3f}, {offset_y:.3f}])")
-            lines.append(f"  |> line(end = [{eff.width - 2 * r:.3f}, 0.000])")
-            lines.append(f"  |> tangentialArc(end = [{r:.3f}, {r:.3f}])")
-            lines.append(f"  |> line(end = [0.000, {eff.height - 2 * r:.3f}])")
-            lines.append(f"  |> tangentialArc(end = [-{r:.3f}, {r:.3f}])")
-            lines.append(f"  |> line(end = [-{eff.width - 2 * r:.3f}, 0.000])")
-            lines.append(f"  |> tangentialArc(end = [-{r:.3f}, -{r:.3f}])")
-            lines.append(f"  |> line(end = [0.000, -{eff.height - 2 * r:.3f}])")
-            lines.append(f"  |> tangentialArc(end = [{r:.3f}, -{r:.3f}])")
-            lines.append("  |> close()")
-
-    if rotation_angle_deg:
-        lines.append(
-            f"  |> rotate(axis = [1.000, 0.000, 0.000], angle = {rotation_angle_deg:.3f}deg)"
-        )
+def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
+    """Emit one authoritative closed polyline: absolute start, relative edges, one close."""
+    if len(points) < 3:
+        raise ValueError("Loft section needs at least three points")
+    for a, b in zip(points, points[1:]):
+        if math.dist((a.x, a.y), (b.x, b.y)) <= 1e-9:
+            raise ValueError("Loft section contains duplicate adjacent points")
+    if math.dist((points[-1].x, points[-1].y), (points[0].x, points[0].y)) <= 1e-9:
+        raise ValueError("Loft section repeats its first point")
+    lines = [f"sketch_{prefix} = startSketchOn({plane_var})", f"  |> startProfile(at = [{points[0].x:.6f}, {points[0].y:.6f}])"]
+    for current, following in zip(points, points[1:]):
+        lines.append(f"  |> line(end = [{following.x-current.x:.6f}, {following.y-current.y:.6f}])")
+    last, first = points[-1], points[0]
+    lines.append(f"  |> line(end = [{first.x-last.x:.6f}, {first.y-last.y:.6f}])")
+    lines.append("  |> close()")
     return "\n".join(lines)
-
-
 def compile_project_to_kcl(
     project: Project, artifacts_dir: Optional[str] = None
 ) -> KCLCompileResult:
@@ -248,12 +208,16 @@ def compile_project_to_kcl(
             ],
         )
 
-    # 2. Unsupported profile type check (traced_closed)
+    # 2. Arbitrary closed profiles require an authoritative traced contour.
     for iface_name, iface in [
         ("Interface A", project.interface_a),
         ("Interface B", project.interface_b),
     ]:
-        if iface.profile_type == ProfileType.TRACED_CLOSED:
+        if iface.profile_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED) and (
+            iface.traced_outer_contour is None
+            or len(iface.traced_outer_contour.points) < 3
+            or not iface.traced_outer_contour.is_closed
+        ):
             return KCLCompileResult(
                 success=False,
                 schema_revision=project.current_schema_revision,
@@ -262,12 +226,12 @@ def compile_project_to_kcl(
                     ValidationIssue(
                         id="IF-KCL-001",
                         message=(
-                            f"{iface_name} profile type 'traced_closed' "
-                            "is not supported by KCL compiler."
+                            f"{iface_name} arbitrary closed profile is missing a valid "
+                            "authoritative closed contour."
                         ),
                         field=iface_name.lower().replace(" ", "_"),
                         recovery_steps=[
-                            "Re-edit profile to circle, rectangle, or rounded rectangle."
+                            "Re-run profile analysis or provide at least three closed contour points."
                         ],
                     )
                 ],
@@ -312,7 +276,7 @@ def compile_project_to_kcl(
     if_b = project.interface_b
 
     kcl_lines: List[str] = [
-        "// InterfaceForge Ã¢â‚¬â€ Deterministic KCL Adapter Model",
+        "// InterfaceForge ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Deterministic KCL Adapter Model",
         f"// Compiler Version: {COMPILER_VERSION}",
         f"// Schema Version: {project.schema_version}",
         f"// Schema Revision: {project.current_schema_revision}",
@@ -366,65 +330,25 @@ def compile_project_to_kcl(
     kcl_lines.append(f"angle_deg = {conn.angle_deg:.3f}")
     kcl_lines.append("")
 
-    # Construction geometry planes and sketches
-    kcl_lines.append("// --- 3D Geometry Construction ---")
-    base_plane = "'XY'"
-
-    kcl_lines.append(f"top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
-    top_plane_var = "top_plane"
-    top_offset_x = conn.offset_x_mm
-    top_offset_y = conn.offset_y_mm
-    top_rotation = conn.angle_deg if conn.mode == ConnectionMode.ANGLED else 0.0
-
+    # Construction geometry is entirely driven by the persisted LoftPlan.
+    plan = ensure_loft_plan(project)
+    kcl_lines.append(f"// LoftPlan hash: {plan.geometry_hash}")
+    kcl_lines.append(f"// LoftPlan sections: {len(plan.sections)} points: {plan.point_count}")
+    kcl_lines.append(f"// center = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}]")
+    if conn.mode == ConnectionMode.ANGLED:
+        kcl_lines.append(f"// |> rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
     kcl_lines.append("")
-    kcl_lines.append("// Outer Profiles")
-    kcl_lines.append(
-        _generate_sketch_kcl(
-            if_a, "outer_a", base_plane, 0.0, 0.0, True, mfg.clearance_a_mm, mfg.wall_thickness_mm
-        )
-    )
-    kcl_lines.append(
-        _generate_sketch_kcl(
-            if_b,
-            "outer_b",
-            top_plane_var,
-            top_offset_x,
-            top_offset_y,
-            True,
-            mfg.clearance_b_mm,
-            mfg.wall_thickness_mm,
-            top_rotation,
-        )
-    )
-    kcl_lines.append("")
-    kcl_lines.append("outer_solid = loft([sketch_outer_a, sketch_outer_b])")
-
-    kcl_lines.append("")
-    kcl_lines.append("// Inner Profiles")
-    kcl_lines.append(
-        _generate_sketch_kcl(
-            if_a, "inner_a", base_plane, 0.0, 0.0, False, mfg.clearance_a_mm, mfg.wall_thickness_mm
-        )
-    )
-    kcl_lines.append(
-        _generate_sketch_kcl(
-            if_b,
-            "inner_b",
-            top_plane_var,
-            top_offset_x,
-            top_offset_y,
-            False,
-            mfg.clearance_b_mm,
-            mfg.wall_thickness_mm,
-            top_rotation,
-        )
-    )
-    kcl_lines.append("")
-    kcl_lines.append("inner_void = loft([sketch_inner_a, sketch_inner_b])")
-    kcl_lines.append("")
+    for index, section in enumerate(plan.sections):
+        plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.6f})"
+        kcl_lines.append(_generate_section_kcl(section.outer, f"outer_{index}", plane))
+        kcl_lines.append(_generate_section_kcl(section.inner, f"inner_{index}", plane))
+        kcl_lines.append("")
+    outer_names = ", ".join(f"sketch_outer_{i}" for i in range(len(plan.sections)))
+    inner_names = ", ".join(f"sketch_inner_{i}" for i in range(len(plan.sections)))
+    kcl_lines.append(f"outer_solid = loft([{outer_names}])")
+    kcl_lines.append(f"inner_void = loft([{inner_names}])")
     kcl_lines.append("adapter_model = subtract(outer_solid, tools = [inner_void])")
     kcl_lines.append("")
-
     kcl_code = "\n".join(kcl_lines)
 
     parser_issue = _validate_generated_kcl(kcl_code)
@@ -470,3 +394,7 @@ def compile_project_to_kcl(
         preview_snippet=preview_snippet,
         warnings=conn_val.warnings,
     )
+
+
+
+

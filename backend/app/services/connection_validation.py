@@ -268,13 +268,13 @@ def validate_connection_and_manufacturing(
 
     # 8. Unsupported profile combinations check
     for iface_name, iface in [("Interface A", interface_a), ("Interface B", interface_b)]:
-        if iface.profile_type == ProfileType.TRACED_CLOSED:
+        if iface.profile_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED) and iface.traced_outer_contour is None:
             errors.append(
                 ValidationIssue(
                     id="IF-CONN-008",
-                    message=f"{iface_name} uses unsupported profile 'traced_closed'.",
+                    message=f"{iface_name} has no approved outer contour.",
                     field=iface_name.lower().replace(" ", "_"),
-                    recovery_steps=["Re-edit profile to circle, rectangle, or rounded rectangle."],
+                    recovery_steps=["Review and approve one valid closed outer contour."],
                 )
             )
 
@@ -283,7 +283,7 @@ def validate_connection_and_manufacturing(
         ("Interface A", interface_a, manufacturing.clearance_a_mm, "clearance_a_mm"),
         ("Interface B", interface_b, manufacturing.clearance_b_mm, "clearance_b_mm"),
     ]:
-        if iface.profile_type == ProfileType.TRACED_CLOSED:
+        if iface.profile_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED):
             continue
         outer_size = fitted_profile_size(iface, clearance, manufacturing.wall_thickness_mm, outer=True)
         inner_size = fitted_profile_size(iface, clearance, manufacturing.wall_thickness_mm, outer=False)

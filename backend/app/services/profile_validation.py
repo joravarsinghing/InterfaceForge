@@ -96,7 +96,7 @@ def validate_interface_profile(interface: Interface) -> Tuple[bool, List[str], L
     warnings: List[str] = []
 
     # --- Traced closed profile path (S10.3) ---
-    if interface.profile_type == ProfileType.TRACED_CLOSED:
+    if interface.profile_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED):
         return _validate_traced_profile(interface, errors, warnings)
 
     # --- Primitive profile path (existing logic preserved) ---
@@ -248,7 +248,7 @@ def _validate_primitive_profile(
     if interface.profile_type not in supported_types:
         errors.append(
             f"Unsupported profile type '{interface.profile_type}'. "
-            "Supported types are: circle, rectangle, rounded_rectangle."
+            "Supported types are: circle, rectangle, rounded_rectangle, custom_closed."
         )
 
     # 2. Positive finite generation dimensions. Legacy unmapped/custom dimensions

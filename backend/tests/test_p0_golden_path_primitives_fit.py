@@ -18,6 +18,7 @@ from app.models.schema import (
     ProfileType,
     Project,
     ScaleCalibration,
+    ShapeResolutionStatus,
     TracedContour,
     TwoPointScaleCalibrationRequest,
 )
@@ -482,7 +483,7 @@ def test_confirmed_rounded_rectangle_promotion_persists_rounded_rectangle() -> N
     assert approved.interface_a.traced_outer_contour is not None
 
 
-def test_unsupported_traced_closed_cannot_be_approved_for_generation() -> None:
+def test_arbitrary_traced_closed_can_be_approved_for_generation() -> None:
     service = ProjectService()
     project = service.create_project()
     project.interface_a.profile_type = ProfileType.TRACED_CLOSED
@@ -504,10 +505,10 @@ def test_unsupported_traced_closed_cannot_be_approved_for_generation() -> None:
     )
     service.repository.save(project)
 
-    with pytest.raises(
-        InvalidInterfaceApprovalError, match="more complex than the shapes supported"
-    ):
-        service.approve_interface(project.project_id, "interface_a", project.project_token)
+    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
+    assert approved.interface_a.profile_type == ProfileType.TRACED_CLOSED
+    assert approved.interface_a.resolution_status == ShapeResolutionStatus.RESOLVED
+    assert approved.interface_a.generation_unsupported is False
 
 
 def test_existing_confirmed_traced_closed_promotion_is_repaired_and_stales_model() -> None:
