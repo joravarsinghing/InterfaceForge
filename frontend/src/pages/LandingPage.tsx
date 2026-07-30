@@ -115,6 +115,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <p className="hero-subtitle">
             Upload clean cross-section images for A and B, confirm scale, approve each trace, configure the adapter, and generate a parametric CAD candidate with Zoo Engine.
           </p>
+          <div className="hero-zoo-attribution">
+            <img src="/Zoo.dev.logo.svg" alt="Zoo.dev" className="hero-zoo-logo" />
+            <a href="https://zoo.dev/" target="_blank" rel="noopener noreferrer">Powered by Zoo.dev</a>
+          </div>
 
           <div className="hero-actions">
             {hasProject ? (

@@ -30,7 +30,7 @@ export const Footer: React.FC<FooterProps> = ({ healthState }) => {
           <span className="footer-link-item">{getStatusText()}</span>
           <span className="footer-separator" aria-hidden="true">|</span>
           <a
-            href="https://github.com/jvsingh/InterfaceForge"
+            href="https://github.com/joravarsinghing/InterfaceForge"
             target="_blank"
             rel="noopener noreferrer"
             className="footer-link"
@@ -38,7 +38,7 @@ export const Footer: React.FC<FooterProps> = ({ healthState }) => {
             GitHub Repository
           </a>
           <span className="footer-separator" aria-hidden="true">|</span>
-          <span className="footer-link-item"><Wordmark /> - Zoo API Makeathon 2026 Submission</span>
+          <span className="footer-link-item"><Wordmark /> - <img src="/Zoo.dev.logo.svg" alt="Zoo" className="footer-zoo-logo" /> API Makeathon 2026 Submission</span>
         </div>
       </div>
     </footer>

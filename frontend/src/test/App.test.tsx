@@ -110,6 +110,8 @@ describe('InterfaceForge Frontend Application Shell (S6A.5 UI Stabilization)', (
     expect(screen.getByRole('group', { name: 'Provider mode' })).toBeInTheDocument();
     expect(screen.getByText(/Project state is stored locally by the development backend/i)).toBeInTheDocument();
     expect(screen.getByText(/No user accounts or tracking systems exist/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'GitHub Repository' })).toHaveAttribute('href', 'https://github.com/joravarsinghing/InterfaceForge');
+    expect(document.querySelector('img.footer-zoo-logo')).toHaveAttribute('src', '/Zoo.dev.logo.svg');
   });
 
   it('displays healthy service status inside collapsible architecture details', async () => {

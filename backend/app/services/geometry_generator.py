@@ -1,4 +1,4 @@
-"""3D Geometry Generator for InterfaceForge (Stage S8.1).
+﻿"""3D Geometry Generator for InterfaceForge (Stage S8.1).
 
 Converts canonical project geometry specifications into deterministic 3D Wavefront OBJ mesh
 representations for downstream STL and STEP conversions via Zoo File Format API
@@ -7,7 +7,7 @@ per ADR-001 and Stage S8.1.
 
 import hashlib
 import math
-from typing import List, Tuple
+from typing import List, Sequence, Tuple
 
 from app.models.schema import Interface, ProfileType, Project
 
@@ -50,93 +50,133 @@ def _sample_profile_2d(
     is_outer: bool,
     wall_thickness: float,
     clearance: float,
-    num_segments: int = 16,
+    num_segments: int = 32,
 ) -> List[Tuple[float, float]]:
-    """Sample 2D boundary points for an interface profile."""
+    """Return a continuous CCW perimeter, seam-anchored at the +X midpoint."""
+    count = max(int(num_segments), 4)
     p_type = iface.profile_type
-    pts: List[Tuple[float, float]] = []
-
     if p_type == ProfileType.CIRCLE:
-        outer_dia = _get_dim_val(iface, "outer_diameter", 50.0)
-        if is_outer:
-            eff_dia = outer_dia + (2.0 * clearance)
+        diameter = _get_dim_val(iface, "outer_diameter", 50.0)
+        effective = diameter + 2.0 * clearance
+        if not is_outer:
+            effective -= 2.0 * wall_thickness
+        radius = max(effective / 2.0, 1.0)
+        return [
+            (
+                radius * math.cos(2.0 * math.pi * i / count),
+                radius * math.sin(2.0 * math.pi * i / count),
+            )
+            for i in range(count)
+        ]
+
+    width = _get_dim_val(iface, "width", 50.0)
+    height = _get_dim_val(iface, "height", 50.0)
+    if is_outer:
+        width += 2.0 * clearance
+        height += 2.0 * clearance
+    else:
+        width += 2.0 * clearance - 2.0 * wall_thickness
+        height += 2.0 * clearance - 2.0 * wall_thickness
+    hw, hh = max(width / 2.0, 1.0), max(height / 2.0, 1.0)
+
+    if p_type == ProfileType.RECTANGLE:
+        path = [(hw, 0.0), (hw, hh), (-hw, hh), (-hw, -hh), (hw, -hh)]
+    else:
+        radius = min(_get_dim_val(iface, "corner_radius", 5.0), hw * 0.8, hh * 0.8)
+        if radius <= 1e-9:
+            path = [(hw, 0.0), (hw, hh), (-hw, hh), (-hw, -hh), (hw, -hh)]
         else:
-            eff_dia = outer_dia + (2.0 * clearance) - (2.0 * wall_thickness)
+            path = [(hw, 0.0), (hw, hh - radius)]
+            corners = (
+                (0.0, math.pi / 2.0, hw - radius, hh - radius),
+                (math.pi / 2.0, math.pi, -hw + radius, hh - radius),
+                (math.pi, 3.0 * math.pi / 2.0, -hw + radius, -hh + radius),
+                (3.0 * math.pi / 2.0, 2.0 * math.pi, hw - radius, -hh + radius),
+            )
+            for start, end, cx, cy in corners:
+                for j in range(1, 5):
+                    theta = start + (end - start) * j / 4.0
+                    path.append((cx + radius * math.cos(theta), cy + radius * math.sin(theta)))
+            path.append((hw, 0.0))
+    return _resample_closed_polyline(path, count)
 
-        radius = max(eff_dia / 2.0, 1.0)
-        for i in range(num_segments):
-            theta = 2.0 * math.pi * i / num_segments
-            pts.append((radius * math.cos(theta), radius * math.sin(theta)))
 
-    elif p_type in (ProfileType.RECTANGLE, ProfileType.ROUNDED_RECTANGLE):
-        w = _get_dim_val(iface, "width", 50.0)
-        h = _get_dim_val(iface, "height", 50.0)
+def _resample_closed_polyline(
+    points: Sequence[Tuple[float, float]], count: int
+) -> List[Tuple[float, float]]:
+    """Resample a closed path at equal arc-length intervals."""
+    clean: List[Tuple[float, float]] = []
+    for point in points:
+        if not clean or math.dist(clean[-1], point) > 1e-9:
+            clean.append(point)
+    if len(clean) > 1 and math.dist(clean[0], clean[-1]) <= 1e-9:
+        clean.pop()
+    cumulative = [0.0]
+    for i, point in enumerate(clean):
+        cumulative.append(cumulative[-1] + math.dist(point, clean[(i + 1) % len(clean)]))
+    perimeter = cumulative[-1]
+    result: List[Tuple[float, float]] = []
+    for sample in range(count):
+        distance = perimeter * sample / count
+        segment = next(i for i in range(len(clean)) if cumulative[i + 1] >= distance)
+        span = cumulative[segment + 1] - cumulative[segment]
+        fraction = (distance - cumulative[segment]) / span if span else 0.0
+        start, end = clean[segment], clean[(segment + 1) % len(clean)]
+        result.append(
+            (start[0] + (end[0] - start[0]) * fraction, start[1] + (end[1] - start[1]) * fraction)
+        )
+    return result
 
-        if is_outer:
-            eff_w = w + (2.0 * clearance)
-            eff_h = h + (2.0 * clearance)
-        else:
-            eff_w = w + (2.0 * clearance) - (2.0 * wall_thickness)
-            eff_h = h + (2.0 * clearance) - (2.0 * wall_thickness)
 
-        hw = max(eff_w / 2.0, 1.0)
-        hh = max(eff_h / 2.0, 1.0)
+def ring_signed_area(ring: Sequence[Tuple[float, float]]) -> float:
+    """Return signed area; positive rings are counter-clockwise."""
+    return 0.5 * sum(
+        ring[i][0] * ring[(i + 1) % len(ring)][1] - ring[(i + 1) % len(ring)][0] * ring[i][1]
+        for i in range(len(ring))
+    )
 
-        if p_type == ProfileType.RECTANGLE and num_segments > 4:
-            # Interpolate num_segments around rectangle perimeter
-            segs_per_side = num_segments // 4
-            # Bottom side (-hh) from -hw to hw
-            for i in range(segs_per_side):
-                pts.append((-hw + (2 * hw * i / segs_per_side), -hh))
-            # Right side (hw) from -hh to hh
-            for i in range(segs_per_side):
-                pts.append((hw, -hh + (2 * hh * i / segs_per_side)))
-            # Top side (hh) from hw to -hw
-            for i in range(segs_per_side):
-                pts.append((hw - (2 * hw * i / segs_per_side), hh))
-            # Left side (-hw) from hh to -hh
-            for i in range(segs_per_side):
-                pts.append((-hw, hh - (2 * hh * i / segs_per_side)))
-        elif p_type == ProfileType.RECTANGLE:
-            # Keep every profile ring at exactly num_segments vertices so
-            # corresponding loft indices cannot twist or reference gaps.
-            segs_per_side = max(1, num_segments // 4)
-            for i in range(segs_per_side):
-                t = i / segs_per_side
-                pts.append((-hw + 2 * hw * t, -hh))
-            for i in range(segs_per_side):
-                t = i / segs_per_side
-                pts.append((hw, -hh + 2 * hh * t))
-            for i in range(segs_per_side):
-                t = i / segs_per_side
-                pts.append((hw - 2 * hw * t, hh))
-            for i in range(segs_per_side):
-                t = i / segs_per_side
-                pts.append((-hw, hh - 2 * hh * t))
-        else:
-            # Sample rounded rectangle with corner radii
-            r = _get_dim_val(iface, "corner_radius", 5.0)
-            r = min(r, hw * 0.8, hh * 0.8)
-            corner_segs = max(num_segments // 4, 2)
 
-            # Bottom-Right corner
-            for i in range(corner_segs):
-                th = (0.0 + (i / (corner_segs - 1)) * 0.5) * math.pi
-                pts.append((hw - r + r * math.cos(th), -hh + r + r * math.sin(th)))
-            # Top-Right corner
-            for i in range(corner_segs):
-                th = (0.5 + (i / (corner_segs - 1)) * 0.5) * math.pi
-                pts.append((hw - r + r * math.cos(th), hh - r + r * math.sin(th)))
-            # Top-Left corner
-            for i in range(corner_segs):
-                th = (1.0 + (i / (corner_segs - 1)) * 0.5) * math.pi
-                pts.append((-hw + r + r * math.cos(th), hh - r + r * math.sin(th)))
-            # Bottom-Left corner
-            for i in range(corner_segs):
-                th = (1.5 + (i / (corner_segs - 1)) * 0.5) * math.pi
-                pts.append((-hw + r + r * math.cos(th), -hh + r + r * math.sin(th)))
+def _segments_intersect(a, b, c, d) -> bool:
+    def orient(p, q, r):
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
 
-    return pts
+    return orient(a, b, c) * orient(a, b, d) < -1e-9 and orient(c, d, a) * orient(c, d, b) < -1e-9
+
+
+def ring_is_simple(ring: Sequence[Tuple[float, float]]) -> bool:
+    """Return False for non-adjacent crossing edges."""
+    for i in range(len(ring)):
+        for j in range(i + 1, len(ring)):
+            if j in (i, (i + 1) % len(ring), (i - 1) % len(ring)):
+                continue
+            if _segments_intersect(
+                ring[i], ring[(i + 1) % len(ring)], ring[j], ring[(j + 1) % len(ring)]
+            ):
+                return False
+    return True
+
+
+def align_ring_correspondence(
+    source: Sequence[Tuple[float, float]],
+    target: Sequence[Tuple[float, float]],
+    preserve_zero_rotation: bool = False,
+) -> List[Tuple[float, float]]:
+    """Cyclically align equal, same-winding, simple rings by minimum distance."""
+    if len(source) != len(target) or len(source) < 3:
+        raise ValueError("Loft correspondence requires equal ring counts.")
+    if not ring_is_simple(source) or not ring_is_simple(target):
+        raise ValueError("Loft correspondence rejects self-crossing rings.")
+    if ring_signed_area(source) * ring_signed_area(target) <= 0:
+        raise ValueError("Loft correspondence requires matching winding.")
+    shifts = [0] if preserve_zero_rotation else range(len(target))
+    shift = min(
+        shifts,
+        key=lambda offset: sum(
+            math.dist(source[i], target[(i + offset) % len(target)]) ** 2
+            for i in range(len(source))
+        ),
+    )
+    return [target[(i + shift) % len(target)] for i in range(len(target))]
 
 
 def generate_adapter_obj(project: Project) -> str:
@@ -159,9 +199,7 @@ def generate_adapter_obj(project: Project) -> str:
     mfg = project.manufacturing
 
     # Determine segment count based on profile complexity
-    num_segs_a = 16 if if_a.profile_type == ProfileType.CIRCLE else 4
-    num_segs_b = 16 if if_b.profile_type == ProfileType.CIRCLE else 4
-    n = max(num_segs_a, num_segs_b)
+    n = 16
 
     outer_a_2d = _sample_profile_2d(if_a, True, mfg.wall_thickness_mm, mfg.clearance_a_mm, n)
     inner_a_2d = _sample_profile_2d(if_a, False, mfg.wall_thickness_mm, mfg.clearance_a_mm, n)
@@ -169,14 +207,8 @@ def generate_adapter_obj(project: Project) -> str:
     outer_b_2d = _sample_profile_2d(if_b, True, mfg.wall_thickness_mm, mfg.clearance_b_mm, n)
     inner_b_2d = _sample_profile_2d(if_b, False, mfg.wall_thickness_mm, mfg.clearance_b_mm, n)
 
-    # Re-sample if counts mismatch
-    n = max(len(outer_a_2d), len(outer_b_2d))
-    if len(outer_a_2d) != n:
-        outer_a_2d = _sample_profile_2d(if_a, True, mfg.wall_thickness_mm, mfg.clearance_a_mm, n)
-        inner_a_2d = _sample_profile_2d(if_a, False, mfg.wall_thickness_mm, mfg.clearance_a_mm, n)
-    if len(outer_b_2d) != n:
-        outer_b_2d = _sample_profile_2d(if_b, True, mfg.wall_thickness_mm, mfg.clearance_b_mm, n)
-        inner_b_2d = _sample_profile_2d(if_b, False, mfg.wall_thickness_mm, mfg.clearance_b_mm, n)
+    outer_b_2d = align_ring_correspondence(outer_a_2d, outer_b_2d, conn.mode.value == "coaxial")
+    inner_b_2d = align_ring_correspondence(inner_a_2d, inner_b_2d, conn.mode.value == "coaxial")
 
     vertices: List[Tuple[float, float, float]] = []
 
@@ -257,11 +289,13 @@ def parse_obj_mesh(
         if len(parts) >= 4 and parts[0] == "v":
             vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
         elif len(parts) >= 4 and parts[0] == "f":
-            faces.append((
-                int(parts[1].split("/")[0]) - 1,
-                int(parts[2].split("/")[0]) - 1,
-                int(parts[3].split("/")[0]) - 1,
-            ))
+            faces.append(
+                (
+                    int(parts[1].split("/")[0]) - 1,
+                    int(parts[2].split("/")[0]) - 1,
+                    int(parts[3].split("/")[0]) - 1,
+                )
+            )
     return vertices, faces
 
 
@@ -294,27 +328,39 @@ def mesh_volume(obj_content: str) -> float:
 
 
 def render_mesh_svg(obj_content: str, job_id: str) -> str:
-    """Render a truthful wireframe projection of the exact offline mesh."""
+    """Render the exact mesh with an aspect-preserving X/Y/Z isometric projection."""
     vertices, faces = parse_obj_mesh(obj_content)
     if not vertices or not faces:
         return "3D preview unavailable in offline mode."
-    min_x, max_x, min_y, max_y, min_z, max_z = mesh_bounds(obj_content)
-    scale = min(320.0 / max(max_x - min_x, 1.0), 220.0 / max(max_z - min_z, 1.0))
 
-    def point(v: Tuple[float, float, float]) -> str:
-        x = 40 + (v[0] - min_x) * scale
-        y = 260 - (v[2] - min_z) * scale
-        return f"{x:.2f},{y:.2f}"
+    def project(vertex: Tuple[float, float, float]) -> Tuple[float, float]:
+        x, y, z = vertex
+        return (x - 0.62 * y, z - 0.36 * y)
+
+    projected = [project(vertex) for vertex in vertices]
+    min_x = min(point[0] for point in projected)
+    max_x = max(point[0] for point in projected)
+    min_y = min(point[1] for point in projected)
+    max_y = max(point[1] for point in projected)
+    width = max(max_x - min_x, 1.0)
+    height = max(max_y - min_y, 1.0)
+    scale = min(340.0 / width, 240.0 / height)
+    offset_x = (400.0 - width * scale) / 2.0
+    offset_y = (300.0 - height * scale) / 2.0
+
+    def point(vertex: Tuple[float, float, float]) -> str:
+        px, py = project(vertex)
+        return f"{offset_x + (px - min_x) * scale:.2f},{offset_y + (max_y - py) * scale:.2f}"
 
     lines = [
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Generated adapter mesh preview">',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Generated adapter mesh preview">',  # noqa: E501
         '<rect width="400" height="300" fill="#0d1117"/>',
     ]
     for a, b, c in faces:
         lines.append(
-            f'<path d="M {point(vertices[a])} L {point(vertices[b])} L {point(vertices[c])} Z" fill="none" stroke="#00e676" stroke-width="0.7" opacity="0.65"/>'
+            f'<path d="M {point(vertices[a])} L {point(vertices[b])} L {point(vertices[c])} Z" fill="#238636" fill-opacity="0.18" stroke="#3fb950" stroke-width="0.7" opacity="0.8"/>'  # noqa: E501
         )
     lines.append(
-        f'<text x="12" y="18" fill="#00e676" font-family="monospace" font-size="11">INTERFACEFORGE 3D PREVIEW - GENERATED MESH</text><text x="12" y="292" fill="#88aa99" font-family="monospace" font-size="10">JOB: {job_id[:12]}</text></svg>'
+        f'<text x="12" y="18" fill="#3fb950" font-family="monospace" font-size="11">INTERFACEFORGE 3D PREVIEW - ISOMETRIC MESH</text><text x="12" y="292" fill="#88aa99" font-family="monospace" font-size="10">JOB: {job_id[:12]}</text></svg>'  # noqa: E501
     )
     return "".join(lines)

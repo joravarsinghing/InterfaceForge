@@ -96,7 +96,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
                   aria-current={isActive ? 'step' : undefined}
                 >
                   <span className="step-number">
-                    {step.isCompleted ? '' : step.id}
+                    {step.id}
                   </span>
                   <span className="step-text">{step.fullName}</span>
                 </Link>

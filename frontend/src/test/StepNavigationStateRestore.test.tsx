@@ -117,4 +117,33 @@ describe('interface step route resolution', () => {
     expect(screen.getByRole('link', { name: /Interface A Capture/i })).toHaveAttribute('href', '/step1/analysis');
     expect(screen.getByRole('link', { name: /Interface B Capture/i })).toHaveAttribute('href', '/step2/analysis');
   });
+  it('keeps the completed export step white when revisiting Step 4', () => {
+    const completedProject: Project = {
+      ...baseProject,
+      state: 'export_ready',
+      interface_a: { ...baseProject.interface_a, approved: true },
+      interface_b: { ...baseProject.interface_b, approved: true },
+      connection: { ...baseProject.connection, length_mm: 45 },
+      current_model_revision: 1,
+      model_revisions: [{
+        model_revision: 1,
+        schema_revision: 1,
+        status: 'current',
+        exports: {},
+        warnings: [],
+        generated_at: '2026-07-29T00:00:00Z',
+      }],
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/step4']}>
+        <StepNavigation project={completedProject} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Generate Model').closest('.step-item')).toHaveClass('active');
+    expect(screen.getByText('Review & Export').closest('.step-item')).toHaveClass('completed');
+    expect(screen.getByText('Review & Export').closest('.step-item')).not.toHaveClass('active');
+    expect(screen.getByText('Review & Export').closest('.step-item')).toHaveTextContent('5');
+  });
 });

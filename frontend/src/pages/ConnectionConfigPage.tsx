@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Connection2DViewer } from '../components/Connection2DViewer';
+import { GeometryPreview } from '../components/GeometryPreview';
 import { patchInterface, updateConnectionConfig, validateConnectionConfig } from '../services/api';
 import type {
   Connection,
@@ -629,11 +629,14 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
           <h3 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#f0f6fc' }}>
             Live 2D Transition Schematic
           </h3>
-          <Connection2DViewer
-            interfaceA={interfaceA}
-            interfaceB={interfaceB}
-            connection={connection}
-            manufacturing={manufacturing}
+          <GeometryPreview
+            project={{
+              ...project!,
+              connection,
+              manufacturing,
+              interface_a: { ...project!.interface_a, fit_mode: fitModeA },
+              interface_b: { ...project!.interface_b, fit_mode: fitModeB },
+            }}
           />
 
           {/* Validation Status Panel */}

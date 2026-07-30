@@ -118,6 +118,23 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     expect(screen.getByRole('button', { name: /Start 3D Generation/i })).not.toBeDisabled();
   });
 
+  it('shows the Live Zoo engine notice and hides mock controls in live mode', async () => {
+    vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+
+    render(
+      <BrowserRouter>
+        <ModelGenerationPage project={{ ...mockProject, provider_mode: 'live' }} />
+      </BrowserRouter>
+    );
+
+    expect(await screen.findByText(/Running in Live Zoo Engine Mode/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Mock Test Scenario:/i)).not.toBeInTheDocument();
+  });
   it('triggers 3D generation and renders staged progress and preview metadata', async () => {
     vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
       is_valid: true,

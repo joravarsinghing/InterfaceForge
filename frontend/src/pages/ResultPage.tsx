@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project, ModelRevision, AgentProposalResult } from '../types/schema';
+import { GeometryPreview } from '../components/GeometryPreview';
 import {
   fetchCurrentKcl,
   fetchExportStatus,
@@ -140,18 +141,21 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   };
 
   const renderExportAction = (format: string, label: string) => {
+    if (format === 'step' && project.provider_mode === 'mock') {
+      return <div><div style={{ color: '#d29922', fontSize: '0.75rem', marginBottom: '0.35rem' }}>Unavailable in offline mode</div><p style={{ color: '#8b949e', fontSize: '0.78rem', margin: 0 }}>Live Zoo export is required for an editable STEP solid.</p></div>;
+    }
     const detail = exportStatus?.formats[format];
     const isGenerating = generatingFormats.has(format) || detail?.status === 'preparing';
     const statusLabel = isGenerating ? 'Generating' : detail?.status === 'unavailable' ? 'Unavailable in offline mode' : detail?.status === 'failed' ? 'Failed' : detail?.status === 'ready' ? 'Ready' : 'Not generated';
     const statusColor = detail?.status === 'failed' ? '#f85149' : detail?.status === 'unavailable' ? '#d29922' : detail?.status === 'ready' ? '#3fb950' : '#8b949e';
     if (detail?.status === 'ready') {
-      return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm" onClick={() => handleExport(format)} style={{ width: '100%' }}>Download {label}</button></div>;
+      return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm export-action-button export-action-button-ready" onClick={() => handleExport(format)} style={{ width: '100%' }}>Download {label}</button></div>;
     }
     if (detail?.status === 'unavailable') {
       return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div></div>;
     }
     const actionLabel = isGenerating ? `Generating ${label}` : detail?.status === 'failed' ? `Retry ${label}` : `Generate ${label}`;
-    return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm" disabled={isGenerating || isStale} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isStale ? 0.5 : 1 }}>{actionLabel}</button></div>;
+    return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-sm export-action-button export-action-button-pending" disabled={isGenerating || isStale} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isStale ? 0.5 : 1 }}>{actionLabel}</button></div>;
   };
   // Stage S9 Revision Handlers
   const handleProposeRevision = async (e: React.FormEvent) => {
@@ -422,27 +426,8 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             <span></span> 3D Geometry Preview
           </h2>
 
-          <div className="preview-canvas-wrapper" style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-            {/* SVG Visual Representation */}
-            <svg width="100%" height="100%" viewBox="0 0 300 220" style={{ maxWidth: '280px' }}>
-              <defs>
-                <linearGradient id="solidGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#238636" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#2ea043" stopOpacity="0.4" />
-                </linearGradient>
-              </defs>
-              {/* Outer Loft Shell */}
-              <polygon points="60,40 240,40 210,180 90,180" fill="url(#solidGrad)" stroke="#3fb950" strokeWidth="2" />
-              {/* Top Interface A Contour */}
-              <ellipse cx="150" cy="40" rx="90" ry="20" fill="#161b22" stroke="#3fb950" strokeWidth="2" />
-              {/* Bottom Interface B Contour */}
-              <ellipse cx="150" cy="180" rx="60" ry="15" fill="#0d1117" stroke="#3fb950" strokeWidth="2" strokeDasharray="3 3" />
-              {/* Center Axis Line */}
-              <line x1="150" y1="20" x2="150" y2="200" stroke="#58a6ff" strokeWidth="1.5" strokeDasharray="4 4" />
-              <text x="155" y="110" fill="#58a6ff" fontSize="11" fontFamily="sans-serif">
-                L = {conn.length_mm}mm ({conn.mode})
-              </text>
-            </svg>
+          <div className="preview-canvas-wrapper" style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+            <GeometryPreview project={project} className="step5-geometry-preview" />
 
             <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(22, 27, 34, 0.85)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #30363d', fontSize: '0.75rem', color: '#8b949e' }}>
               Mock Render Canvas
@@ -452,11 +437,11 @@ export const ResultPage: React.FC<ResultPageProps> = ({
           <div className="preview-metadata-grid" style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
             <div style={{ background: '#0d1117', padding: '0.5rem', borderRadius: '4px', border: '1px solid #21262d' }}>
               <span style={{ color: '#8b949e', display: 'block' }}>Estimated Volume:</span>
-              <strong style={{ color: '#3fb950' }}>{activeRev?.volume_cm3 ? activeRev.volume_cm3.toFixed(2) : '38.45'} cm3</strong>
+              <strong style={{ color: '#3fb950' }}>{exportStatus?.volume_cm3 ?? activeRev?.volume_cm3 ?? 'Not generated'} cm3</strong>
             </div>
             <div style={{ background: '#0d1117', padding: '0.5rem', borderRadius: '4px', border: '1px solid #21262d' }}>
               <span style={{ color: '#8b949e', display: 'block' }}>Bounding Box:</span>
-              <strong style={{ color: '#c9d1d9' }}>60 - 60 - {conn.length_mm} mm</strong>
+              <strong style={{ color: '#c9d1d9' }}>Generated mesh bounds shown in the shared preview</strong>
             </div>
           </div>
         </div>
@@ -566,7 +551,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
               <span></span> CAD File Export
             </h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
-              Download STL, STEP, and KCL artifacts from model revision #{currentRevNumber || 1}. Inspect exported files before manufacturing.
+              Download STL and KCL artifacts from model revision #{currentRevNumber || 1}. Inspect exported files before manufacturing.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -586,7 +571,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
         )}
         {project.provider_mode === 'mock' && (
           <div role="note" style={{ background: "rgba(210, 153, 34, 0.15)", borderLeft: "4px solid #d29922", padding: "0.75rem 1rem", borderRadius: "6px", marginBottom: "1rem", color: "#f0f6fc" }}>
-            Mock/offline artifacts only. STL, STEP, and KCL are not Zoo-authoritative production exports.
+            Mock/offline artifacts only. STL and KCL are inspection artifacts; editable STEP requires Live Zoo.
           </div>
         )}
 
@@ -623,7 +608,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <strong style={{ color: '#f0f6fc', fontSize: '1rem' }}>STEP Solid (.step)</strong>
-                <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>CAD EDITING</span>
+                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>LIVE ZOO REQUIRED</span>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#8b949e', margin: '0 0 0.75rem 0' }}>
                 ISO 10303 B-Rep solid model for downstream CAD inspection or editing.

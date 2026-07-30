@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hasValidCurrentModel } from '../services/workflow';
+import { GeometryPreview } from '../components/GeometryPreview';
 import {
   Project,
   ConnectionValidationResult,
@@ -28,6 +29,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const canProceedToReview = Boolean(project && hasValidCurrentModel(project));
+  const isLiveMode = project?.provider_mode === 'live';
 
   const [readiness, setReadiness] = useState<ConnectionValidationResult | null>(null);
   const [readinessLoading, setReadinessLoading] = useState<boolean>(true);
@@ -220,18 +222,20 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
         </div>
       </div>
 
-      {/* Mock Engine Provider Banner & Control Panel */}
+      {/* Engine Provider Banner & Control Panel */}
       <div className="mock-banner-card" role="note" aria-label="Engine Mode Notice">
         <div className="mock-banner-header">
           <span className="mock-pulse-dot"></span>
           <div>
-            <h3>Running in Mock Engine Mode</h3>
+            <h3>{isLiveMode ? 'Running in Live Zoo Engine Mode' : 'Running in Mock Engine Mode'}</h3>
             <p>
-              Offline execution pipeline active. Real Zoo API calls are disabled per ADR-006. All staged progress, errors, and previews are simulated deterministically.
+              {isLiveMode
+                ? 'Live Zoo Engine provider is active. Staged generation will use the configured Zoo API connection.'
+                : 'Offline execution pipeline active. Real Zoo API calls are disabled per ADR-006. All staged progress, errors, and previews are simulated deterministically.'}
             </p>
           </div>
         </div>
-        <div className="scenario-selector-row">
+        {!isLiveMode && <div className="scenario-selector-row">
           <label htmlFor="mock-scenario-select"><strong>Mock Test Scenario:</strong></label>
           <select
             id="mock-scenario-select"
@@ -247,7 +251,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             <option value="preview_failure">Preview Failure (IF-ENG-004)</option>
             <option value="cancellation">User Cancellation (IF-JOB-002)</option>
           </select>
-        </div>
+        </div>}
       </div>
 
       {/* Pre-flight Readiness Summary & KCL Compilation */}
@@ -459,43 +463,46 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           {isJobSucceeded && activeJob.preview_metadata && (
             <div className="preview-container-card">
               <h3> Generated 3D Adapter Preview</h3>
-              <div className="preview-content-grid">
-                <div
-                  className="preview-svg-wrapper"
-                  dangerouslySetInnerHTML={{ __html: activeJob.preview_metadata.preview_svg }}
-                />
-                <div className="model-summary-panel">
-                  <h4>Model Summary Specs</h4>
-                  <div className="summary-grid">
-                    <div className="summary-item">
-                      <span className="s-label">Model Revision:</span>
-                      <span className="s-val">Rev {activeJob.model_revision}</span>
-                    </div>
-                    <div className="summary-item">
-                      <span className="s-label">Estimated Volume:</span>
-                      <span className="s-val">{activeJob.preview_metadata.volume_cm3} cm3</span>
-                    </div>
-                    <div className="summary-item">
-                      <span className="s-label">Bounding Box:</span>
-                      <span className="s-val">
-                        {activeJob.preview_metadata.bounding_box.x_mm} - {activeJob.preview_metadata.bounding_box.y_mm} - {activeJob.preview_metadata.bounding_box.z_mm} mm
-                      </span>
-                    </div>
-                    <div className="summary-item">
-                      <span className="s-label">Facet Count:</span>
-                      <span className="s-val">{activeJob.preview_metadata.facet_count} facets</span>
-                    </div>
-                    <div className="summary-item">
-                      <span className="s-label">Rendered At:</span>
-                      <span className="s-val">{new Date(activeJob.preview_metadata.render_timestamp).toLocaleString()}</span>
-                    </div>
-                    <div className="summary-item">
-                      <span className="s-label">Status:</span>
-                      <span className="s-val badge badge-success"> CURRENT</span>
+              <GeometryPreview
+                project={project}
+                boundingBox={activeJob.preview_metadata.bounding_box}
+                volumeCm3={activeJob.preview_metadata.volume_cm3}
+                className="preview-svg-wrapper"
+                featured
+                summary={
+                  <div className="model-summary-panel">
+                    <h4>Model Summary Specs</h4>
+                    <div className="summary-grid">
+                      <div className="summary-item">
+                        <span className="s-label">Model Revision:</span>
+                        <span className="s-val">Rev {activeJob.model_revision}</span>
+                      </div>
+                      <div className="summary-item">
+                        <span className="s-label">Estimated Volume:</span>
+                        <span className="s-val">{activeJob.preview_metadata.volume_cm3} cm3</span>
+                      </div>
+                      <div className="summary-item">
+                        <span className="s-label">Bounding Box:</span>
+                        <span className="s-val">
+                          {activeJob.preview_metadata.bounding_box.x_mm} - {activeJob.preview_metadata.bounding_box.y_mm} - {activeJob.preview_metadata.bounding_box.z_mm} mm
+                        </span>
+                      </div>
+                      <div className="summary-item">
+                        <span className="s-label">Facet Count:</span>
+                        <span className="s-val">{activeJob.preview_metadata.facet_count} facets</span>
+                      </div>
+                      <div className="summary-item">
+                        <span className="s-label">Rendered At:</span>
+                        <span className="s-val">{new Date(activeJob.preview_metadata.render_timestamp).toLocaleString()}</span>
+                      </div>
+                      <div className="summary-item">
+                        <span className="s-label">Status:</span>
+                        <span className="s-val badge badge-success"> CURRENT</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                }
+              />
             </div>
           )}
         </section>

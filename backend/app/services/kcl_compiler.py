@@ -191,9 +191,7 @@ def _generate_sketch_kcl(
             r = eff.corner_radius or _get_dim_val(iface, "corner_radius", 5.0)
             r = min(r, half_w * 0.8, half_h * 0.8)  # prevent over-filleting
             lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
-            lines.append(
-                f"  |> startProfile(at = [{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}])"
-            )
+            lines.append(f"  |> startProfile(at = [{offset_x + half_w:.3f}, {offset_y:.3f}])")
             lines.append(f"  |> line(end = [{eff.width - 2 * r:.3f}, 0.000])")
             lines.append(f"  |> tangentialArc(end = [{r:.3f}, {r:.3f}])")
             lines.append(f"  |> line(end = [0.000, {eff.height - 2 * r:.3f}])")
@@ -314,7 +312,7 @@ def compile_project_to_kcl(
     if_b = project.interface_b
 
     kcl_lines: List[str] = [
-        "// InterfaceForge â€” Deterministic KCL Adapter Model",
+        "// InterfaceForge Ã¢â‚¬â€ Deterministic KCL Adapter Model",
         f"// Compiler Version: {COMPILER_VERSION}",
         f"// Schema Version: {project.schema_version}",
         f"// Schema Revision: {project.current_schema_revision}",
