@@ -1,4 +1,4 @@
-﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ConnectionConfigPage } from '../pages/ConnectionConfigPage';
@@ -155,10 +155,11 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText(/L = 40.0 mm/i)).toBeInTheDocument();
+    expect((screen.getByLabelText(/Transition Length/i) as HTMLInputElement).value).toBe('40');
     fireEvent.change(screen.getByLabelText(/Transition Length/i), { target: { value: '70' } });
-    expect(screen.getByText(/L = 70.0 mm/i)).toBeInTheDocument();
+    expect((screen.getByLabelText(/Transition Length/i) as HTMLInputElement).value).toBe('70');
   });
+
   it('displays field-level errors and blocks proceed button when validation fails', async () => {
     vi.mocked(api.validateConnectionConfig).mockResolvedValue({
       is_valid: false,

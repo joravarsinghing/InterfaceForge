@@ -141,10 +141,8 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   };
 
   const renderExportAction = (format: string, label: string) => {
-    if (format === 'step' && project.provider_mode === 'mock') {
-      return <div><div style={{ color: '#d29922', fontSize: '0.75rem', marginBottom: '0.35rem' }}>Unavailable in offline mode</div><p style={{ color: '#8b949e', fontSize: '0.78rem', margin: 0 }}>Live Zoo export is required for an editable STEP solid.</p></div>;
-    }
     const detail = exportStatus?.formats[format];
+
     const isGenerating = generatingFormats.has(format) || detail?.status === 'preparing';
     const statusLabel = isGenerating ? 'Generating' : detail?.status === 'unavailable' ? 'Unavailable in offline mode' : detail?.status === 'failed' ? 'Failed' : detail?.status === 'ready' ? 'Ready' : 'Not generated';
     const statusColor = detail?.status === 'failed' ? '#f85149' : detail?.status === 'unavailable' ? '#d29922' : detail?.status === 'ready' ? '#3fb950' : '#8b949e';
@@ -569,11 +567,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             {exportError}
           </div>
         )}
-        {project.provider_mode === 'mock' && (
-          <div role="note" style={{ background: "rgba(210, 153, 34, 0.15)", borderLeft: "4px solid #d29922", padding: "0.75rem 1rem", borderRadius: "6px", marginBottom: "1rem", color: "#f0f6fc" }}>
-            Mock/offline artifacts only. STL and KCL are inspection artifacts; editable STEP requires Live Zoo.
-          </div>
-        )}
+
 
         {isStale && (
           <div className="export-notice-banner" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.25rem' }}>

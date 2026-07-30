@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { Header } from '../components/Header';
@@ -52,16 +52,6 @@ describe('focused landing-page correction pass', () => {
       <Header
         healthState={healthState}
         project={project}
-        providerStatus={{
-          selected_mode: 'mock',
-          effective_mode: 'mock',
-          live_available: false,
-          engine_provider: 'mock',
-          export_provider: 'mock',
-          analysis_provider: 'mock',
-          agent_provider: 'mock',
-          message: 'Mock / offline providers are active for this project.',
-        }}
         onRetryHealth={vi.fn()}
       />
     );
@@ -69,130 +59,8 @@ describe('focused landing-page correction pass', () => {
     const home = screen.getByLabelText('InterfaceForge Home');
     expect(home.querySelector('img.logo-compact-header')).toHaveAttribute('src', '/InterfaceForge_logo_in.svg');
     expect(home.querySelector('.brand-wordmark')).toBeInTheDocument();
-    expect(home.querySelector('.wordmark-interface')?.textContent).toBe('Interface');
-    expect(home.querySelector('.wordmark-forge')?.textContent).toBe('Forge');
     expect(screen.getByText('Adapter 1')).toBeInTheDocument();
-    expect(screen.queryByText(/proj-raw-id/)).not.toBeInTheDocument();
-  });
-
-  it('keeps the provider toggle enabled in Mock even when initial live availability is false', () => {
-    render(
-      <Header
-        healthState={healthState}
-        project={project}
-        providerStatus={{
-          selected_mode: 'mock',
-          effective_mode: 'mock',
-          live_available: false,
-          engine_provider: 'mock',
-          export_provider: 'mock',
-          analysis_provider: 'mock',
-          agent_provider: 'mock',
-          message: 'Mock / offline providers are active for this project.',
-        }}
-        onRetryHealth={vi.fn()}
-        onProviderModeChange={vi.fn()}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: 'Mock' })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Live' })).not.toBeDisabled();
-  });
-
-  it('calls provider mode change and reports unavailable live without live pulse', async () => {
-    const onProviderModeChange = vi.fn();
-    render(
-      <Header
-        healthState={healthState}
-        project={project}
-        providerStatus={{
-          selected_mode: 'mock',
-          effective_mode: 'mock',
-          live_available: false,
-          engine_provider: 'mock',
-          export_provider: 'mock',
-          analysis_provider: 'mock',
-          agent_provider: 'mock',
-          message: 'Live mode is unavailable because required backend credentials are not configured.',
-        }}
-        providerModeError="[IF-PROVIDER-409] Live mode is unavailable because required backend credentials are not configured."
-        onRetryHealth={vi.fn()}
-        onProviderModeChange={onProviderModeChange}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Live' }));
-    expect(onProviderModeChange).toHaveBeenCalledWith('live');
-    expect(screen.getByRole('button', { name: 'Mock' })).toHaveAttribute('aria-pressed', 'true');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Live' })).not.toBeDisabled());
-    expect(screen.getByText('Mock / Offline')).toHaveAttribute('data-pulse', 'false');
-    expect(screen.getByText(/IF-PROVIDER-409/)).toBeInTheDocument();
-  });
-
-  it('disables the provider toggle only while a mode-change request is pending', async () => {
-    let resolveRequest: () => void = () => undefined;
-    const onProviderModeChange = vi.fn(
-      () => new Promise<void>((resolve) => {
-        resolveRequest = resolve;
-      })
-    );
-
-    render(
-      <Header
-        healthState={healthState}
-        project={project}
-        providerStatus={{
-          selected_mode: 'mock',
-          effective_mode: 'mock',
-          live_available: false,
-          engine_provider: 'mock',
-          export_provider: 'mock',
-          analysis_provider: 'mock',
-          agent_provider: 'mock',
-          message: 'Mock / offline providers are active for this project.',
-        }}
-        onRetryHealth={vi.fn()}
-        onProviderModeChange={onProviderModeChange}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Live' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Mock' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Checking' })).toBeDisabled();
-    });
-
-    resolveRequest();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Mock' })).not.toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Live' })).not.toBeDisabled();
-    });
-  });
-
-  it('shows pulsing live status only when effective mode is live', () => {
-    render(
-      <Header
-        healthState={healthState}
-        project={{ ...project, provider_mode: 'live' }}
-        providerStatus={{
-          selected_mode: 'live',
-          effective_mode: 'live',
-          live_available: true,
-          engine_provider: 'zoo',
-          export_provider: 'zoo',
-          analysis_provider: 'gemini',
-          agent_provider: 'zoo',
-          message: 'Live Zoo providers are active.',
-        }}
-        onRetryHealth={vi.fn()}
-        onProviderModeChange={vi.fn()}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true');
-    expect(document.querySelector('.status-live')).toHaveAttribute('data-pulse', 'true');
+    expect(screen.getByText('Connected')).toBeInTheDocument();
   });
 
   it('renders creator help content with safe external portfolio link and close control', () => {

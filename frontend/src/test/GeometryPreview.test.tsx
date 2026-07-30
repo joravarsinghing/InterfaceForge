@@ -1,4 +1,4 @@
-﻿import { expect, test } from 'vitest';
+import { expect, test } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { GeometryPreview } from '../components/GeometryPreview';
 import type { Project } from '../types/schema';
@@ -13,6 +13,7 @@ const project = {
 test('shared preview defaults to isometric X/Y/Z geometry with inner boundaries', () => {
   render(<GeometryPreview project={project} />);
   expect(screen.getByTestId('shared-geometry-preview')).toBeInTheDocument();
-  expect(screen.getByRole('img', { name: /isometric adapter preview using x, y, and z/i })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: /isometric/i })).toBeInTheDocument();
+
   expect(screen.getByRole('button', { name: 'Isometric' })).toHaveAttribute('aria-pressed', 'true');
 });

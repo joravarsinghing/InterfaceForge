@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from '../App';
 import * as apiModule from '../services/api';
@@ -26,17 +26,6 @@ const mockProviderStatus: ProviderModeStatus = {
   analysis_provider: 'mock',
   agent_provider: 'mock',
   message: 'Mock / offline providers are active for this project.',
-};
-
-const liveProviderStatus: ProviderModeStatus = {
-  selected_mode: 'live',
-  effective_mode: 'live',
-  live_available: true,
-  engine_provider: 'zoo',
-  export_provider: 'zoo',
-  analysis_provider: 'gemini',
-  agent_provider: 'zoo',
-  message: 'Live Zoo providers are active for future generation, export, and Agent requests.',
 };
 
 const mockProject: Project = {
@@ -103,11 +92,10 @@ describe('InterfaceForge Frontend Application Shell (S6A.5 UI Stabilization)', (
     ).toBeInTheDocument();
   });
 
-  it('displays mock/offline provider status and accurate privacy copy in footer', async () => {
+  it('displays connected backend status and accurate privacy copy in footer', async () => {
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText('Mock / Offline')).toBeInTheDocument());
-    expect(screen.getByRole('group', { name: 'Provider mode' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument());
     expect(screen.getByText(/Project state is stored locally by the development backend/i)).toBeInTheDocument();
     expect(screen.getByText(/No user accounts or tracking systems exist/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'GitHub Repository' })).toHaveAttribute('href', 'https://github.com/joravarsinghing/InterfaceForge');
@@ -134,94 +122,5 @@ describe('InterfaceForge Frontend Application Shell (S6A.5 UI Stabilization)', (
       expect(sessionStorage.getItem('interfaceforge_project_id')).toBeNull();
       expect(screen.getByRole('heading', { level: 1, name: /Two interfaces in\. One adapter out\./i })).toBeInTheDocument();
     });
-  });
-
-  it('shows the Mock/Live toggle before project creation with a separate truthful status badge', async () => {
-    render(<App />);
-
-    expect(screen.getByRole('group', { name: 'Provider mode' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mock' })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Live' })).not.toBeDisabled();
-    await waitFor(() => expect(screen.getByText('Mock / Offline')).toHaveAttribute('data-pulse', 'false'));
-  });
-
-  it('validates and stores a pre-project Live selection without creating a project', async () => {
-    vi.mocked(apiModule.validateDefaultProviderMode).mockImplementation(async (mode) => {
-      return mode === 'live' ? liveProviderStatus : mockProviderStatus;
-    });
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Live' }));
-
-    await waitFor(() => expect(apiModule.validateDefaultProviderMode).toHaveBeenCalledWith('live'));
-    await waitFor(() => expect(sessionStorage.getItem('interfaceforge_provider_mode')).toBe('live'));
-    expect(apiModule.createProject).not.toHaveBeenCalled();
-    expect(document.querySelector('.status-live')).toHaveAttribute('data-pulse', 'true');
-  });
-
-  it('shows backend rejection before project creation and keeps Mock active', async () => {
-    vi.mocked(apiModule.validateDefaultProviderMode).mockImplementation(async (mode) => {
-      if (mode === 'live') {
-        throw new Error('[IF-PROVIDER-409] Live mode is unavailable because required backend credentials are not configured.');
-      }
-      return mockProviderStatus;
-    });
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Live' }));
-
-    await waitFor(() => expect(screen.getByText(/IF-PROVIDER-409/)).toBeInTheDocument());
-    expect(sessionStorage.getItem('interfaceforge_provider_mode')).toBe('mock');
-    expect(screen.getByText('Mock / Offline')).toHaveAttribute('data-pulse', 'false');
-    expect(apiModule.createProject).not.toHaveBeenCalled();
-  });
-
-  it('creates the next project with the validated pre-project provider mode', async () => {
-    vi.mocked(apiModule.validateDefaultProviderMode).mockImplementation(async (mode) => {
-      return mode === 'live' ? liveProviderStatus : mockProviderStatus;
-    });
-    vi.mocked(apiModule.createProject).mockResolvedValue({ ...mockProject, provider_mode: 'live' });
-    vi.mocked(apiModule.fetchProviderModeStatus).mockResolvedValue(liveProviderStatus);
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Live' }));
-    await waitFor(() => expect(sessionStorage.getItem('interfaceforge_provider_mode')).toBe('live'));
-    fireEvent.click(screen.getByRole('button', { name: /Start New Project/i }));
-
-    await waitFor(() => expect(apiModule.createProject).toHaveBeenCalledWith('live'));
-  });
-
-  it('restores a validated pre-project Live preference across refresh', async () => {
-    sessionStorage.setItem('interfaceforge_provider_mode', 'live');
-    vi.mocked(apiModule.validateDefaultProviderMode).mockResolvedValue(liveProviderStatus);
-
-    render(<App />);
-
-    await waitFor(() => expect(apiModule.validateDefaultProviderMode).toHaveBeenCalledWith('live'));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true'));
-    expect(document.querySelector('.status-live')).toHaveAttribute('data-pulse', 'true');
-  });
-
-  it('uses the project-scoped provider-mode endpoint after project hydration', async () => {
-    sessionStorage.setItem('interfaceforge_project_id', mockProject.project_id);
-    sessionStorage.setItem('interfaceforge_project_token', mockProject.project_token);
-    vi.mocked(apiModule.fetchProject).mockResolvedValue(mockProject);
-    vi.mocked(apiModule.fetchProviderModeStatus).mockResolvedValueOnce(mockProviderStatus);
-    vi.mocked(apiModule.updateProviderMode).mockResolvedValue({
-      project: { ...mockProject, provider_mode: 'live' },
-      provider_status: liveProviderStatus,
-    });
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Live' }));
-
-    await waitFor(() => {
-      expect(apiModule.updateProviderMode).toHaveBeenCalledWith(mockProject.project_id, 'live', mockProject.project_token);
-    });
-    expect(apiModule.validateDefaultProviderMode).not.toHaveBeenCalledWith('live');
   });
 });

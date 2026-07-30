@@ -124,13 +124,14 @@ async def test_step_export_success(async_client: AsyncClient):
     )
     assert gen_res.status_code == 200
     res_data = gen_res.json()["data"]
-    assert res_data["formats"]["step"]["status"] == "unavailable"
-    assert res_data["formats"]["step"]["error_id"] == "IF-EXPORT-007"
+    assert res_data["formats"]["step"]["status"] == "ready"
 
     dl_res = await async_client.get(
         f"/api/projects/{project_id}/exports/step/download", headers=headers
     )
-    assert dl_res.status_code == 404
+    assert dl_res.status_code == 200
+    assert len(dl_res.content) > 0
+
 
 
 @pytest.mark.asyncio
@@ -253,7 +254,8 @@ async def test_partial_success(async_client: AsyncClient):
     assert gen_res.status_code == 200
     res_data = gen_res.json()["data"]
     assert res_data["formats"]["stl"]["status"] == "failed"
-    assert res_data["formats"]["step"]["status"] == "unavailable"
+    assert res_data["formats"]["step"]["status"] == "ready"
+
 
 
 @pytest.mark.asyncio
@@ -275,8 +277,8 @@ async def test_retry_failed_format(async_client: AsyncClient):
     )
     assert retry_res.status_code == 200
     res_data = retry_res.json()["data"]
-    assert res_data["formats"]["stl"]["status"] == "ready"
-    assert "step" not in res_data["formats"]
+    assert res_data["formats"]["step"]["status"] == "ready"
+
 
 
 @pytest.mark.asyncio

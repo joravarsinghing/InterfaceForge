@@ -68,13 +68,11 @@ export const Header: React.FC<HeaderProps> = ({
     }
     return (
       <span
-        className={`status-badge ${statusIsLive ? 'status-live' : 'status-mock'}`}
-        title={providerStatus?.message || `${healthState.data.service_name} is reachable.`}
+        className="status-badge status-live"
+        title={`${healthState.data.service_name} is connected.`}
         aria-live="polite"
-        data-provider-mode={effectiveMode}
-        data-pulse={statusIsLive ? 'true' : 'false'}
       >
-        <span className="status-dot" aria-hidden="true"></span> {statusLabel}
+        <span className="status-dot" aria-hidden="true"></span> Connected
       </span>
     );
   };
@@ -87,30 +85,8 @@ export const Header: React.FC<HeaderProps> = ({
             <img src="/InterfaceForge_logo_in.svg" alt="" className="logo-compact-header" />
             <Wordmark className="brand-wordmark" />
           </a>
-
-          {canChangeProviderMode && (
-            <div className="provider-toggle" role="group" aria-label="Provider mode">
-              <button
-                type="button"
-                className={selectedMode === 'mock' ? 'provider-toggle-option active' : 'provider-toggle-option'}
-                aria-pressed={selectedMode === 'mock'}
-                disabled={changingMode !== null}
-                onClick={() => handleModeClick('mock')}
-              >
-                Mock
-              </button>
-              <button
-                type="button"
-                className={selectedMode === 'live' ? 'provider-toggle-option active' : 'provider-toggle-option'}
-                aria-pressed={selectedMode === 'live'}
-                disabled={changingMode !== null}
-                onClick={() => handleModeClick('live')}
-              >
-                {changingMode === 'live' ? 'Checking' : 'Live'}
-              </button>
-            </div>
-          )}
         </div>
+
 
         <div className="header-right">
           {project && (

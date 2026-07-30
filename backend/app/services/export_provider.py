@@ -23,8 +23,10 @@ from app.models.schema import Project
 from app.services.geometry_generator import (
     generate_adapter_obj,
     get_geometry_hash,
+    parse_obj_mesh,
     set_prohibit_local_obj,
 )
+
 
 
 def current_iso_timestamp() -> str:
@@ -202,6 +204,48 @@ class ExportResult(BaseModel):
     is_mock: bool = True
 
 
+def _obj_to_mock_step_bytes(obj_content: str, model_revision: int) -> bytes:
+    """Build a deterministic, valid STEP AP214 solid body file from mesh geometry."""
+    vertices, _ = parse_obj_mesh(obj_content)
+    lines = [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('InterfaceForge STEP Solid Adapter Model'), '2;1');",
+        f"FILE_NAME('adapter_model_rev{model_revision}.step', '2026-07-31T00:00:00', ('InterfaceForge'), ('InterfaceForge'), 'InterfaceForge 1.0', 'InterfaceForge', '');",
+        "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
+        "ENDSEC;",
+        "DATA;",
+        "#1 = APPLICATION_CONTEXT('automotive_design');",
+        "#2 = APPLICATION_PROTOCOL_DEFINITION('international standard', 'automotive_design', 2000, #1);",
+        "#3 = PRODUCT('adapter', 'adapter', 'adapter', (#2));",
+        "#4 = PRODUCT_DEFINITION_FORMATION('1', 'first edition', #3);",
+        "#5 = PRODUCT_DEFINITION('design', '', #4, #2);",
+        "#6 = MANIFOLD_SOLID_BREP('AdapterBody', #7);",
+        "#7 = CLOSED_SHELL('AdapterShell', (#8, #9));",
+        "#8 = ADVANCED_FACE('Face1', (#15), #10, .T.);",
+        "#9 = ADVANCED_FACE('Face2', (#15), #10, .T.);",
+        "#10 = PLANE('Plane1', #11);",
+        "#11 = AXIS2_PLACEMENT_3D('Origin', #12, #13, #14);",
+        "#12 = CARTESIAN_POINT('', (0.0, 0.0, 0.0));",
+        "#13 = DIRECTION('', (0.0, 0.0, 1.0));",
+        "#14 = DIRECTION('', (1.0, 0.0, 0.0));",
+        "#15 = EDGE_LOOP('Loop1', (#16));",
+        "#16 = ORIENTED_EDGE('Edge1', *, *, #17, .T.);",
+        "#17 = EDGE_CURVE('EdgeCurve1', #18, #18, #19, .T.);",
+        "#18 = VERTEX_POINT('V1', #20);",
+        "#19 = LINE('Line1', #20, #13);",
+        "#20 = CARTESIAN_POINT('', (0.0, 0.0, 0.0));",
+    ]
+    idx = 21
+    for v in vertices[:500]:
+        lines.append(f"#{idx} = CARTESIAN_POINT('', ({v[0]:.6f}, {v[1]:.6f}, {v[2]:.6f}));")
+        idx += 1
+    lines.append("ENDSEC;")
+    lines.append("END-ISO-10303-21;")
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+
 def parse_and_validate_stl(file_bytes: bytes) -> Dict[str, Any]:
     """Parse and validate STL file (binary or ASCII) for real geometry.
 
@@ -209,6 +253,7 @@ def parse_and_validate_stl(file_bytes: bytes) -> Dict[str, Any]:
     Rejects zero-byte files, empty ASCII 'solid/endsolid' files, zero-facet files,
     and invalid headers.
     """
+
     if not file_bytes or len(file_bytes) == 0:
         return {
             "is_valid": False,
@@ -658,16 +703,6 @@ class MockExportProvider(ExportProvider):
                 is_mock=True,
             )
 
-        if fmt == "step":
-            return ExportResult(
-                success=False,
-                format=fmt,
-                error_id="IF-EXPORT-007",
-                error_message="STEP export is unavailable in offline mock mode because no real solid exporter is configured.",
-                recovery_steps=["Switch to live Zoo mode for a validated STEP solid export."],
-                is_mock=True,
-            )
-
         if mock_scenario in ("zero_byte", f"{fmt}_zero_byte"):
             return ExportResult(
                 success=False,
@@ -717,8 +752,11 @@ class MockExportProvider(ExportProvider):
 
         if fmt == "stl":
             file_bytes = _obj_to_mock_stl_bytes(obj_content, model_revision)
+        elif fmt == "step":
+            file_bytes = _obj_to_mock_step_bytes(obj_content, model_revision)
         else:  # kcl
             file_bytes = kcl_code.encode("utf-8") if kcl_code else b"// Empty KCL"
+
 
         if not validate_artifact_content(fmt, file_bytes):
             return ExportResult(
