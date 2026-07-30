@@ -109,9 +109,9 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: /3D Model Generation & Staged Pipeline/i })).toBeInTheDocument();
     expect(screen.getByText(/Running in Mock Engine Mode/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Mock Test Scenario:/i)).toBeInTheDocument();
 
     await waitFor(() => {
+
       expect(screen.getByText(/Both Interface A and Interface B are approved/i)).toBeInTheDocument();
     });
 

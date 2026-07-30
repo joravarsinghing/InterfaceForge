@@ -94,8 +94,9 @@ def test_kcl_parameter_mapping_coaxial():
     assert "interface_b_outer_diameter_mm = 40.000" in code
     assert "transition_length_mm = 50.000" in code
     assert "wall_thickness_mm = 2.400" in code
-    assert "outer_solid = loft([sketch_outer_a, sketch_outer_b])" in code
-    assert "inner_void = loft([sketch_inner_a, sketch_inner_b])" in code
+    assert "outer_solid = loft([" in code
+    assert "inner_void = loft([" in code
+
     assert "adapter_model = subtract(outer_solid, tools = [inner_void])" in code
 
 

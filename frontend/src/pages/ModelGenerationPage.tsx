@@ -235,23 +235,6 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             </p>
           </div>
         </div>
-        {!isLiveMode && <div className="scenario-selector-row">
-          <label htmlFor="mock-scenario-select"><strong>Mock Test Scenario:</strong></label>
-          <select
-            id="mock-scenario-select"
-            className="form-select"
-            value={selectedScenario}
-            onChange={(e) => setSelectedScenario(e.target.value as MockScenario)}
-            disabled={isJobActive}
-          >
-            <option value="success">Successful Model (Full Pass)</option>
-            <option value="engine_validation_failure">Engine Validation Failure (IF-ENG-001)</option>
-            <option value="timeout">Timeout Failure (IF-ENG-002)</option>
-            <option value="malformed_response">Malformed Response Failure (IF-ENG-003)</option>
-            <option value="preview_failure">Preview Failure (IF-ENG-004)</option>
-            <option value="cancellation">User Cancellation (IF-JOB-002)</option>
-          </select>
-        </div>}
       </div>
 
       {/* Pre-flight Readiness Summary & KCL Compilation */}

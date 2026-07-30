@@ -1,4 +1,4 @@
-﻿"""Deterministic KCL Compiler and Service Layer (Stage S5A).
+"""Deterministic KCL Compiler and Service Layer (Stage S5A).
 
 Converts validated canonical project data into deterministic, readable KCL code
 without calling Zoo per ADR-001 and ADR-002.
@@ -336,13 +336,16 @@ def compile_project_to_kcl(
     kcl_lines.append(f"// LoftPlan sections: {len(plan.sections)} points: {plan.point_count}")
     kcl_lines.append(f"// center = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}]")
     if conn.mode == ConnectionMode.ANGLED:
+        kcl_lines.append(f"// top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
         kcl_lines.append(f"// |> rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
+
     kcl_lines.append("")
     for index, section in enumerate(plan.sections):
-        plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.6f})"
+        plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.3f})"
         kcl_lines.append(_generate_section_kcl(section.outer, f"outer_{index}", plane))
         kcl_lines.append(_generate_section_kcl(section.inner, f"inner_{index}", plane))
         kcl_lines.append("")
+
     outer_names = ", ".join(f"sketch_outer_{i}" for i in range(len(plan.sections)))
     inner_names = ", ".join(f"sketch_inner_{i}" for i in range(len(plan.sections)))
     kcl_lines.append(f"outer_solid = loft([{outer_names}])")

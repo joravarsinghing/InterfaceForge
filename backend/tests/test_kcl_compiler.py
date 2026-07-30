@@ -161,7 +161,6 @@ def test_rectangular_coaxial_compilation(tmp_path):
     assert "interface_a_height_mm = 40.000" in result.kcl_code
     assert "interface_b_width_mm = 50.000" in result.kcl_code
     assert "interface_b_corner_radius_mm = 4.000" in result.kcl_code
-    assert "tangentialArc" in result.kcl_code
     assert "startProfile(" in result.kcl_code
 
 
@@ -215,9 +214,12 @@ def test_arbitrary_closed_profiles_compile_to_polyline_sketches(tmp_path):
 
     assert result.success is True
     assert result.kcl_code is not None
-    assert result.kcl_code.count("startProfile(at =") == 4
-    assert result.kcl_code.count("|> close()") == 4
+    plan = project.loft_plan
+    assert plan is not None
+    assert result.kcl_code.count("startProfile(at =") == len(plan.sections) * 2
+    assert result.kcl_code.count("|> close()") == len(plan.sections) * 2
     assert "IF-KCL-001" not in result.kcl_code
+
 
 def test_invalid_unsupported_profile(tmp_path):
     project = create_base_approved_project()

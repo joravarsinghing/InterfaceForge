@@ -1,4 +1,4 @@
-﻿"""Canonical design schema and versioned models per ADR-001 and ADR-005."""
+"""Canonical design schema and versioned models per ADR-001 and ADR-005."""
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -208,11 +208,21 @@ class LoftPlan(BaseModel):
     outer_b: List[Point2D]
     inner_a: List[Point2D]
     inner_b: List[Point2D]
+    target_a: List[Point2D] = Field(default_factory=list)
+    target_b: List[Point2D] = Field(default_factory=list)
+    mating_a: List[Point2D] = Field(default_factory=list)
+    mating_b: List[Point2D] = Field(default_factory=list)
+    fit_mode_a: FitMode = FitMode.FIT_OVER
+    fit_mode_b: FitMode = FitMode.FIT_OVER
+    clearance_a_mm: float = 0.0
+    clearance_b_mm: float = 0.0
+    wall_thickness_mm: float = 2.0
     outer_shift: int = 0
     outer_reversed: bool = False
     inner_shift: int = 0
     inner_reversed: bool = False
     sections: List[LoftSection]
+
 
 class CalibrationBoundary(BaseModel):
     """Backend-owned boundary shared by rendering, snapping, and calibration."""

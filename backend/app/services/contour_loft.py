@@ -1,4 +1,4 @@
-﻿"""Deterministic arbitrary closed-contour preparation and hollow loft helpers.
+"""Deterministic arbitrary closed-contour preparation and hollow loft helpers.
 
 The module deliberately has no primitive classifier.  It operates on the approved
 outer loop only; holes remain a deferred capability for this experiment.
@@ -11,9 +11,12 @@ from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 try:
-    from shapely.geometry import Polygon
+    from shapely.geometry import Polygon  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - exercised only in minimal installs
+
     Polygon = None  # type: ignore[assignment,misc]
+
+from app.models.schema import FitMode
 
 Point = tuple[float, float]
 
@@ -33,6 +36,18 @@ class CorrespondenceDiagnostics:
     seam_cost: float
     correspondence_lines: list[tuple[Point, Point]]
 
+
+@dataclass(frozen=True)
+class InterfaceContourSpec:
+    target: list[Point]
+    fit_mode: FitMode
+    clearance: float
+    mating: list[Point]
+    outer: list[Point]
+    inner: list[Point]
+    wall_thickness: float
+
+
 @dataclass(frozen=True)
 class PreparedContours:
     outer_a: list[Point]
@@ -40,6 +55,8 @@ class PreparedContours:
     inner_a: list[Point]
     inner_b: list[Point]
     point_count: int
+    spec_a: InterfaceContourSpec | None = None
+    spec_b: InterfaceContourSpec | None = None
 
 
 def signed_area(points: Sequence[Point]) -> float:
@@ -108,15 +125,21 @@ def clean_contour(points: Iterable[Point], *, min_segment: float = 1e-6) -> list
     return result
 
 
+def ensure_ccw(points: Iterable[Point]) -> list[Point]:
+    """Enforce counter-clockwise (positive signed area) winding without translating points."""
+    clean = clean_contour(points)
+    if signed_area(clean) < 0:
+        return list(reversed(clean))
+    return clean
+
+
 def normalize_contour(points: Iterable[Point]) -> list[Point]:
     """Center a contour without changing its scale or shape."""
     clean = clean_contour(points)
     cx = sum(p[0] for p in clean) / len(clean)
     cy = sum(p[1] for p in clean) / len(clean)
     result = [(x - cx, y - cy) for x, y in clean]
-    if signed_area(result) < 0:
-        result.reverse()
-    return result
+    return ensure_ccw(result)
 
 
 def resample_closed(points: Sequence[Point], count: int) -> list[Point]:
@@ -136,7 +159,7 @@ def resample_closed(points: Sequence[Point], count: int) -> list[Point]:
                 result.append((a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction))
                 break
             walked += length
-    return result
+    return ensure_ccw(result)
 
 
 def choose_point_count(a: Sequence[Point], b: Sequence[Point], tolerance_mm: float = 0.2) -> int:
@@ -224,9 +247,6 @@ def align_contours_with_diagnostics(
             cost, tangent_cost, displacement_cost, seam_cost = _correspondence_cost(
                 source_clean, aligned, shift=shift, coaxial=coaxial
             )
-            # Prefer zero-crossing candidates. If two dissimilar valid profiles
-            # have no zero-crossing straight-line map, retain the least-crossing
-            # monotonic map so generation remains possible and diagnostics expose it.
             cost += 1_000_000.0 * crossing_count
             diagnostics = CorrespondenceDiagnostics(
                 shift=shift,
@@ -249,85 +269,259 @@ def align_contours(source: Sequence[Point], target: Sequence[Point], *, coaxial:
     """Compatibility wrapper returning the selected target ring only."""
     return align_contours_with_diagnostics(source, target, coaxial=coaxial)[0]
 
-def inward_offset(points: Sequence[Point], distance: float) -> list[Point]:
-    if distance <= 0:
-        raise ContourGeometryError("Wall thickness and clearance leave no positive offset distance.")
-    xs = [point[0] for point in points]
-    ys = [point[1] for point in points]
-    if distance >= min(max(xs) - min(xs), max(ys) - min(ys)) / 2.0:
-        raise ContourGeometryError("Inner offset collapses at this wall thickness.")
-    if Polygon is not None:
-        polygon = Polygon(points)
-        inner = polygon.buffer(-distance, join_style=2, mitre_limit=2.0)
-        if inner.is_empty or inner.geom_type != "Polygon":
-            raise ContourGeometryError("Inner offset collapses or becomes disconnected at this wall thickness.")
-        if not inner.is_valid or inner.area <= 1e-8:
-            raise ContourGeometryError("Inner offset is invalid or has insufficient area.")
-        coords = list(inner.exterior.coords)[:-1]
-        return normalize_contour(coords)
 
-    # Dependency-free fallback: intersect adjacent inward-shifted edge lines.
-    # It is exact for convex profiles and rejects concave cases that become unsafe.
-    clean = normalize_contour(points)
-    reduced: list[Point] = []
-    for point in clean:
-        while len(reduced) >= 2 and abs(_orientation(reduced[-2], reduced[-1], point)) <= 0.5:
-            reduced.pop()
-        reduced.append(point)
-    if len(reduced) >= 3 and abs(_orientation(reduced[-2], reduced[-1], reduced[0])) <= 0.5:
-        reduced.pop()
-    clean = reduced
-    if signed_area(clean) < 0:
-        clean.reverse()
-    shifted: list[tuple[Point, Point]] = []
-    for i, start in enumerate(clean):
-        end = clean[(i + 1) % len(clean)]
-        dx, dy = end[0] - start[0], end[1] - start[1]
+def simplify_corners(points: Sequence[Point], angle_threshold_deg: float = 1.0) -> list[Point]:
+    clean = clean_contour(points)
+    n = len(clean)
+    if n <= 4:
+        return clean
+    corners: list[Point] = []
+    for i in range(n):
+        p_prev = clean[(i - 1) % n]
+        p_curr = clean[i]
+        p_next = clean[(i + 1) % n]
+        v1 = (p_curr[0] - p_prev[0], p_curr[1] - p_prev[1])
+        v2 = (p_next[0] - p_curr[0], p_next[1] - p_curr[1])
+        l1 = math.hypot(*v1)
+        l2 = math.hypot(*v2)
+        if l1 > 1e-6 and l2 > 1e-6:
+            cos_a = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))
+            if cos_a < math.cos(math.radians(angle_threshold_deg)):
+                corners.append(p_curr)
+    return corners if len(corners) >= 3 else clean
+
+
+def offset_contour(points: Sequence[Point], distance: float) -> list[Point]:
+    """Offset a closed contour by distance (+ for outward, - for inward) in its exact coordinate frame."""
+    if abs(distance) <= 1e-8:
+        return ensure_ccw(points)
+
+    clean = ensure_ccw(points)
+    target_count = len(clean)
+
+    if Polygon is not None:
+        poly = Polygon(clean)
+        if not poly.is_valid:
+            raise ContourGeometryError("Input contour is invalid for polygon offset.")
+        buffered = poly.buffer(distance, join_style=2, mitre_limit=5.0)
+        if buffered.is_empty:
+            raise ContourGeometryError("Offset collapses at this distance.")
+        if buffered.geom_type != "Polygon":
+            raise ContourGeometryError("Offset splits into multiple polygons or disconnected geometry.")
+        if not buffered.is_valid or buffered.area <= 1e-8:
+            raise ContourGeometryError("Offset is invalid or has insufficient area.")
+        coords = list(buffered.exterior.coords)
+        if len(coords) > 1 and math.dist(coords[0], coords[-1]) < 1e-6:
+            coords.pop()
+        if len(coords) == target_count:
+            return ensure_ccw(coords)
+        resampled = resample_closed(coords, target_count)
+        return ensure_ccw(resampled)
+
+    simplified = simplify_corners(clean)
+    n = len(simplified)
+    normals: list[Point] = []
+    for i in range(n):
+        p1 = simplified[i]
+        p2 = simplified[(i + 1) % n]
+        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
         length = math.hypot(dx, dy)
         if length <= 1e-8:
-            raise ContourGeometryError("Inner offset contains a zero-length edge.")
-        nx, ny = -dy / length, dx / length
-        shifted.append(((start[0] + distance * nx, start[1] + distance * ny),
-                        (end[0] + distance * nx, end[1] + distance * ny)))
-    result: list[Point] = []
-    for i, (_, edge_end) in enumerate(shifted):
-        prev_start, prev_end = shifted[i - 1]
-        ax, ay = prev_start; bx, by = prev_end
-        cx, cy = shifted[i][0]; dx, dy = edge_end
-        cross = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx)
-        if abs(cross) <= 1e-8:
-            raise ContourGeometryError("Inner offset has parallel adjacent edges and collapses.")
-        t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / cross
-        result.append((ax + t * (bx - ax), ay + t * (by - ay)))
-    if not is_simple(result) or abs(signed_area(result)) <= 1e-8:
-        cx = sum(point[0] for point in clean) / len(clean)
-        cy = sum(point[1] for point in clean) / len(clean)
-        mean_radius = sum(math.dist((cx, cy), point) for point in clean) / len(clean)
-        if mean_radius <= distance:
-            raise ContourGeometryError("Inner offset self-intersects or collapses at this wall thickness.")
-        factor = (mean_radius - distance) / mean_radius
-        radial = [(cx + (x - cx) * factor, cy + (y - cy) * factor) for x, y in clean]
-        if not is_simple(radial) or abs(signed_area(radial)) <= 1e-8:
-            raise ContourGeometryError("Inner offset self-intersects or collapses at this wall thickness.")
-        return normalize_contour(radial)
-    return normalize_contour(result)
+            normals.append((0.0, 0.0))
+        else:
+            normals.append((dy / length, -dx / length))
+
+    offset_corners: list[Point] = []
+    for i in range(n):
+        n1 = normals[(i - 1) % n]
+        n2 = normals[i]
+        sx, sy = n1[0] + n2[0], n1[1] + n2[1]
+        s_len = math.hypot(sx, sy)
+        if s_len <= 1e-8:
+            raise ContourGeometryError("Offset collapses or forms degenerate spike.")
+        bx, by = sx / s_len, sy / s_len
+        dot = bx * n1[0] + by * n1[1]
+        if dot <= 0.01:
+            raise ContourGeometryError("Offset collapses at sharp vertex.")
+        k = min(5.0, 1.0 / max(dot, 0.2))
+        p = simplified[i]
+        offset_corners.append((p[0] + distance * k * bx, p[1] + distance * k * by))
+
+    offset_clean = clean_contour(offset_corners)
+    if not is_simple(offset_clean) or abs(signed_area(offset_clean)) <= 1e-8:
+        raise ContourGeometryError("Offset self-intersects or collapses at this distance.")
+
+    if len(offset_clean) == target_count:
+        return ensure_ccw(offset_clean)
+    result = resample_closed(offset_clean, target_count)
+    return ensure_ccw(result)
+
+
+
+
+
+def offset_outward(points: Sequence[Point], distance: float) -> list[Point]:
+    if distance < 0:
+        raise ContourGeometryError("Outward offset distance must be non-negative.")
+    return offset_contour(points, distance)
+
+
+def offset_inward(points: Sequence[Point], distance: float) -> list[Point]:
+    if distance < 0:
+        raise ContourGeometryError("Inward offset distance must be non-negative.")
+    return offset_contour(points, -distance)
+
+
+def inward_offset(points: Sequence[Point], distance: float) -> list[Point]:
+    """Compatibility wrapper for inward offset."""
+    return offset_inward(points, distance)
+
+
+def _dist_to_segment(p: Point, a: Point, b: Point) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-12:
+        return math.dist(p, a)
+    t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length_sq))
+    proj = (a[0] + t * dx, a[1] + t * dy)
+    return math.dist(p, proj)
+
+
+def dist_to_loop_boundary(p: Point, loop: Sequence[Point]) -> float:
+    n = len(loop)
+    if n < 3:
+        return 0.0
+    return min(_dist_to_segment(p, loop[i], loop[(i + 1) % n]) for i in range(n))
+
+
+def validate_profile_offset_pair(
+    *,
+    outer: Sequence[Point],
+    inner: Sequence[Point],
+    target: Sequence[Point],
+    fit_mode: FitMode,
+    clearance: float,
+    wall_thickness: float,
+) -> None:
+    if len(outer) < 3 or len(inner) < 3:
+        raise ContourGeometryError("Loops must have at least 3 points.")
+
+    if not is_simple(outer) or not is_simple(inner):
+        raise ContourGeometryError("Offset loop self-intersects or is invalid.")
+
+    area_outer = signed_area(outer)
+    area_inner = signed_area(inner)
+    if area_outer <= 1e-8 or area_inner <= 1e-8:
+        raise ContourGeometryError("Offset loop collapsed to near-zero area.")
+    if area_inner >= area_outer:
+        raise ContourGeometryError("Inner loop area must be strictly smaller than outer loop area.")
+
+    if _crossing_count(outer, inner) > 0:
+        raise ContourGeometryError("Inner and outer wall boundaries intersect each other.")
+
+    n_in = len(inner)
+    n_out = len(outer)
+    for i in range(n_in):
+        a, b = inner[i], inner[(i + 1) % n_in]
+        for j in range(n_out):
+            c, d = outer[j], outer[(j + 1) % n_out]
+            if _segments_intersect(a, b, c, d):
+                raise ContourGeometryError("Inner and outer wall boundary segments cross.")
+
+    tolerance = max(0.15, 0.05 * wall_thickness)
+    for i in range(n_in):
+        p1, p2 = inner[i], inner[(i + 1) % n_in]
+        mid = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
+        dist = dist_to_loop_boundary(mid, outer)
+        if abs(dist - wall_thickness) > tolerance + 1e-3:
+            raise ContourGeometryError(
+                f"Measured wall thickness at inner midpoint ({dist:.3f} mm) deviates from requested ({wall_thickness:.3f} mm) beyond tolerance ({tolerance:.3f} mm)."
+            )
+
+
+    min_inner_clearance = min(dist_to_loop_boundary(p, outer) for p in inner)
+    if min_inner_clearance < 0.1:
+        raise ContourGeometryError("Local collapse or apex bridge detected on inner boundary.")
+
+
+def prepare_interface_contours(
+    target_contour: Sequence[Point],
+    fit_mode: FitMode,
+    clearance: float,
+    wall_thickness: float,
+) -> InterfaceContourSpec:
+    target = ensure_ccw(target_contour)
+    if clearance < 0:
+        raise ContourGeometryError("Clearance cannot be negative.")
+    if wall_thickness <= 0:
+        raise ContourGeometryError("Wall thickness must be positive.")
+
+    if fit_mode == FitMode.FIT_OVER:
+        mating = offset_outward(target, clearance)
+        outer = offset_outward(mating, wall_thickness)
+        inner = mating
+    elif fit_mode == FitMode.FIT_INSIDE:
+        mating = offset_inward(target, clearance)
+        outer = mating
+        inner = offset_inward(mating, wall_thickness)
+    else:
+        raise ContourGeometryError(f"Unsupported fit mode: {fit_mode}")
+
+    validate_profile_offset_pair(
+        outer=outer,
+        inner=inner,
+        target=target,
+        fit_mode=fit_mode,
+        clearance=clearance,
+        wall_thickness=wall_thickness,
+    )
+
+    return InterfaceContourSpec(
+        target=target,
+        fit_mode=fit_mode,
+        clearance=clearance,
+        mating=mating,
+        outer=outer,
+        inner=inner,
+        wall_thickness=wall_thickness,
+    )
 
 
 def prepare_contours(
-    contour_a: Iterable[Point], contour_b: Iterable[Point],
-    *, wall_thickness: float, clearance_a: float, clearance_b: float,
-    tolerance_mm: float = 0.2, coaxial: bool = False,
+    contour_a: Iterable[Point],
+    contour_b: Iterable[Point],
+    *,
+    wall_thickness: float,
+    clearance_a: float,
+    clearance_b: float,
+    fit_mode_a: FitMode = FitMode.FIT_OVER,
+    fit_mode_b: FitMode = FitMode.FIT_OVER,
+    tolerance_mm: float = 0.2,
+    coaxial: bool = False,
 ) -> PreparedContours:
-    outer_a = normalize_contour(contour_a)
-    outer_b = normalize_contour(contour_b)
-    count = choose_point_count(outer_a, outer_b, tolerance_mm)
-    outer_a = resample_closed(outer_a, count)
-    outer_b = resample_closed(outer_b, count)
-    outer_b = align_contours(outer_a, outer_b, coaxial=coaxial)
-    inner_a = inward_offset(outer_a, wall_thickness + clearance_a)
-    inner_b = inward_offset(outer_b, wall_thickness + clearance_b)
-    inner_a = resample_closed(inner_a, count)
-    inner_b = align_contours(inner_a, resample_closed(inner_b, count), coaxial=coaxial)
-    return PreparedContours(outer_a, outer_b, inner_a, inner_b, count)
+    target_a = normalize_contour(contour_a)
+    target_b = normalize_contour(contour_b)
+    count = choose_point_count(target_a, target_b, tolerance_mm)
 
+    raw_target_a = resample_closed(target_a, count)
+    raw_target_b = resample_closed(target_b, count)
+    raw_target_b = align_contours(raw_target_a, raw_target_b, coaxial=coaxial)
 
+    spec_a = prepare_interface_contours(raw_target_a, fit_mode_a, clearance_a, wall_thickness)
+    spec_b = prepare_interface_contours(raw_target_b, fit_mode_b, clearance_b, wall_thickness)
+
+    outer_a = spec_a.outer
+    outer_b, _ = align_contours_with_diagnostics(outer_a, spec_b.outer, coaxial=coaxial)
+
+    inner_a = spec_a.inner
+    inner_b, _ = align_contours_with_diagnostics(inner_a, spec_b.inner, coaxial=coaxial)
+
+    return PreparedContours(
+        outer_a=outer_a,
+        outer_b=outer_b,
+        inner_a=inner_a,
+        inner_b=inner_b,
+        point_count=count,
+        spec_a=spec_a,
+        spec_b=spec_b,
+    )

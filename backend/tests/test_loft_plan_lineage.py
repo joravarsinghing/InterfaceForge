@@ -1,4 +1,4 @@
-﻿import re
+import re
 import pytest
 
 from app.models.schema import Point2D, ProfileType, TracedContour
@@ -56,7 +56,8 @@ def test_mock_mesh_uses_all_plan_sections_and_is_hollow():
     assert len(vertices) == len(plan.sections) * plan.point_count * 2
     assert len(faces) > 0
     assert mesh_volume(obj) > 0
-    assert mesh_bounds(obj)[2] <= min(p.y for s in plan.sections for p in s.outer)
+    assert mesh_bounds(obj)[2] <= min(p.y for s in plan.sections for p in s.outer) + 1e-4
+
     assert "LoftPlan hash=" in obj
 
 

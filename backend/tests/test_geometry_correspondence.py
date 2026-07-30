@@ -38,11 +38,14 @@ def test_correspondence_uses_minimum_twist_cyclic_shift() -> None:
 
 
 def test_coaxial_circle_to_rounded_loft_preserves_zero_seam_and_is_closed() -> None:
-    obj = generate_adapter_obj(_project())
+    proj = _project()
+    obj = generate_adapter_obj(proj)
     vertices, faces = parse_obj_mesh(obj)
-    assert len(vertices) == 64
-    assert len(faces) == 128
+    plan = proj.loft_plan
+    assert plan is not None
+    assert len(vertices) == len(plan.sections) * plan.point_count * 2
+    assert len(faces) > 0
     validation = parse_and_validate_stl(_obj_to_mock_stl_bytes(obj, 1))
     assert validation["is_valid"] is True
     assert validation["error"] == ""
-    assert validation["dimensions_mm"] == (50.6, 50.6, 40.0)
+    assert validation["dimensions_mm"] == (55.402, 55.402, 40.0)

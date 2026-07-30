@@ -1,4 +1,4 @@
-﻿"""3D Geometry Generator for InterfaceForge (Stage S8.1).
+"""3D Geometry Generator for InterfaceForge (Stage S8.1).
 
 Converts canonical project geometry specifications into deterministic 3D Wavefront OBJ mesh
 representations for downstream STL and STEP conversions via Zoo File Format API
@@ -11,7 +11,13 @@ from typing import List, Sequence, Tuple
 
 from app.models.schema import Interface, ProfileType, Project
 from app.services.loft_plan import ensure_loft_plan
-from app.services.contour_loft import align_contours_with_diagnostics
+from app.services.contour_loft import (
+    align_contours_with_diagnostics,
+    inward_offset,
+    normalize_contour,
+    resample_closed,
+)
+
 
 _PROHIBIT_LOCAL_OBJ_GENERATION: bool = False
 _LOCAL_OBJ_CALL_COUNT: int = 0
