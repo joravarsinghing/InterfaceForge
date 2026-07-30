@@ -9,13 +9,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
+from app.core.exceptions import APIError
 from app.main import app
 from app.models.generation import (
     GenerationJob,
     GenerationStage,
     JobStatus,
 )
-from app.models.schema import WorkflowState
+from app.models.schema import ValidationIssue, WorkflowState
+from app.services.kcl_compiler import KCLCompileResult
 from app.services.engine_provider import ZooEngineProvider, redact_secrets
 from app.services.generation_job_service import GenerationJobService
 from app.services.project_service import ProjectService
@@ -82,6 +84,32 @@ def test_successful_mock_execution(approved_project):
     assert proj_data["state"] == WorkflowState.MODEL_CURRENT
     assert proj_data["current_model_revision"] == 1
     assert proj_data["last_known_good_model_revision"] == 1
+
+
+@pytest.mark.asyncio
+async def test_generation_preserves_underlying_kcl_compiler_error(approved_project):
+    compiler_error = ValidationIssue(
+        id='IF-KCL-006',
+        message='Installed Zoo KCL parser is unavailable: missing execute_code_and_export',
+        field='kcl_code',
+        recovery_steps=['Install zoo-kcl in venv314.'],
+    )
+    failed_compile = KCLCompileResult(
+        success=False,
+        schema_revision=approved_project.current_schema_revision,
+        errors=[compiler_error],
+    )
+
+    with patch.object(ProjectService, 'compile_kcl', return_value=failed_compile):
+        with pytest.raises(APIError) as exc_info:
+            await GenerationJobService().start_generation_job(
+                approved_project.project_id,
+                project_token=approved_project.project_token,
+            )
+
+    assert exc_info.value.error_id == 'IF-KCL-006'
+    assert 'execute_code_and_export' in exc_info.value.message
+    assert exc_info.value.details['compiler_errors'][0]['id'] == 'IF-KCL-006'
 
 
 def test_duplicate_job_rejection(approved_project):

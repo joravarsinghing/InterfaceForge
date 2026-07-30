@@ -116,10 +116,10 @@ Run via `scripts/test_zoo_live_exports.py` (`RUN_ZOO_LIVE_EXPORTS=1`, `ENGINE_PR
 
 To run all offline automated verification checks locally:
 ```powershell
-venv\Scripts\python.exe scripts/run_all_checks.py
+venv314\Scripts\python.exe scripts/run_all_checks.py
 ```
 
 To execute safety-gated live Zoo API export geometry audit:
 ```powershell
-$env:RUN_ZOO_LIVE_EXPORTS="1"; $env:ENGINE_PROVIDER="zoo"; $env:EXPORT_PROVIDER="zoo"; venv\Scripts\python.exe scripts/test_zoo_live_exports.py
+$env:RUN_ZOO_LIVE_EXPORTS="1"; $env:ENGINE_PROVIDER="zoo"; $env:EXPORT_PROVIDER="zoo"; venv314\Scripts\python.exe scripts/test_zoo_live_exports.py
 ```

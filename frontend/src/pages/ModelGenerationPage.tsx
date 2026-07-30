@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { hasValidCurrentModel } from '../services/workflow';
 import {
   Project,
   ConnectionValidationResult,
@@ -26,6 +27,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
   onProjectUpdate,
 }) => {
   const navigate = useNavigate();
+  const canProceedToReview = Boolean(project && hasValidCurrentModel(project));
 
   const [readiness, setReadiness] = useState<ConnectionValidationResult | null>(null);
   const [readinessLoading, setReadinessLoading] = useState<boolean>(true);
@@ -516,7 +518,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           type="button"
           className="btn btn-primary"
           onClick={() => navigate('/step5')}
-          disabled={!isJobSucceeded && project.state !== 'model_current'}
+          disabled={!isJobSucceeded && !canProceedToReview}
         >
           Proceed to Review &amp; Export (Step 5)
         </button>

@@ -10,14 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def get_venv_python() -> str:
-    scripts_dir = REPO_ROOT / "venv" / ("Scripts" if os.name == "nt" else "bin")
-    python_exe = scripts_dir / ("python.exe" if os.name == "nt" else "python")
-    if python_exe.exists():
-        return str(python_exe)
-    python_alt = scripts_dir / "python"
-    if python_alt.exists():
-        return str(python_alt)
-    return sys.executable
+    scripts_dir = REPO_ROOT / "venv314" / ("Scripts" if os.name == "nt" else "bin")
+    return str(scripts_dir / ("python.exe" if os.name == "nt" else "python"))
 
 
 def run_step(name: str, cmd: list[str], cwd: Path, env: dict = None) -> None:

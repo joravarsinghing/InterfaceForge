@@ -72,6 +72,33 @@ describe('interface step route resolution', () => {
     expect(project.interface_b.source_image_ref).toBe('artifacts/uploads/b.png');
   });
 
+  it('locks Step 5 when only a failed model revision exists', () => {
+    const failedProject: Project = {
+      ...baseProject,
+      state: 'generation_failed',
+      interface_a: { ...baseProject.interface_a, approved: true },
+      interface_b: { ...baseProject.interface_b, approved: true },
+      connection: { ...baseProject.connection, length_mm: 40 },
+      model_revisions: [{
+        model_revision: 1,
+        schema_revision: 1,
+        status: 'failed',
+        exports: {},
+        warnings: ['compiler failed'],
+        generated_at: '2026-07-29T00:00:00Z',
+      }],
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/step4']}>
+        <StepNavigation project={failedProject} />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('link', { name: /Review & Export/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Review & Export').closest('.step-link')).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('uses restored project state for top-step links after hydration', () => {
     const restoredProject: Project = {
       ...baseProject,

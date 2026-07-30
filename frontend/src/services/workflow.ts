@@ -49,10 +49,7 @@ export function getEarliestIncompleteStep(project: Project | null): string {
   }
 
   // Step 4 Check: Model generation completed
-  const hasModel =
-    project.current_model_revision !== null && project.current_model_revision !== undefined ||
-    project.last_known_good_model_revision !== null && project.last_known_good_model_revision !== undefined ||
-    ((project.model_revisions?.length ?? 0) > 0);
+  const hasModel = hasValidCurrentModel(project);
 
   if (!hasModel && project.state !== 'model_current' && project.state !== 'model_stale') {
     return '/step4';
@@ -60,4 +57,12 @@ export function getEarliestIncompleteStep(project: Project | null): string {
 
   // Step 5: Ready
   return '/step5';
+}
+
+export function hasValidCurrentModel(project: Project | null): boolean {
+  if (!project?.current_model_revision) return false;
+  const currentRevision = project.model_revisions?.find(
+    (revision) => revision.model_revision === project.current_model_revision
+  );
+  return currentRevision?.status === 'current';
 }

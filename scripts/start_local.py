@@ -17,12 +17,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def get_python_exe() -> str:
-    """Return virtual environment python if available, else current sys.executable."""
-    scripts_dir = REPO_ROOT / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    """Return the single supported Python 3.14 backend interpreter."""
+    scripts_dir = REPO_ROOT / "venv314" / ("Scripts" if os.name == "nt" else "bin")
     python_exe = scripts_dir / ("python.exe" if os.name == "nt" else "python")
-    if python_exe.exists():
-        return str(python_exe)
-    return sys.executable
+    return str(python_exe)
 
 
 def main():
@@ -31,6 +29,19 @@ def main():
 
     backend_dir = REPO_ROOT / "backend"
     frontend_dir = REPO_ROOT / "frontend"
+
+    check = subprocess.run(
+        [python_cmd, "-c", "import kcl; assert hasattr(kcl, 'execute_code_and_export')"],
+        capture_output=True,
+        text=True,
+    )
+    if check.returncode != 0:
+        detail = (check.stderr or check.stdout).strip()
+        raise RuntimeError(
+            f"Backend setup error: KCL runtime is unavailable in {python_cmd}. "
+            f"Install zoo-kcl into this exact Python 3.14 environment. "
+            f"Import check failed: {detail or 'missing execute_code_and_export'}"
+        )
 
     backend_env = os.environ.copy()
     backend_env["PYTHONPATH"] = str(backend_dir)

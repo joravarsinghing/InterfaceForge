@@ -267,7 +267,7 @@ Learn more at [zoo.dev](https://zoo.dev/) and in the project’s [API usage guid
   </tr>
   <tr>
     <td><strong>Backend</strong></td>
-    <td>Python 3.10.x, FastAPI, Pydantic 2, Pydantic Settings, Uvicorn</td>
+    <td>Python 3.14, FastAPI, Pydantic 2, Pydantic Settings, Uvicorn</td>
     <td>Workflow invariants, validation, analysis orchestration, generation, and exports.</td>
   </tr>
   <tr>
@@ -300,7 +300,7 @@ For the detailed system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ### Prerequisites
 
-- Python 3.10.x. Phase 1 clean-install verification is tested on Python 3.10; other Python versions are not claimed as supported for this phase.
+- Python 3.14.x. The supported backend runtime is the repository root `venv314` environment.
 - Node.js 18 or newer.
 - npm 9 or newer.
 - Zoo API credentials for live generation and Agent workflows.
@@ -311,9 +311,9 @@ Backend runtime dependencies are declared in [backend/pyproject.toml](backend/py
 
 ```powershell
 # From the repository root
-python -m venv venv
-.\venv\Scripts\python -m pip install --upgrade pip
-.\venv\Scripts\python -m pip install -e backend[dev]
+py -3.14 -m venv venv314
+.\venv314\Scripts\python.exe -m pip install --upgrade pip
+.\venv314\Scripts\python.exe -m pip install -e backend[dev]
 
 cd frontend
 npm install
@@ -355,7 +355,7 @@ Run component suites separately:
 
 ```powershell
 # Backend
-.\venv\Scripts\python -m pytest backend/tests
+.\venv314\Scripts\python.exe -m pytest backend\tests
 
 # Frontend
 cd frontend

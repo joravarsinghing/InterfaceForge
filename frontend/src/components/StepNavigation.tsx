@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { Project } from '../types/schema';
-import { getInterfaceStepPath } from '../services/workflow';
+import { getInterfaceStepPath, hasValidCurrentModel } from '../services/workflow';
 
 interface StepNavigationProps {
   project?: Project | null;
@@ -22,10 +22,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
   const interfaceAApproved = project?.interface_a?.approved ?? false;
   const interfaceBApproved = project?.interface_b?.approved ?? false;
   const connectionConfigured = (project?.connection?.length_mm ?? 0) > 0;
-  const modelGenerated =
-    (project?.current_model_revision !== null && project?.current_model_revision !== undefined) ||
-    (project?.last_known_good_model_revision !== null && project?.last_known_good_model_revision !== undefined) ||
-    ((project?.model_revisions?.length ?? 0) > 0);
+  const modelGenerated = hasValidCurrentModel(project ?? null);
 
   const steps: StepItem[] = [
     {

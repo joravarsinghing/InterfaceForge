@@ -99,11 +99,23 @@ class GenerationJobService:
 
         compile_result = self.project_service.compile_kcl(project_id, project_token)
         if not compile_result.success or not compile_result.kcl_code:
+            compiler_issue = compile_result.errors[0] if compile_result.errors else None
             raise APIError(
-                error_id="IF-KCL-400",
-                message="KCL compilation failed prior to generation.",
+                error_id=compiler_issue.id if compiler_issue else "IF-KCL-400",
+                message=(
+                    compiler_issue.message
+                    if compiler_issue
+                    else "KCL compilation failed prior to generation."
+                ),
                 status_code=400,
-                recovery_steps=["Fix design schema parameters and re-compile KCL."],
+                details={
+                    "compiler_errors": [issue.model_dump() for issue in compile_result.errors]
+                },
+                recovery_steps=(
+                    compiler_issue.recovery_steps
+                    if compiler_issue
+                    else ["Fix design schema parameters and re-compile KCL."]
+                ),
             )
 
         # 4. Preserve last-known-good model revision per ADR-005

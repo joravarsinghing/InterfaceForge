@@ -53,7 +53,7 @@
 
 ### 2026-07-29 - Zoo KCL Export Runtime Compatibility Blocker
 
-- **Status:** Active environment blocker for live STL/STEP proof in the current Python 3.10 backend venv.
+- **Status:** The backend now uses the Python 3.14 `venv314` runtime; live STL/STEP proof remains unproven until Zoo credentials and live execution are available.
 - **Scope:** Authoritative export from the stored KCL/model revision without rebuilding a second WebSocket model.
 - **Observed:** `pip install zoo-kcl` reports available releases require Python >=3.11, while `backend/pyproject.toml` pins runtime support to Python >=3.10,<3.11. The local `zoo` CLI is also not installed, and `ZOO_API_TOKEN` is not configured in this environment.
 - **Impact:** The code path is covered by tests with a fake KCL executor, but live STL/STEP artifacts remain UNPROVEN until the backend runtime is upgraded/provisioned with a supported Zoo KCL export tool and credentials.

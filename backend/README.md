@@ -42,7 +42,7 @@ backend/
 ## Setup & Running
 
 ### Requirements
-- Python 3.10.x. Phase 1 installation/startup verification is tested on Python 3.10 only.
+- Python 3.14.x. The supported backend runtime is the repository root `venv314` environment.
 
 ### Dependency policy
 Runtime dependencies are declared in `pyproject.toml` and include FastAPI, Uvicorn, Pydantic, Pydantic Settings, WebSockets, Pillow, NumPy, OpenCV headless, and Python Multipart. The `dev` extra adds pytest, pytest-asyncio, httpx, Ruff, Mypy, msgpack, and google-genai for local verification and provider-mocked tests.
@@ -50,8 +50,8 @@ Runtime dependencies are declared in `pyproject.toml` and include FastAPI, Uvico
 ### Running locally
 From root directory:
 ```bash
-# Using venv python
-.\venv\Scripts\python -m uvicorn backend.app.main:app --reload --port 8000
+# Using the supported Python 3.14 runtime
+.\venv314\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 Or via script:
 ```bash
@@ -62,18 +62,18 @@ python scripts/run_backend.py
 
 Run tests:
 ```bash
-.\venv\Scripts\pytest backend/tests
+.\venv314\Scripts\python.exe -m pytest backend\tests
 ```
 
 Run linting:
 ```bash
-.\venv\Scripts\ruff check backend
-.\venv\Scripts\ruff format --check backend
+.\venv314\Scripts\python.exe -m ruff check backend
+.\venv314\Scripts\python.exe -m ruff format --check backend
 ```
 
 Run type checking:
 ```bash
-.\venv\Scripts\mypy backend/app
+.\venv314\Scripts\python.exe -m mypy backend/app
 ```
 
 ## API Endpoints (Stage S2)

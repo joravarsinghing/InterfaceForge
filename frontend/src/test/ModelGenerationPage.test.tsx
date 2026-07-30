@@ -176,6 +176,7 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     expect(screen.getByText(/Generation Failure Notice \[IF-ENG-001\]/i)).toBeInTheDocument();
     expect(screen.getByText(/KCL lofting surface self-intersects/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Retry Generation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Proceed to Review & Export/i })).toBeDisabled();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Retry Generation/i }));
