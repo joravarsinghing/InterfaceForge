@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StepNavigation } from '../components/StepNavigation';
 import { getInterfaceStepPath } from '../services/workflow';
 import { Project } from '../types/schema';
@@ -145,5 +145,18 @@ describe('interface step route resolution', () => {
     expect(screen.getByText('Review & Export').closest('.step-item')).toHaveClass('completed');
     expect(screen.getByText('Review & Export').closest('.step-item')).not.toHaveClass('active');
     expect(screen.getByText('Review & Export').closest('.step-item')).toHaveTextContent('5');
+  });
+  it('starts a new project when Step 1 is clicked before project creation', async () => {
+    const onStartProject = vi.fn().mockResolvedValue(baseProject);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <StepNavigation onStartProject={onStartProject} />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('link', { name: /Interface A Capture/i }));
+
+    await waitFor(() => expect(onStartProject).toHaveBeenCalledTimes(1));
   });
 });

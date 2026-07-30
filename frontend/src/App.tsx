@@ -189,7 +189,7 @@ export const AppContent: React.FC = () => {
         providerModeError={providerModeError}
         onProviderModeChange={handleProviderModeChange}
       />
-      <StepNavigation project={project} />
+      <StepNavigation project={project} onStartProject={handleStartProject} />
 
       <main id="main-content" className="app-main" tabIndex={-1}>
         <Routes>

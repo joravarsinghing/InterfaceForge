@@ -1,10 +1,11 @@
 import React from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Project } from '../types/schema';
 import { getInterfaceStepPath, hasValidCurrentModel } from '../services/workflow';
 
 interface StepNavigationProps {
   project?: Project | null;
+  onStartProject?: () => Promise<Project>;
 }
 
 interface StepItem {
@@ -16,8 +17,9 @@ interface StepItem {
   isLocked: boolean;
 }
 
-export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
+export const StepNavigation: React.FC<StepNavigationProps> = ({ project, onStartProject }) => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const interfaceAApproved = project?.interface_a?.approved ?? false;
   const interfaceBApproved = project?.interface_b?.approved ?? false;
@@ -64,6 +66,13 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
     },
   ];
 
+  const handleStepClick = async (event: React.MouseEvent<HTMLAnchorElement>, step: StepItem) => {
+    if (step.id === 1 && !project && onStartProject) {
+      event.preventDefault();
+      await onStartProject();
+      navigate('/step1');
+    }
+  };
   return (
     <nav className="step-navigation" aria-label="Workflow progress navigation">
       <div className="step-container">
@@ -77,7 +86,9 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
           if (step.isCompleted) className += ' completed';
           if (step.isLocked) className += ' locked';
 
+
           return (
+
             <div key={step.id} className={className}>
               {step.isLocked ? (
                 <span
@@ -94,6 +105,7 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({ project }) => {
                   to={step.path}
                   className="step-link"
                   aria-current={isActive ? 'step' : undefined}
+                  onClick={(event) => void handleStepClick(event, step)}
                 >
                   <span className="step-number">
                     {step.id}
