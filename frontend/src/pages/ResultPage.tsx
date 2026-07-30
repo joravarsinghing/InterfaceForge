@@ -142,10 +142,13 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   const renderExportAction = (format: string, label: string) => {
     const detail = exportStatus?.formats[format];
     const isGenerating = generatingFormats.has(format) || detail?.status === 'preparing';
-    const statusLabel = isGenerating ? 'Generating' : detail?.status === 'failed' ? 'Failed' : detail?.status === 'ready' ? 'Ready' : 'Not generated';
-    const statusColor = detail?.status === 'failed' ? '#f85149' : detail?.status === 'ready' ? '#3fb950' : '#8b949e';
+    const statusLabel = isGenerating ? 'Generating' : detail?.status === 'unavailable' ? 'Unavailable in offline mode' : detail?.status === 'failed' ? 'Failed' : detail?.status === 'ready' ? 'Ready' : 'Not generated';
+    const statusColor = detail?.status === 'failed' ? '#f85149' : detail?.status === 'unavailable' ? '#d29922' : detail?.status === 'ready' ? '#3fb950' : '#8b949e';
     if (detail?.status === 'ready') {
       return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm" onClick={() => handleExport(format)} style={{ width: '100%' }}>Download {label}</button></div>;
+    }
+    if (detail?.status === 'unavailable') {
+      return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div></div>;
     }
     const actionLabel = isGenerating ? `Generating ${label}` : detail?.status === 'failed' ? `Retry ${label}` : `Generate ${label}`;
     return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm" disabled={isGenerating || isStale} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isStale ? 0.5 : 1 }}>{actionLabel}</button></div>;

@@ -23,8 +23,9 @@ from app.services.profile_geometry import fitted_profile_size
 
 COMPILER_VERSION = "1.0.0"
 
+
 def _validate_generated_kcl(kcl_code: str) -> Optional[ValidationIssue]:
-    """Validate complete KCL with the installed Zoo KCL parser."""
+    """Parse and execute complete KCL with the installed Zoo KCL runtime."""
     try:
         import kcl  # type: ignore[import-not-found]
     except Exception as exc:
@@ -37,6 +38,35 @@ def _validate_generated_kcl(kcl_code: str) -> Optional[ValidationIssue]:
 
     try:
         kcl.parse_code(kcl_code)
+        import asyncio
+        import threading
+
+        async def _execute() -> object:
+            return await kcl.mock_execute_code(kcl_code)
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            result = asyncio.run(_execute())
+        else:
+            result_box: list[object] = []
+            error_box: list[BaseException] = []
+
+            def _worker() -> None:
+                try:
+                    result_box.append(asyncio.run(_execute()))
+                except BaseException as worker_error:
+                    error_box.append(worker_error)
+
+            worker = threading.Thread(target=_worker)
+            worker.start()
+            worker.join()
+            if error_box:
+                raise error_box[0]
+            result = result_box[0] if result_box else None
+
+        if result is not True:
+            raise RuntimeError(f"Zoo KCL execution returned {result!r}")
     except Exception as exc:
         detail = str(exc).replace("\r", " ").replace("\n", " ")
         return ValidationIssue(
@@ -131,6 +161,7 @@ def _generate_sketch_kcl(
     is_outer: bool,
     clearance: float,
     wall_thickness: float,
+    rotation_angle_deg: float = 0.0,
 ) -> str:
     """Generates KCL code string for a single profile sketch."""
     p_type = iface.profile_type
@@ -152,38 +183,31 @@ def _generate_sketch_kcl(
         if p_type == ProfileType.RECTANGLE:
             lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
             lines.append(
-                f"  |> startProfileAt([{offset_x - half_w:.3f}, {offset_y - half_h:.3f}], %)"
+                f"  |> rectangle(center = [{offset_x:.3f}, {offset_y:.3f}], "
+                f"width = {eff.width:.3f}, height = {eff.height:.3f})"
             )
-            lines.append(f"  |> lineTo([{offset_x + half_w:.3f}, {offset_y - half_h:.3f}], %)")
-            lines.append(f"  |> lineTo([{offset_x + half_w:.3f}, {offset_y + half_h:.3f}], %)")
-            lines.append(f"  |> lineTo([{offset_x - half_w:.3f}, {offset_y + half_h:.3f}], %)")
-            lines.append("  |> close(%)")
 
         elif p_type == ProfileType.ROUNDED_RECTANGLE:
             r = eff.corner_radius or _get_dim_val(iface, "corner_radius", 5.0)
             r = min(r, half_w * 0.8, half_h * 0.8)  # prevent over-filleting
             lines.append(f"sketch_{prefix} = startSketchOn({plane_var})")
             lines.append(
-                f"  |> startProfileAt([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)"
+                f"  |> startProfile(at = [{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}])"
             )
-            lines.append(f"  |> lineTo([{offset_x + half_w - r:.3f}, {offset_y - half_h:.3f}], %)")
-            lines.append(
-                f"  |> tangentialArcTo([{offset_x + half_w:.3f}, {offset_y - half_h + r:.3f}], %)"
-            )
-            lines.append(f"  |> lineTo([{offset_x + half_w:.3f}, {offset_y + half_h - r:.3f}], %)")
-            lines.append(
-                f"  |> tangentialArcTo([{offset_x + half_w - r:.3f}, {offset_y + half_h:.3f}], %)"
-            )
-            lines.append(f"  |> lineTo([{offset_x - half_w + r:.3f}, {offset_y + half_h:.3f}], %)")
-            lines.append(
-                f"  |> tangentialArcTo([{offset_x - half_w:.3f}, {offset_y + half_h - r:.3f}], %)"
-            )
-            lines.append(f"  |> lineTo([{offset_x - half_w:.3f}, {offset_y - half_h + r:.3f}], %)")
-            lines.append(
-                f"  |> tangentialArcTo([{offset_x - half_w + r:.3f}, {offset_y - half_h:.3f}], %)"
-            )
-            lines.append("  |> close(%)")
+            lines.append(f"  |> line(end = [{eff.width - 2 * r:.3f}, 0.000])")
+            lines.append(f"  |> tangentialArc(end = [{r:.3f}, {r:.3f}])")
+            lines.append(f"  |> line(end = [0.000, {eff.height - 2 * r:.3f}])")
+            lines.append(f"  |> tangentialArc(end = [-{r:.3f}, {r:.3f}])")
+            lines.append(f"  |> line(end = [-{eff.width - 2 * r:.3f}, 0.000])")
+            lines.append(f"  |> tangentialArc(end = [-{r:.3f}, -{r:.3f}])")
+            lines.append(f"  |> line(end = [0.000, -{eff.height - 2 * r:.3f}])")
+            lines.append(f"  |> tangentialArc(end = [{r:.3f}, -{r:.3f}])")
+            lines.append("  |> close()")
 
+    if rotation_angle_deg:
+        lines.append(
+            f"  |> rotate(axis = [1.000, 0.000, 0.000], angle = {rotation_angle_deg:.3f}deg)"
+        )
     return "\n".join(lines)
 
 
@@ -348,23 +372,11 @@ def compile_project_to_kcl(
     kcl_lines.append("// --- 3D Geometry Construction ---")
     base_plane = "'XY'"
 
-    if conn.mode == ConnectionMode.ANGLED and abs(conn.angle_deg) > 0.0:
-        rad = math.radians(conn.angle_deg)
-        cos_a = math.cos(rad)
-        sin_a = math.sin(rad)
-        top_orig = (
-            f"origin = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}, {conn.length_mm:.3f}]"
-        )
-        top_axes = f"xAxis = [1.0, 0.0, 0.0], yAxis = [0.0, {cos_a:.5f}, {sin_a:.5f}]"
-        kcl_lines.append(f"top_plane = plane({top_orig}, {top_axes})")
-        top_plane_var = "top_plane"
-        top_offset_x = 0.0
-        top_offset_y = 0.0
-    else:
-        kcl_lines.append(f"top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
-        top_plane_var = "top_plane"
-        top_offset_x = conn.offset_x_mm
-        top_offset_y = conn.offset_y_mm
+    kcl_lines.append(f"top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
+    top_plane_var = "top_plane"
+    top_offset_x = conn.offset_x_mm
+    top_offset_y = conn.offset_y_mm
+    top_rotation = conn.angle_deg if conn.mode == ConnectionMode.ANGLED else 0.0
 
     kcl_lines.append("")
     kcl_lines.append("// Outer Profiles")
@@ -383,6 +395,7 @@ def compile_project_to_kcl(
             True,
             mfg.clearance_b_mm,
             mfg.wall_thickness_mm,
+            top_rotation,
         )
     )
     kcl_lines.append("")
@@ -405,6 +418,7 @@ def compile_project_to_kcl(
             False,
             mfg.clearance_b_mm,
             mfg.wall_thickness_mm,
+            top_rotation,
         )
     )
     kcl_lines.append("")

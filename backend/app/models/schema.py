@@ -480,6 +480,7 @@ class ExportFormatStatus(str, Enum):
     PREPARING = "preparing"
     READY = "ready"
     FAILED = "failed"
+    UNAVAILABLE = "unavailable"
 
 
 class FormatExportDetail(BaseModel):

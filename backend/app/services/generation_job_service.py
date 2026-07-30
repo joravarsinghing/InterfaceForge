@@ -152,9 +152,15 @@ class GenerationJobService:
         self._jobs[job_id] = job
 
         # 6. Execute job via active EngineProvider
-        engine = get_engine_provider(project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode))
+        engine = get_engine_provider(
+            project.provider_mode.value
+            if hasattr(project.provider_mode, "value")
+            else str(project.provider_mode)
+        )
         job.status = JobStatus.RUNNING
-        executed_job = await engine.execute_generation(job, compile_result.kcl_code)
+        executed_job = await engine.execute_generation(
+            job, compile_result.kcl_code, project=project
+        )
         self._jobs[job_id] = executed_job
 
         # 7. Finalize project state based on job execution result (ADR-005)
@@ -218,7 +224,11 @@ class GenerationJobService:
         job.status = JobStatus.CANCEL_REQUESTED
         # Execute cancellation logic via active project engine provider
         project = self.project_service.get_project(project_id, project_token)
-        engine = get_engine_provider(project.provider_mode.value if hasattr(project.provider_mode, "value") else str(project.provider_mode))
+        engine = get_engine_provider(
+            project.provider_mode.value
+            if hasattr(project.provider_mode, "value")
+            else str(project.provider_mode)
+        )
         job.mock_scenario = MockScenario.CANCELLATION
         cancelled_job = await engine.execute_generation(job, "")
         self._jobs[job_id] = cancelled_job

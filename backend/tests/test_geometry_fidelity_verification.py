@@ -135,13 +135,9 @@ def test_kcl_parameter_mapping_angled():
     assert res.success
     code = res.kcl_code
 
-    rad = math.radians(25.0)
-    cos_a = math.cos(rad)
-    sin_a = math.sin(rad)
-
     assert "angle_deg = 25.000" in code
-    assert "top_plane = plane(" in code
-    assert f"yAxis = [0.0, {cos_a:.5f}, {sin_a:.5f}]" in code
+    assert "top_plane = offsetPlane('XY', offset = 90.000)" in code
+    assert "|> rotate(axis = [1.000, 0.000, 0.000], angle = 25.000deg)" in code
 
 
 def test_hollow_passage_and_non_box_topology_checks():

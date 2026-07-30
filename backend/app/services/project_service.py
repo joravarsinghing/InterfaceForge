@@ -2062,6 +2062,7 @@ class ProjectService:
             )
 
         import hashlib
+
         computed_kcl_hash = hashlib.sha256(kcl_bytes).hexdigest()
         if not current_rev.kcl_hash or current_rev.kcl_hash != computed_kcl_hash:
             raise ExportArtifactNotFoundError(
@@ -2156,7 +2157,11 @@ class ProjectService:
             else:
                 format_details[fmt] = FormatExportDetail(
                     format=fmt,
-                    status=ExportFormatStatus.FAILED,
+                    status=(
+                        ExportFormatStatus.UNAVAILABLE
+                        if res.error_id == "IF-EXPORT-007"
+                        else ExportFormatStatus.FAILED
+                    ),
                     error_id=res.error_id or "IF-EXPORT-001",
                     error_message=res.error_message or f"Export generation failed for '{fmt}'.",
                     updated_at=current_iso_timestamp(),
@@ -2348,6 +2353,7 @@ class ProjectService:
             "model_revision": current_rev.model_revision,
             "kcl_hash": actual_hash,
         }
+
     def validate_kcl_readiness(
         self, project_id: str, project_token: Optional[str] = None
     ) -> ConnectionValidationResult:

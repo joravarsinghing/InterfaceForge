@@ -300,6 +300,57 @@ def parse_and_validate_stl(file_bytes: bytes) -> Dict[str, Any]:
             "error": "Failed to extract valid vertices from STL file.",
         }
 
+    # A valid offline STL must be a closed 2-manifold, not merely a non-empty
+    # triangle list. STL repeats triangle vertices, so quantize coordinates to
+    # reconstruct shared edges deterministically.
+    if len(vertices) != facet_count * 3:
+        return {
+            "is_valid": False,
+            "facet_count": facet_count,
+            "bounding_box": None,
+            "dimensions_mm": None,
+            "error": "STL facet payload is incomplete.",
+        }
+    edge_counts: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
+    signed_volume = 0.0
+
+    def key(v: tuple[float, float, float]) -> tuple[int, int, int]:
+        return (round(v[0] * 1000), round(v[1] * 1000), round(v[2] * 1000))
+
+    for index in range(0, len(vertices), 3):
+        tri = vertices[index : index + 3]
+        for first, second in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            first_key, second_key = sorted((key(first), key(second)))
+            edge = (first_key, second_key)
+            edge_counts[edge] = edge_counts.get(edge, 0) + 1
+        ax, ay, az = tri[0]
+        bx, by, bz = tri[1]
+        cx, cy, cz = tri[2]
+        signed_volume += abs(
+            (
+                ax * (by * cz - bz * cy)
+                - ay * (bx * cz - bz * cx)
+                + az * (bx * cy - by * cx)
+            )
+            / 6.0
+        )
+    if any(count != 2 for count in edge_counts.values()):
+        return {
+            "is_valid": False,
+            "facet_count": facet_count,
+            "bounding_box": None,
+            "dimensions_mm": None,
+            "error": "STL topology is not a closed manifold.",
+        }
+    if abs(signed_volume) <= 1e-6:
+        return {
+            "is_valid": False,
+            "facet_count": facet_count,
+            "bounding_box": None,
+            "dimensions_mm": None,
+            "error": "STL mesh has zero volume.",
+        }
+
     min_x = min(v[0] for v in vertices)
     max_x = max(v[0] for v in vertices)
     min_y = min(v[1] for v in vertices)
@@ -394,17 +445,30 @@ def parse_and_validate_step(file_bytes: bytes) -> Dict[str, Any]:
         "MANIFOLD_SOLID_BREP",
         "FACETED_BREP",
         "CLOSED_SHELL",
-        "OPEN_SHELL",
         "ADVANCED_FACE",
         "FACE_SURFACE",
-        "SHELL_BASED_SURFACE_MODEL",
-        "GEOMETRIC_SET",
-        "AXIS2_PLACEMENT_3D",
+        "EDGE_LOOP",
+        "ORIENTED_EDGE",
         "CARTESIAN_POINT",
+        "LINE",
+        "PLANE",
+        "CYLINDRICAL_SURFACE",
     ]
     found_solids = [e for e in entities if e in body_types]
+    has_nonempty_shell = bool(re.search(r"CLOSED_SHELL\s*\([^,]*,\s*\((?!\s*\))", data_section))
+    has_faces = any(e in entities for e in ("ADVANCED_FACE", "FACE_SURFACE"))
+    has_edges = any(e in entities for e in ("EDGE_LOOP", "ORIENTED_EDGE"))
+    has_surfaces = any(
+        e in entities for e in ("PLANE", "CYLINDRICAL_SURFACE", "SURFACE_OF_LINEAR_EXTRUSION")
+    )
 
-    if not found_solids:
+    if (
+        not found_solids
+        or not has_nonempty_shell
+        or not has_faces
+        or not has_edges
+        or not has_surfaces
+    ):
         return {
             "is_valid": False,
             "entity_count": entity_count,
@@ -435,9 +499,24 @@ def validate_kcl_signature(file_bytes: bytes) -> bool:
     if not file_bytes or len(file_bytes.strip()) == 0:
         return False
     try:
+        import asyncio
+        import threading
+
         import kcl  # type: ignore[import-not-found]
-        kcl.parse_code(file_bytes.decode("utf-8"))
-        return True
+
+        code = file_bytes.decode("utf-8")
+        kcl.parse_code(code)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(kcl.mock_execute_code(code)) is True
+        result_box: list[object] = []
+        worker = threading.Thread(
+            target=lambda: result_box.append(asyncio.run(kcl.mock_execute_code(code)))
+        )
+        worker.start()
+        worker.join()
+        return bool(result_box and result_box[0] is True)
     except Exception:
         return False
 
@@ -541,59 +620,6 @@ def _obj_to_mock_stl_bytes(obj_content: str, model_revision: int) -> bytes:
     return header + body
 
 
-def _obj_to_mock_step_bytes(obj_content: str, model_revision: int) -> bytes:
-    """Convert Wavefront OBJ geometry string to valid ISO-10303-21 STEP bytes."""
-    timestamp = current_iso_timestamp()
-    lines = [
-        "ISO-10303-21;",
-        "HEADER;",
-        f"FILE_DESCRIPTION(('InterfaceForge Adapter Model Rev {model_revision}'),'2;1');",
-        (
-            f"FILE_NAME('interfaceforge_adapter_rev{model_revision}.step','{timestamp}',"
-            "('InterfaceForge'),('Makeathon 2026'),'InterfaceForge Compiler','Zoo API','');"
-        ),
-        "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
-        "ENDSEC;",
-        "DATA;",
-    ]
-
-    vertices: List[Tuple[float, float, float]] = []
-    for line in obj_content.splitlines():
-        line = line.strip()
-        if line.startswith("v "):
-            parts = line.split()
-            if len(parts) >= 4:
-                vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
-
-    entity_idx = 10
-    point_refs = []
-    for v in vertices:
-        lines.append(f"#{entity_idx}=CARTESIAN_POINT('',({v[0]:.4f},{v[1]:.4f},{v[2]:.4f}));")
-        point_refs.append(f"#{entity_idx}")
-        entity_idx += 1
-
-    axis_idx = entity_idx
-    lines.append(f"#{axis_idx}=DIRECTION('',(0.,0.,1.));")
-    entity_idx += 1
-    dir_idx = entity_idx
-    lines.append(f"#{dir_idx}=DIRECTION('',(1.,0.,0.));")
-    entity_idx += 1
-    placement_idx = entity_idx
-    pref = point_refs[0] if point_refs else 10
-    lines.append(f"#{placement_idx}=AXIS2_PLACEMENT_3D('',#{pref},#{axis_idx},#{dir_idx});")
-    entity_idx += 1
-
-    lines.append(f"#{entity_idx}=CLOSED_SHELL('AdapterShell',());")
-    shell_idx = entity_idx
-    entity_idx += 1
-
-    lines.append(f"#{entity_idx}=MANIFOLD_SOLID_BREP('AdapterSolid',#{shell_idx});")
-    lines.append("ENDSEC;")
-    lines.append("END-ISO-10303-21;")
-
-    return "\n".join(lines).encode("utf-8")
-
-
 class MockExportProvider(ExportProvider):
     """Deterministic Mock Export Provider for testing and offline execution."""
 
@@ -629,6 +655,16 @@ class MockExportProvider(ExportProvider):
                 error_id="IF-EXPORT-001",
                 error_message=f"Mock export engine failed to process format '{fmt}'.",
                 recovery_steps=["Retry export for this format."],
+                is_mock=True,
+            )
+
+        if fmt == "step":
+            return ExportResult(
+                success=False,
+                format=fmt,
+                error_id="IF-EXPORT-007",
+                error_message="STEP export is unavailable in offline mock mode because no real solid exporter is configured.",
+                recovery_steps=["Switch to live Zoo mode for a validated STEP solid export."],
                 is_mock=True,
             )
 
@@ -681,8 +717,6 @@ class MockExportProvider(ExportProvider):
 
         if fmt == "stl":
             file_bytes = _obj_to_mock_stl_bytes(obj_content, model_revision)
-        elif fmt == "step":
-            file_bytes = _obj_to_mock_step_bytes(obj_content, model_revision)
         else:  # kcl
             file_bytes = kcl_code.encode("utf-8") if kcl_code else b"// Empty KCL"
 

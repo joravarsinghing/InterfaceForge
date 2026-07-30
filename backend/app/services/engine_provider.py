@@ -18,6 +18,13 @@ from app.models.generation import (
     MockScenario,
     PreviewMetadata,
 )
+from app.models.schema import Project
+from app.services.geometry_generator import (
+    generate_adapter_obj,
+    mesh_bounds,
+    mesh_volume,
+    render_mesh_svg,
+)
 
 
 def current_iso_timestamp() -> str:
@@ -25,86 +32,13 @@ def current_iso_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def generate_mock_svg_preview(job_id: str, mode: str = "coaxial") -> str:
-    """Generate a clean dark/neon-green SVG string representing the 3D adapter preview."""
-    h = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
-    e_a1 = (
-        '<ellipse cx="0" cy="-60" rx="70" ry="25" fill="none" stroke="#00e676" stroke-width="3"/>'
-    )
-    e_a2 = (
-        '<ellipse cx="0" cy="-60" rx="55" ry="18" fill="none" stroke="#00e676" '
-        'stroke-width="1.5" stroke-dasharray="4 2"/>'
-    )
-    p_1 = (
-        '<path d="M -35 -40 L -45 40" stroke="#00e676" stroke-width="1" '
-        'stroke-dasharray="3 3" opacity="0.6"/>'
-    )
-    p_2 = (
-        '<path d="M 35 -40 L 45 40" stroke="#00e676" stroke-width="1" '
-        'stroke-dasharray="3 3" opacity="0.6"/>'
-    )
-    p_3 = (
-        '<path d="M 0 -35 L 0 35" stroke="#00e676" stroke-width="1" '
-        'stroke-dasharray="2 2" opacity="0.4"/>'
-    )
-    e_b2 = (
-        '<ellipse cx="0" cy="60" rx="72" ry="24" fill="none" stroke="#00b0ff" '
-        'stroke-width="1.5" stroke-dasharray="4 2"/>'
-    )
-    t_title = (
-        '<text x="15" y="25" fill="#00e676" font-family="monospace" '
-        'font-size="11" font-weight="bold">INTERFACEFORGE 3D PREVIEW</text>'
-    )
-    t_job = (
-        f'<text x="15" y="280" fill="#88aa99" font-family="monospace" '
-        f'font-size="10">JOB: {job_id[:12]}</text>'
-    )
-    t_mode = (
-        f'<text x="280" y="280" fill="#00e676" font-family="monospace" '
-        f'font-size="10">MODE: {mode.upper()}</text>'
-    )
-
-    return f"""{h}
-  <defs>
-    <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00e676" stop-opacity="0.9"/>
-      <stop offset="100%" stop-color="#00b0ff" stop-opacity="0.7"/>
-    </linearGradient>
-    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
-      <stop offset="0%" stop-color="#18221c"/>
-      <stop offset="100%" stop-color="#0a0e0b"/>
-    </radialGradient>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-  </defs>
-  <rect width="400" height="300" fill="url(#bgGrad)" rx="8"/>
-  <grid width="400" height="300" stroke="#1b382b" stroke-width="0.5"/>
-
-  <g transform="translate(200, 150)" filter="url(#glow)">
-    {e_a1}
-    {e_a2}
-    <path d="M -70 -60 L -90 60" stroke="url(#neonGrad)" stroke-width="2"/>
-    <path d="M 70 -60 L 90 60" stroke="url(#neonGrad)" stroke-width="2"/>
-    {p_1}
-    {p_2}
-    {p_3}
-    <ellipse cx="0" cy="60" rx="90" ry="32" fill="none" stroke="#00b0ff" stroke-width="3"/>
-    {e_b2}
-  </g>
-
-  {t_title}
-  {t_job}
-  {t_mode}
-</svg>"""
-
-
 class EngineProvider(ABC):
     """Abstract Base Class for 3D Geometry Execution Engines per ADR-006."""
 
     @abstractmethod
-    async def execute_generation(self, job: GenerationJob, kcl_code: str) -> GenerationJob:
+    async def execute_generation(
+        self, job: GenerationJob, kcl_code: str, project: Project | None = None
+    ) -> GenerationJob:
         """Execute model generation pipeline for a given job and KCL source code."""
         pass
 
@@ -112,7 +46,9 @@ class EngineProvider(ABC):
 class MockEngineProvider(EngineProvider):
     """Deterministic Mock Engine Provider implementing full generation lifecycle."""
 
-    async def execute_generation(self, job: GenerationJob, kcl_code: str) -> GenerationJob:
+    async def execute_generation(
+        self, job: GenerationJob, kcl_code: str, project: Project | None = None
+    ) -> GenerationJob:
         """Process job through staged progress steps based on mock scenario."""
 
         scenario = job.mock_scenario
@@ -213,15 +149,26 @@ class MockEngineProvider(EngineProvider):
         )
         job.zoo_model_id = f"mock_model_{job.job_id[:8]}"
 
-        svg_content = generate_mock_svg_preview(job.job_id)
-        job.preview_metadata = PreviewMetadata(
-            preview_svg=svg_content,
-            bounding_box=BoundingBox(x_mm=60.0, y_mm=60.0, z_mm=50.0),
-            volume_cm3=34.52,
-            facet_count=1240,
-            render_timestamp=current_iso_timestamp(),
-            is_mock=True,
-        )
+        if project is None:
+            job.preview_metadata = PreviewMetadata(
+                preview_svg="3D preview unavailable in offline mode.",
+                is_mock=True,
+            )
+        else:
+            obj_content = generate_adapter_obj(project)
+            min_x, max_x, min_y, max_y, min_z, max_z = mesh_bounds(obj_content)
+            job.preview_metadata = PreviewMetadata(
+                preview_svg=render_mesh_svg(obj_content, job.job_id),
+                bounding_box=BoundingBox(
+                    x_mm=round(max_x - min_x, 3),
+                    y_mm=round(max_y - min_y, 3),
+                    z_mm=round(max_z - min_z, 3),
+                ),
+                volume_cm3=round(mesh_volume(obj_content) / 1000.0, 3),
+                facet_count=len(obj_content.split("\nf ")) - 1,
+                render_timestamp=current_iso_timestamp(),
+                is_mock=True,
+            )
 
         return job
 
@@ -241,7 +188,9 @@ def redact_secrets(text: str, token: str = "") -> str:
 class ZooEngineProvider(EngineProvider):
     """Real Zoo Engine Provider executing geometry via live Zoo API per ADR-006 & ADR-009."""
 
-    async def execute_generation(self, job: GenerationJob, kcl_code: str) -> GenerationJob:
+    async def execute_generation(
+        self, job: GenerationJob, kcl_code: str, project: Project | None = None
+    ) -> GenerationJob:
         if job.mock_scenario and job.mock_scenario != MockScenario.SUCCESS:
             return await MockEngineProvider().execute_generation(job, kcl_code)
 
@@ -383,7 +332,7 @@ class ZooEngineProvider(EngineProvider):
             )
             job.zoo_model_id = sess_id
 
-            svg_preview = generate_mock_svg_preview(job.job_id, mode="zoo_live")
+            svg_preview = "Zoo Engine preview is returned by the live provider."
             job.preview_metadata = PreviewMetadata(
                 preview_svg=svg_preview,
                 bounding_box=BoundingBox(x_mm=60.0, y_mm=60.0, z_mm=50.0),
@@ -468,7 +417,11 @@ RealEngineProviderStub = ZooEngineProvider
 
 def get_engine_provider(provider_mode: str | None = None) -> EngineProvider:
     """Factory function returning active EngineProvider based on configuration or project mode."""
-    provider_name = "zoo" if provider_mode == "live" and settings.zoo_api_token else settings.get_effective_engine_provider()
+    provider_name = (
+        "zoo"
+        if provider_mode == "live" and settings.zoo_api_token
+        else settings.get_effective_engine_provider()
+    )
     if provider_name == "zoo":
         return ZooEngineProvider()
     return MockEngineProvider()

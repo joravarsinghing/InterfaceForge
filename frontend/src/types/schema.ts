@@ -209,7 +209,7 @@ export interface ExportReferences {
   kcl?: string | null;
 }
 
-export type ExportFormatStatus = 'not_started' | 'preparing' | 'ready' | 'failed';
+export type ExportFormatStatus = 'not_started' | 'preparing' | 'ready' | 'failed' | 'unavailable';
 
 export interface FormatExportDetail {
   format: string;

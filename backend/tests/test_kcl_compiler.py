@@ -159,8 +159,8 @@ def test_rectangular_coaxial_compilation(tmp_path):
     assert "interface_a_height_mm = 40.000" in result.kcl_code
     assert "interface_b_width_mm = 50.000" in result.kcl_code
     assert "interface_b_corner_radius_mm = 4.000" in result.kcl_code
-    assert "tangentialArcTo" in result.kcl_code
-    assert "startProfileAt" in result.kcl_code
+    assert "tangentialArc" in result.kcl_code
+    assert "startProfile(" in result.kcl_code
 
 
 def test_circular_offset_compilation(tmp_path):
@@ -190,7 +190,7 @@ def test_angled_compilation(tmp_path):
     assert result.success is True
     assert 'connection_mode = "angled"' in result.kcl_code
     assert "angle_deg = 15.000" in result.kcl_code
-    assert "top_plane = plane(origin =" in result.kcl_code
+    assert "|> rotate(axis = [1.000, 0.000, 0.000], angle = 15.000deg)" in result.kcl_code
 
 
 def test_invalid_unsupported_profile(tmp_path):
@@ -282,3 +282,21 @@ def test_project_service_kcl_compilation_does_not_mark_current():
     assert len(fresh_proj.model_revisions) == 1
     assert fresh_proj.model_revisions[0].status == ModelRevisionStatus.DRAFT
     assert fresh_proj.model_revisions[0].kcl_artifact_ref is not None
+
+
+def test_current_rounded_rectangle_to_circle_executes(tmp_path):
+    project = create_base_approved_project(
+        p_type_a=ProfileType.ROUNDED_RECTANGLE, p_type_b=ProfileType.CIRCLE
+    )
+    result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
+    assert result.success is True
+    assert "startProfileAt" not in (result.kcl_code or "")
+    assert "tangentialArcTo" not in (result.kcl_code or "")
+    assert "adapter_model = subtract(outer_solid, tools = [inner_void])" in (result.kcl_code or "")
+
+
+def test_undefined_kcl_function_cannot_validate():
+    from app.services.kcl_compiler import _validate_generated_kcl
+    issue = _validate_generated_kcl("broken = startProfileAt([0, 0], %)\n")
+    assert issue is not None
+    assert "startProfileAt" in issue.message

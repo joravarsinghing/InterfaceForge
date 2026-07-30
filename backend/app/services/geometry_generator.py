@@ -97,8 +97,22 @@ def _sample_profile_2d(
             # Left side (-hw) from hh to -hh
             for i in range(segs_per_side):
                 pts.append((-hw, hh - (2 * hh * i / segs_per_side)))
-        elif p_type == ProfileType.RECTANGLE or num_segments <= 4:
-            pts = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
+        elif p_type == ProfileType.RECTANGLE:
+            # Keep every profile ring at exactly num_segments vertices so
+            # corresponding loft indices cannot twist or reference gaps.
+            segs_per_side = max(1, num_segments // 4)
+            for i in range(segs_per_side):
+                t = i / segs_per_side
+                pts.append((-hw + 2 * hw * t, -hh))
+            for i in range(segs_per_side):
+                t = i / segs_per_side
+                pts.append((hw, -hh + 2 * hh * t))
+            for i in range(segs_per_side):
+                t = i / segs_per_side
+                pts.append((hw - 2 * hw * t, hh))
+            for i in range(segs_per_side):
+                t = i / segs_per_side
+                pts.append((-hw, hh - 2 * hh * t))
         else:
             # Sample rounded rectangle with corner radii
             r = _get_dim_val(iface, "corner_radius", 5.0)
@@ -230,3 +244,77 @@ def generate_adapter_obj(project: Project) -> str:
 def get_geometry_hash(obj_content: str) -> str:
     """Compute SHA-256 hash string for 3D model geometry payload."""
     return hashlib.sha256(obj_content.encode("utf-8")).hexdigest()
+
+
+def parse_obj_mesh(
+    obj_content: str,
+) -> tuple[List[Tuple[float, float, float]], List[Tuple[int, int, int]]]:
+    """Read the deterministic local mesh used by offline preview and STL."""
+    vertices: List[Tuple[float, float, float]] = []
+    faces: List[Tuple[int, int, int]] = []
+    for raw in obj_content.splitlines():
+        parts = raw.split()
+        if len(parts) >= 4 and parts[0] == "v":
+            vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
+        elif len(parts) >= 4 and parts[0] == "f":
+            faces.append((
+                int(parts[1].split("/")[0]) - 1,
+                int(parts[2].split("/")[0]) - 1,
+                int(parts[3].split("/")[0]) - 1,
+            ))
+    return vertices, faces
+
+
+def mesh_bounds(obj_content: str) -> Tuple[float, float, float, float, float, float]:
+    vertices, _ = parse_obj_mesh(obj_content)
+    if not vertices:
+        return (0.0,) * 6
+    return (
+        min(v[0] for v in vertices),
+        max(v[0] for v in vertices),
+        min(v[1] for v in vertices),
+        max(v[1] for v in vertices),
+        min(v[2] for v in vertices),
+        max(v[2] for v in vertices),
+    )
+
+
+def mesh_volume(obj_content: str) -> float:
+    """Return absolute closed-triangle volume in cubic millimetres."""
+    vertices, faces = parse_obj_mesh(obj_content)
+    total = 0.0
+    for a, b, c in faces:
+        ax, ay, az = vertices[a]
+        bx, by, bz = vertices[b]
+        cx, cy, cz = vertices[c]
+        total += (
+            ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)
+        ) / 6.0
+    return abs(total)
+
+
+def render_mesh_svg(obj_content: str, job_id: str) -> str:
+    """Render a truthful wireframe projection of the exact offline mesh."""
+    vertices, faces = parse_obj_mesh(obj_content)
+    if not vertices or not faces:
+        return "3D preview unavailable in offline mode."
+    min_x, max_x, min_y, max_y, min_z, max_z = mesh_bounds(obj_content)
+    scale = min(320.0 / max(max_x - min_x, 1.0), 220.0 / max(max_z - min_z, 1.0))
+
+    def point(v: Tuple[float, float, float]) -> str:
+        x = 40 + (v[0] - min_x) * scale
+        y = 260 - (v[2] - min_z) * scale
+        return f"{x:.2f},{y:.2f}"
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Generated adapter mesh preview">',
+        '<rect width="400" height="300" fill="#0d1117"/>',
+    ]
+    for a, b, c in faces:
+        lines.append(
+            f'<path d="M {point(vertices[a])} L {point(vertices[b])} L {point(vertices[c])} Z" fill="none" stroke="#00e676" stroke-width="0.7" opacity="0.65"/>'
+        )
+    lines.append(
+        f'<text x="12" y="18" fill="#00e676" font-family="monospace" font-size="11">INTERFACEFORGE 3D PREVIEW - GENERATED MESH</text><text x="12" y="292" fill="#88aa99" font-family="monospace" font-size="10">JOB: {job_id[:12]}</text></svg>'
+    )
+    return "".join(lines)
