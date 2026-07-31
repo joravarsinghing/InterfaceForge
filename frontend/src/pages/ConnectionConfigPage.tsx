@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GeometryPreview } from '../components/GeometryPreview';
 import { patchInterface, updateConnectionConfig, validateConnectionConfig } from '../services/api';
@@ -6,17 +6,38 @@ import type {
   Connection,
   ConnectionMode,
   ConnectionValidationResult,
-  InterfaceDefinition,
   Manufacturing,
   ManufacturingProcess,
   FitMode,
   Project,
 } from '../types/schema';
 
+import fitInsideSvg from '../assets/fit_inside.svg';
+import fitOverSvg from '../assets/fit_over.svg';
+
 interface ConnectionConfigPageProps {
   project: Project | null;
   onProjectUpdate?: (project: Project) => void;
 }
+
+const FitIntentSvgPreview: React.FC<{ mode: FitMode }> = ({ mode }) => {
+  const isInside = mode === 'fit_inside';
+  const src = isInside ? fitInsideSvg : fitOverSvg;
+  const alt = isInside ? 'Fit inside diagram' : 'Fit over diagram';
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'contain',
+        display: 'block',
+      }}
+    />
+  );
+};
 
 export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   project,
@@ -24,29 +45,35 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  const interfaceA: InterfaceDefinition | undefined = project?.interface_a;
-  const interfaceB: InterfaceDefinition | undefined = project?.interface_b;
+  const [connection, setConnection] = useState<Connection>(
+    project?.connection || {
+      mode: 'coaxial',
+      length_mm: 40.0,
+      offset_x_mm: 0.0,
+      offset_y_mm: 0.0,
+      angle_deg: 0.0,
+    }
+  );
 
-  const initialConn: Connection = project?.connection || {
-    mode: 'coaxial',
-    length_mm: 40.0,
-    offset_x_mm: 0.0,
-    offset_y_mm: 0.0,
-    angle_deg: 0.0,
-  };
+  const [manufacturing, setManufacturing] = useState<Manufacturing>(
+    project?.manufacturing || {
+      process: 'fdm',
+      material: 'PETG',
+      wall_thickness_mm: 2.4,
+      clearance_a_mm: 0.3,
+      clearance_b_mm: 0.1,
+    }
+  );
 
-  const initialMfg: Manufacturing = project?.manufacturing || {
-    process: 'fdm',
-    material: 'PETG',
-    wall_thickness_mm: 2.4,
-    clearance_a_mm: 0.3,
-    clearance_b_mm: 0.1,
-  };
+  const interfaceA = project?.interface_a;
+  const interfaceB = project?.interface_b;
 
-  const [connection, setConnection] = useState<Connection>(initialConn);
-  const [manufacturing, setManufacturing] = useState<Manufacturing>(initialMfg);
-  const [fitModeA, setFitModeA] = useState<FitMode>(interfaceA?.fit_mode || 'fit_over');
-  const [fitModeB, setFitModeB] = useState<FitMode>(interfaceB?.fit_mode || 'fit_over');
+  const [fitModeA, setFitModeA] = useState<FitMode>(
+    interfaceA?.fit_mode || 'fit_over'
+  );
+  const [fitModeB, setFitModeB] = useState<FitMode>(
+    interfaceB?.fit_mode || 'fit_over'
+  );
 
   const [validationResult, setValidationResult] = useState<ConnectionValidationResult>({
     is_valid: true,
@@ -65,10 +92,21 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isGeometryLoading, setIsGeometryLoading] = useState(false);
+  const prevGeoKeyRef = useRef<string | null>(null);
 
   // Client & Server Validation Effect
   const runValidation = useCallback(async () => {
     if (!project?.project_id) return;
+    const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.angle_deg}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
+    const geometryChanged = prevGeoKeyRef.current !== null && prevGeoKeyRef.current !== currentGeoKey;
+    prevGeoKeyRef.current = currentGeoKey;
+
+    if (geometryChanged) {
+      setIsGeometryLoading(true);
+    }
+    setIsValidating(true);
     try {
       const res = await validateConnectionConfig(
         project.project_id,
@@ -102,8 +140,11 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
         warnings: [],
         recommended_values: { length_mm: 40, wall_thickness_mm: 2.4 },
       });
+    } finally {
+      setIsValidating(false);
+      setIsGeometryLoading(false);
     }
-  }, [project, connection, manufacturing]);
+  }, [project, connection, manufacturing, fitModeA, fitModeB]);
 
   useEffect(() => {
     runValidation();
@@ -185,13 +226,29 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   };
 
   const fieldErrorMap: Record<string, string> = {};
+  if (connection.length_mm <= 0) {
+    fieldErrorMap['length_mm'] = 'Transition length must be a positive number greater than 0 mm.';
+  }
+  if (manufacturing.wall_thickness_mm <= 0) {
+    fieldErrorMap['wall_thickness_mm'] = 'Wall thickness must be a positive number greater than 0 mm.';
+  }
   validationResult.blocking_errors.forEach((err) => {
     if (err.field) {
       fieldErrorMap[err.field] = err.message;
     }
   });
 
-  const isFormValid = validationResult.is_valid && validationResult.blocking_errors.length === 0;
+  const isFormValid =
+    validationResult.is_valid &&
+    validationResult.blocking_errors.length === 0 &&
+    connection.length_mm > 0 &&
+    manufacturing.wall_thickness_mm > 0;
+
+  const canProceed = isFormValid && !isValidating && !isSaving;
+
+  const summaryBlockingErrors = validationResult.blocking_errors.filter(
+    (err) => err.id !== 'IF-CONN-003'
+  );
 
   return (
     <div className="connection-config-page container" style={{ padding: '2rem 1rem' }}>
@@ -220,13 +277,13 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       >
         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
           <div>
-            <strong style={{ color: '#3fb950' }}>[OK] APPROVED Interface A:</strong>{' '}
+            <strong style={{ color: '#3fb950' }}>APPROVED Interface A:</strong>{' '}
             <span style={{ color: '#e6edf3' }}>
               {interfaceA?.profile_type?.toUpperCase() || 'CIRCLE'}
             </span>
           </div>
           <div>
-            <strong style={{ color: '#a371f7' }}>[OK] APPROVED Interface B:</strong>{' '}
+            <strong style={{ color: '#a371f7' }}>APPROVED Interface B:</strong>{' '}
             <span style={{ color: '#e6edf3' }}>
               {interfaceB?.profile_type?.toUpperCase() || 'CIRCLE'}
             </span>
@@ -243,22 +300,103 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       </section>
 
       <section className="fit-intent-panel card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
-        <h3 style={{ marginTop: 0, color: '#f0f6fc' }}>Fit Intent</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-          <label style={{ display: 'grid', gap: '0.35rem', color: '#f0f6fc', fontWeight: 'bold' }}>
-            Interface A
-            <select value={fitModeA} onChange={(event) => setFitModeA(event.target.value as FitMode)} style={{ padding: '0.5rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '4px' }}>
-              <option value="fit_over">Fit over the outside</option>
-              <option value="fit_inside">Fit inside the opening</option>
-            </select>
-          </label>
-          <label style={{ display: 'grid', gap: '0.35rem', color: '#f0f6fc', fontWeight: 'bold' }}>
-            Interface B
-            <select value={fitModeB} onChange={(event) => setFitModeB(event.target.value as FitMode)} style={{ padding: '0.5rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '4px' }}>
-              <option value="fit_over">Fit over the outside</option>
-              <option value="fit_inside">Fit inside the opening</option>
-            </select>
-          </label>
+        <h3 style={{ marginTop: 0, color: '#f0f6fc', marginBottom: '0.75rem' }}>Fit Intent</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.25rem' }}>
+          <div>
+            <label
+              htmlFor="fit_intent_mode_a"
+              style={{ display: 'block', color: '#f0f6fc', fontWeight: 'bold', marginBottom: '0.35rem' }}
+            >
+              Interface A
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <select
+                id="fit_intent_mode_a"
+                value={fitModeA}
+                onChange={(event) => setFitModeA(event.target.value as FitMode)}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  padding: '0 0.75rem',
+                  background: '#0d1117',
+                  border: '1px solid #30363d',
+                  color: '#f0f6fc',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                }}
+              >
+                <option value="fit_over">Fit over the outside</option>
+                <option value="fit_inside">Fit inside the opening</option>
+              </select>
+              <div
+                className="fit-intent-preview-box"
+                data-testid="fit-intent-preview-a"
+                style={{
+                  width: '64px',
+                  height: '42px',
+                  background: '#0d1117',
+                  border: '1px solid #30363d',
+                  borderRadius: '4px',
+                  padding: '3px',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <FitIntentSvgPreview mode={fitModeA} />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="fit_intent_mode_b"
+              style={{ display: 'block', color: '#f0f6fc', fontWeight: 'bold', marginBottom: '0.35rem' }}
+            >
+              Interface B
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <select
+                id="fit_intent_mode_b"
+                value={fitModeB}
+                onChange={(event) => setFitModeB(event.target.value as FitMode)}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  padding: '0 0.75rem',
+                  background: '#0d1117',
+                  border: '1px solid #30363d',
+                  color: '#f0f6fc',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                }}
+              >
+                <option value="fit_over">Fit over the outside</option>
+                <option value="fit_inside">Fit inside the opening</option>
+              </select>
+              <div
+                className="fit-intent-preview-box"
+                data-testid="fit-intent-preview-b"
+                style={{
+                  width: '64px',
+                  height: '42px',
+                  background: '#0d1117',
+                  border: '1px solid #30363d',
+                  borderRadius: '4px',
+                  padding: '3px',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <FitIntentSvgPreview mode={fitModeB} />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
@@ -568,58 +706,33 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               </div>
             </div>
 
-            {/* Manufacturing Process & Material Selectors */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <div>
-                <label
-                  htmlFor="mfg_process"
-                  style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}
-                >
-                  Process:
-                </label>
-                <select
-                  id="mfg_process"
-                  value={manufacturing.process}
-                  onChange={(e) =>
-                    handleManufacturingChange('process', e.target.value as ManufacturingProcess)
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    background: '#0d1117',
-                    border: '1px solid #30363d',
-                    color: '#f0f6fc',
-                    borderRadius: '4px',
-                  }}
-                >
-                  <option value="fdm">FDM (Fused Deposition)</option>
-                  <option value="sla">SLA (Resin SLA/DLP)</option>
-                  <option value="cnc">CNC Milling</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="mfg_material"
-                  style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}
-                >
-                  Material:
-                </label>
-                <input
-                  id="mfg_material"
-                  type="text"
-                  value={manufacturing.material}
-                  onChange={(e) => handleManufacturingChange('material', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    background: '#0d1117',
-                    border: '1px solid #30363d',
-                    color: '#f0f6fc',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
+            {/* Manufacturing Process Selector */}
+            <div>
+              <label
+                htmlFor="mfg_process"
+                style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}
+              >
+                Manufacturing Process:
+              </label>
+              <select
+                id="mfg_process"
+                value={manufacturing.process}
+                onChange={(e) =>
+                  handleManufacturingChange('process', e.target.value as ManufacturingProcess)
+                }
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  background: '#0d1117',
+                  border: '1px solid #30363d',
+                  color: '#f0f6fc',
+                  borderRadius: '4px',
+                }}
+              >
+                <option value="fdm">3D print - FDM</option>
+                <option value="sla">3D print - SLA/DLP</option>
+                <option value="cnc">CNC Milling</option>
+              </select>
             </div>
           </div>
         </div>
@@ -634,10 +747,11 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               ...project!,
               connection,
               manufacturing,
-              loft_plan: validationResult.loft_plan ?? project!.loft_plan,
+              loft_plan: isFormValid ? (validationResult.loft_plan ?? project!.loft_plan) : undefined,
               interface_a: { ...project!.interface_a, fit_mode: fitModeA },
               interface_b: { ...project!.interface_b, fit_mode: fitModeB },
             }}
+            isLoading={isGeometryLoading}
           />
 
           {/* Validation Status Panel */}
@@ -659,17 +773,33 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                   borderRadius: '4px',
                   fontWeight: 'bold',
                   fontSize: '0.85rem',
-                  background: isFormValid ? 'rgba(63, 185, 80, 0.2)' : 'rgba(248, 81, 73, 0.2)',
-                  color: isFormValid ? '#3fb950' : '#f85149',
-                  border: isFormValid ? '1px solid #3fb950' : '1px solid #f85149',
+                  background: !isFormValid
+                    ? 'rgba(248, 81, 73, 0.2)'
+                    : validationResult.warnings.length > 0
+                    ? 'rgba(210, 153, 34, 0.2)'
+                    : 'rgba(63, 185, 80, 0.2)',
+                  color: !isFormValid
+                    ? '#f85149'
+                    : validationResult.warnings.length > 0
+                    ? '#d29922'
+                    : '#3fb950',
+                  border: !isFormValid
+                    ? '1px solid #f85149'
+                    : validationResult.warnings.length > 0
+                    ? '1px solid #d29922'
+                    : '1px solid #3fb950',
                 }}
               >
-                {isFormValid ? ' VALID CONFIGURATION' : ' ERRORS DETECTED'}
+                {!isFormValid
+                  ? ' ERRORS DETECTED'
+                  : validationResult.warnings.length > 0
+                  ? ' VALID WITH WARNINGS'
+                  : ' VALID CONFIGURATION'}
               </span>
             </div>
 
             {/* Blocking Errors Summary */}
-            {validationResult.blocking_errors.length > 0 && (
+            {summaryBlockingErrors.length > 0 && (
               <div
                 style={{
                   marginTop: '0.75rem',
@@ -679,9 +809,9 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                   borderRadius: '4px',
                 }}
               >
-                <strong style={{ color: '#f85149' }}>Blocking Errors ({validationResult.blocking_errors.length}):</strong>
+                <strong style={{ color: '#f85149' }}>Blocking Errors ({summaryBlockingErrors.length}):</strong>
                 <ul style={{ margin: '0.5rem 0 0 1.25rem', padding: 0, color: '#f0f6fc', fontSize: '0.9rem' }}>
-                  {validationResult.blocking_errors.map((err) => (
+                  {summaryBlockingErrors.map((err) => (
                     <li key={err.id}>
                       <strong>[{err.id}]</strong> {err.message}
                     </li>
@@ -713,7 +843,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 <ul style={{ margin: '0.5rem 0 0 1.25rem', padding: 0, color: '#f0f6fc', fontSize: '0.9rem' }}>
                   {validationResult.warnings.map((warn) => (
                     <li key={warn.id}>
-                      <strong> [{warn.id}]</strong> {warn.message}
+                      {warn.message}
                     </li>
                   ))}
                 </ul>
@@ -732,16 +862,20 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                 type="button"
                 className="btn btn-primary"
                 onClick={handleSaveAndProceed}
-                disabled={!isFormValid || isSaving}
+                disabled={!canProceed}
                 style={{
                   flex: 1,
                   padding: '0.75rem',
                   fontWeight: 'bold',
-                  cursor: isFormValid && !isSaving ? 'pointer' : 'not-allowed',
-                  opacity: isFormValid && !isSaving ? 1 : 0.6,
+                  cursor: canProceed ? 'pointer' : 'not-allowed',
+                  background: canProceed ? undefined : '#0d1117',
+                  color: canProceed ? undefined : '#3fb950',
+                  border: canProceed ? undefined : '1px solid #3fb950',
+                  boxShadow: canProceed ? undefined : 'none',
+                  opacity: 1,
                 }}
               >
-                {isSaving ? 'Saving...' : 'Save Connection & Continue to Model Generation '}
+                {isSaving ? 'Saving...' : 'Save Connection & Continue to Model Generation'}
               </button>
             </div>
           </div>

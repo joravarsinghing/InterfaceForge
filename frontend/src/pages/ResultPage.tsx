@@ -508,7 +508,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
         </div>
       )}
 
-      {/* KCL Code Viewer Drawer */}
+      {/* KCL Code Viewer & Zoo Design Studio Integration Card */}
       <div className="card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.25rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
@@ -519,16 +519,24 @@ export const ResultPage: React.FC<ResultPageProps> = ({
               Deterministic KCL script compiled from the approved canonical project schema per ADR-001 &amp; ADR-002.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowKclCode(!showKclCode)}>
               {showKclCode ? 'Hide KCL Code' : 'View KCL Code'}
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyKcl}>
               {copiedKcl ? ' Copied!' : 'Copy KCL'}
             </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleDownloadKcl}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleDownloadKcl}>
               Download .kcl
             </button>
+            <a
+              href="https://zoo.dev/design-studio/download"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary btn-sm"
+            >
+              Download Zoo Design Studio | Zoo
+            </a>
           </div>
         </div>
 

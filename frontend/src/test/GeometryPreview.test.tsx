@@ -17,3 +17,9 @@ test('shared preview defaults to isometric X/Y/Z geometry with inner boundaries'
 
   expect(screen.getByRole('button', { name: 'Isometric' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('renders animated horizontal progress bar when isLoading is true', () => {
+  render(<GeometryPreview project={project} isLoading={true} />);
+  expect(screen.getByTestId('preview-loading-bar')).toBeInTheDocument();
+  expect(screen.getByRole('progressbar')).toBeInTheDocument();
+});

@@ -102,8 +102,8 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     );
 
     expect(screen.getByText(/Step 3 - Guided Connection/i)).toBeInTheDocument();
-    expect(screen.getByText(/\[OK\] APPROVED Interface A:/i)).toBeInTheDocument();
-    expect(screen.getByText(/\[OK\] APPROVED Interface B:/i)).toBeInTheDocument();
+    expect(screen.getByText(/APPROVED Interface A:/i)).toBeInTheDocument();
+    expect(screen.getByText(/APPROVED Interface B:/i)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Coaxial/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Parallel Offset/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Limited Angle/i })).toBeInTheDocument();
@@ -213,7 +213,9 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     );
 
     const submitBtn = screen.getByRole('button', { name: /Save Connection & Continue/i });
-    expect(submitBtn).not.toBeDisabled();
+    await waitFor(() => {
+      expect(submitBtn).not.toBeDisabled();
+    });
 
     fireEvent.click(submitBtn);
 
@@ -226,5 +228,100 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
       );
       expect(onProjectUpdate).toHaveBeenCalled();
     });
+  });
+
+  it('disables save button and displays error when transition length is changed to 0', async () => {
+    vi.mocked(api.validateConnectionConfig).mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: { length_mm: 40, wall_thickness_mm: 2.4 },
+    });
+
+    render(
+      <BrowserRouter>
+        <ConnectionConfigPage project={{
+          ...mockApprovedProject,
+          loft_plan: {
+            schema_revision: '0.1',
+            geometry_hash: 'hash123',
+            point_count: 32,
+            winding: 'cw',
+            seam_index: 0,
+            outer_a: [],
+            outer_b: [],
+            inner_a: [],
+            inner_b: [],
+            outer_shift: 0,
+            outer_reversed: false,
+            inner_shift: 0,
+            inner_reversed: false,
+            sections: [{ z_mm: 0, outer: [], inner: [] }],
+          } as any,
+        }} />
+      </BrowserRouter>
+    );
+
+    const lengthInput = screen.getByLabelText(/Transition Length/i);
+    fireEvent.change(lengthInput, { target: { value: '0' } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/ERRORS DETECTED/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Save Connection & Continue/i })).toBeDisabled();
+    });
+  });
+
+  it('displays VALID WITH WARNINGS badge and warning message without error code ID when warnings exist', async () => {
+    vi.mocked(api.validateConnectionConfig).mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [
+        {
+          id: 'IF-CONN-W001',
+          message: 'Transition length is short (< 10 mm), causing steep loft angles.',
+          field: 'length_mm',
+          recovery_steps: ['Increase length'],
+        },
+      ],
+      recommended_values: { length_mm: 40, wall_thickness_mm: 2.4 },
+    });
+
+    render(
+      <BrowserRouter>
+        <ConnectionConfigPage project={mockApprovedProject} />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/VALID WITH WARNINGS/i)).toBeInTheDocument();
+      expect(screen.getByText('Transition length is short (< 10 mm), causing steep loft angles.')).toBeInTheDocument();
+      expect(screen.queryByText(/\[IF-CONN-W001\]/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders fit intent SVG preview boxes and updates diagram when dropdown mode changes', async () => {
+    vi.mocked(api.validateConnectionConfig).mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: { length_mm: 40, wall_thickness_mm: 2.4 },
+    });
+
+    render(
+      <BrowserRouter>
+        <ConnectionConfigPage project={mockApprovedProject} />
+      </BrowserRouter>
+    );
+
+    const previewBoxA = screen.getByTestId('fit-intent-preview-a');
+    expect(previewBoxA).toBeInTheDocument();
+    const imgA = previewBoxA.querySelector('img');
+    expect(imgA).toBeInTheDocument();
+    expect(imgA).toHaveAttribute('alt', 'Fit over diagram');
+
+    const selectA = screen.getByLabelText('Interface A');
+    fireEvent.change(selectA, { target: { value: 'fit_inside' } });
+
+    expect(previewBoxA.querySelector('img')).toHaveAttribute('alt', 'Fit inside diagram');
   });
 });

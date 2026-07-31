@@ -810,7 +810,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className={`btn ${scaleCalibration.confirmed ? 'btn-secondary' : 'btn-primary'} btn-sm`}
                 onClick={() => { setCalibrationDraftError(null); setCalibrationMode(!calibrationMode); }}
               >
                 {calibrationMode ? 'Stop Calibrating' : 'Calibrate'}
@@ -850,7 +850,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               />
               <button
                 type="button"
-                className="btn btn-primary btn-sm"
+                className={`btn ${scaleCalibration.confirmed ? 'btn-secondary' : 'btn-primary'} btn-sm`}
                 disabled={!calibrationPointA || !calibrationPointB || !Number.isFinite(parseFloat(customRealMm)) || parseFloat(customRealMm) <= 0}
                 onClick={() => handleConfirmScale(parseFloat(customRealMm))}
               >
@@ -1095,34 +1095,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
         </section>
       )}
 
-      {/* Shape Confirmation Panel */}
-      {isResolvedSupportedProfile && (
-        <section
-          className="resolved-shape-card"
-          aria-labelledby="resolved-shape-heading"
-          style={{
-            background: '#161b22',
-            border: '1px solid #238636',
-            borderRadius: '8px',
-            padding: '1.25rem',
-            marginBottom: '1.5rem',
-          }}
-        >
-          <h2 id="resolved-shape-heading" style={{ fontSize: '1.15rem', margin: 0 }}>
-            Detected shape: {formatProfileTypeLabel(resolvedProfileType as ProfileType)}
-          </h2>
-          <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.8rem', margin: '1rem 0 0 0' }}>
-            {(scaleCalibration.confirmed ? displayDimensions : []).map((dim) => (
-              <div key={`resolved-${dim.id}`} style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', padding: '0.75rem' }}>
-                <dt style={{ color: '#8b949e', fontSize: '0.85rem' }}>{dim.id === 'outer_diameter' ? 'Diameter' : dim.label}</dt>
-                <dd style={{ color: '#f0f6fc', fontWeight: 700, margin: '0.25rem 0 0 0' }}>
-                  {dim.value.toFixed(2)} {dim.unit}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
       <section
         className="dimensions-summary-card"
         aria-labelledby="dimensions-summary-heading"
@@ -1244,7 +1216,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             <>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={`btn ${scaleCalibration.confirmed ? 'btn-primary' : 'btn-secondary'}`}
                 disabled={loading || !isFormValid}
                 onClick={handleApprove}
               >

@@ -93,7 +93,7 @@ const mockFailedJob: GenerationJob = {
 };
 
 describe('ModelGenerationPage Component (Stage S5.5)', () => {
-  it('renders mock engine mode banner, readiness card, and start generation action', async () => {
+  it('renders readiness card and start generation action', async () => {
     vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
       is_valid: true,
       blocking_errors: [],
@@ -108,17 +108,15 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     );
 
     expect(screen.getByRole('heading', { level: 1, name: /3D Model Generation & Staged Pipeline/i })).toBeInTheDocument();
-    expect(screen.getByText(/Running in Mock Engine Mode/i)).toBeInTheDocument();
 
     await waitFor(() => {
-
       expect(screen.getByText(/Both Interface A and Interface B are approved/i)).toBeInTheDocument();
     });
 
     expect(screen.getByRole('button', { name: /Start 3D Generation/i })).not.toBeDisabled();
   });
 
-  it('shows the Live Zoo engine notice and hides mock controls in live mode', async () => {
+  it('hides mock controls in live mode', async () => {
     vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
       is_valid: true,
       blocking_errors: [],
@@ -132,7 +130,6 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
       </BrowserRouter>
     );
 
-    expect(await screen.findByText(/Running in Live Zoo Engine Mode/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Mock Test Scenario:/i)).not.toBeInTheDocument();
   });
   it('triggers 3D generation and renders staged progress and preview metadata', async () => {
@@ -163,6 +160,46 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     expect(screen.getAllByText(/SUCCEEDED/i)[0]).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: /Generated 3D Adapter Preview/i })).toBeInTheDocument();
     expect(screen.getByText(/34.52 cm3/i)).toBeInTheDocument();
+  });
+
+  it('renders Download Zoo Design Studio hyperlink button in Generated KCL Artifact section after compilation', async () => {
+    vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+    vi.spyOn(api, 'compileKcl').mockResolvedValue({
+      success: true,
+      compiler_version: '0.1.0',
+      schema_revision: 3,
+      schema_version: '0.1',
+      artifact_ref: 'artifacts/adapter.kcl',
+      kcl_hash: 'abc123hash4567890',
+      kcl_code: 'fn main() {}',
+      preview_snippet: 'fn main() {}',
+      errors: [],
+      warnings: [],
+    });
+
+    render(
+      <BrowserRouter>
+        <ModelGenerationPage project={mockProject} />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Compile KCL Code/i })).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Compile KCL Code/i }));
+    });
+
+    const downloadLink = screen.getByRole('link', { name: /Download Zoo Design Studio \| Zoo/i });
+    expect(downloadLink).toBeInTheDocument();
+    expect(downloadLink).toHaveAttribute('href', 'https://zoo.dev/design-studio/download');
+    expect(downloadLink).toHaveAttribute('target', '_blank');
   });
 
   it('handles service failure state, recovery steps, and retry trigger', async () => {

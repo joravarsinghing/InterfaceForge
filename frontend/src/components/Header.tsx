@@ -20,31 +20,16 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   healthState,
   project,
-  providerStatus,
+  providerStatus: _providerStatus,
   providerModeError,
   onRetryHealth,
   onRestartProject,
-  onProviderModeChange,
+  onProviderModeChange: _onProviderModeChange,
 }) => {
   const [showHelp, setShowHelp] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [changingMode, setChangingMode] = useState<ProviderMode | null>(null);
 
-  const effectiveMode: ProviderMode = providerStatus?.effective_mode ?? project?.provider_mode ?? 'mock';
-  const selectedMode: ProviderMode = providerStatus?.selected_mode ?? project?.provider_mode ?? 'mock';
-  const statusIsLive = Boolean(effectiveMode === 'live' && providerStatus?.live_available);
-  const statusLabel = statusIsLive ? 'Live' : 'Mock / Offline';
-  const canChangeProviderMode = Boolean(onProviderModeChange);
 
-  const handleModeClick = async (mode: ProviderMode) => {
-    if (!onProviderModeChange || changingMode) return;
-    setChangingMode(mode);
-    try {
-      await onProviderModeChange(mode);
-    } finally {
-      setChangingMode(null);
-    }
-  };
 
   const getStatusBadge = () => {
     if (healthState.loading) {

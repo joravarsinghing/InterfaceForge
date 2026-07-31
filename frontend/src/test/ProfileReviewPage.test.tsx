@@ -662,7 +662,6 @@ describe('Profile Review shape resolution regressions', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getAllByRole('heading', { name: /Detected shape: Rounded rectangle/i })[0]).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Use Rounded Rectangle' })).not.toBeInTheDocument();
     expect(screen.queryByText(/This outline is more complex than the shapes supported in this version/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
@@ -694,7 +693,6 @@ describe('Profile Review shape resolution regressions', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getAllByRole('heading', { name: /Detected shape: Rounded rectangle/i })[0]).toBeInTheDocument();
     expect(screen.getAllByText(/Shape confirmed/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
   });

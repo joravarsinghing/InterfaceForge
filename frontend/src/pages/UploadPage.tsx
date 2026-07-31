@@ -1,6 +1,8 @@
 import React, { useState, useEffect, ChangeEvent, DragEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ImageGuidance, PreferredInput } from '../components/ImageGuidance';
+import { SampleGallery } from '../components/SampleGallery';
+import { getSampleFile, SampleAsset } from '../data/sampleManifest';
 import { uploadInterfaceImage, analyzeInterfaceImage, fetchProject } from '../services/api';
 import { getInterfaceStepPath } from '../services/workflow';
 import { AnalysisResult, Project } from '../types/schema';
@@ -44,7 +46,6 @@ export const UploadPage: React.FC<UploadPageProps> = ({
   const [loadingText, setLoadingText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-
 
   const handleFileSelect = (file: File) => {
     setError(null);
@@ -92,6 +93,81 @@ export const UploadPage: React.FC<UploadPageProps> = ({
     setError(null);
   };
 
+  const handleSelectSample = async (
+    sample: SampleAsset,
+    targetInterface: 'interface_a' | 'interface_b'
+  ) => {
+    if (!project) return;
+
+    if (targetInterface === 'interface_b' && !(project?.interface_a?.approved ?? false)) {
+      setError('Interface A must be reviewed and approved before uploading an image for Interface B.');
+      return;
+    }
+
+    setLoading(true);
+    setLoadingText('Preparing sample image...');
+    setError(null);
+
+    try {
+      const file = await getSampleFile(sample);
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+
+      setLoadingText('Uploading image file...');
+      await uploadInterfaceImage(
+        project.project_id,
+        targetInterface,
+        file,
+        project.project_token
+      );
+
+      setLoadingText('Analyzing interface contours using AI vision model...');
+      const result = await analyzeInterfaceImage(
+        project.project_id,
+        targetInterface,
+        project.project_token
+      );
+
+      setAnalysisResult(result);
+      setLoadingText('Refreshing project state...');
+
+      let refreshedProject: Project | null = null;
+      try {
+        refreshedProject = await fetchProject(project.project_id, project.project_token);
+      } catch (refreshErr: unknown) {
+        if (import.meta.env.DEV) {
+          console.error(
+            '[UploadPage] Project refresh failed after successful analysis.',
+            { project_id: project.project_id, interface_id: targetInterface, refreshErr }
+          );
+        }
+        setLoading(false);
+        setError(
+          'Analysis succeeded but the project state could not be refreshed. ' +
+          'Please retry or reload the page to continue.'
+        );
+        return;
+      }
+
+      if (onAnalysisComplete) {
+        onAnalysisComplete(result);
+      }
+      if (onProjectUpdate && refreshedProject) {
+        onProjectUpdate(refreshedProject);
+      }
+
+      setLoading(false);
+      navigate(targetInterface === 'interface_b' ? '/step2/analysis' : '/step1/analysis');
+    } catch (err: unknown) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : 'An unexpected error occurred during sample upload.';
+      if (import.meta.env.DEV) {
+        console.error('[UploadPage] Sample upload or analysis request failed.', { err });
+      }
+      setError(msg);
+    }
+  };
+
   const handleUploadAndAnalyze = async (providerOverride?: string) => {
     if (!selectedFile || !project) {
       setError('Please select an image file to upload.');
@@ -134,15 +210,11 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 
       // 3. Refresh project so App-level state reflects updated source_image_ref and
       //  workflow state (interface_a_review_required) before navigation.
-      //  Without this, ProtectedRoute reads stale project where source_image_ref
-      //  is null and redirects back to /step1 instead of allowing /step1/analysis.
       setLoadingText('Refreshing project state...');
       let refreshedProject: Project | null = null;
       try {
         refreshedProject = await fetchProject(project.project_id, project.project_token);
       } catch (refreshErr: unknown) {
-        // Project refresh failed after successful analysis show an inline error
-        // so the user can retry without losing the selected image (ADR-013).
         if (import.meta.env.DEV) {
           console.error(
             '[UploadPage] Project refresh failed after successful analysis.',
@@ -239,6 +311,8 @@ export const UploadPage: React.FC<UploadPageProps> = ({
         </div>
       ) : (
         <>
+        <SampleGallery onSelectSample={handleSelectSample} currentInterface={interfaceId} disabled={loading} />
+
         <div className="upload-layout">
           <div className="upload-main">
             {!selectedFile ? (
@@ -250,7 +324,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
               >
                 <div className="dropzone-content">
                   <div className="dropzone-icon" aria-hidden="true"></div>
-                  <p className="dropzone-text">Drag &amp; drop your interface image here</p>
+                  <p className="dropzone-text">Upload your own image or drag &amp; drop here</p>
                   <p className="dropzone-or">or</p>
                   <label
                     htmlFor="file-input"
@@ -369,3 +443,4 @@ export const UploadPage: React.FC<UploadPageProps> = ({
 };
 
 export default UploadPage;
+

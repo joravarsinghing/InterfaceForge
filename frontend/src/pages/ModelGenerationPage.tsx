@@ -29,7 +29,6 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const canProceedToReview = Boolean(project && hasValidCurrentModel(project));
-  const isLiveMode = project?.provider_mode === 'live';
 
   const [readiness, setReadiness] = useState<ConnectionValidationResult | null>(null);
   const [readinessLoading, setReadinessLoading] = useState<boolean>(true);
@@ -43,7 +42,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
     error: null,
   });
 
-  const [selectedScenario, setSelectedScenario] = useState<MockScenario>('success');
+  const [selectedScenario] = useState<MockScenario>('success');
   const [activeJob, setActiveJob] = useState<GenerationJob | null>(null);
   const [jobState, setJobState] = useState<{
     loading: boolean;
@@ -222,21 +221,6 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
         </div>
       </div>
 
-      {/* Engine Provider Banner & Control Panel */}
-      <div className="mock-banner-card" role="note" aria-label="Engine Mode Notice">
-        <div className="mock-banner-header">
-          <span className="mock-pulse-dot"></span>
-          <div>
-            <h3>{isLiveMode ? 'Running in Live Zoo Engine Mode' : 'Running in Mock Engine Mode'}</h3>
-            <p>
-              {isLiveMode
-                ? 'Live Zoo Engine provider is active. Staged generation will use the configured Zoo API connection.'
-                : 'Offline execution pipeline active. Real Zoo API calls are disabled per ADR-006. All staged progress, errors, and previews are simulated deterministically.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Pre-flight Readiness Summary & KCL Compilation */}
       <section className="readiness-card" aria-labelledby="readiness-heading">
         <h2 id="readiness-heading" className="card-title">Pre-Flight Readiness &amp; KCL Emitter</h2>
@@ -335,6 +319,17 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             <pre className="kcl-code-block" tabIndex={0} aria-label="KCL Source Code Preview">
               <code>{compileState.result.preview_snippet || compileState.result.kcl_code}</code>
             </pre>
+          </div>
+
+          <div className="kcl-card-footer">
+            <a
+              href="https://zoo.dev/design-studio/download"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary"
+            >
+              Download Zoo Design Studio | Zoo
+            </a>
           </div>
         </section>
       )}

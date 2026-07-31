@@ -69,7 +69,7 @@ describe('UploadPage Component', () => {
     vi.resetAllMocks();
   });
 
-  it('renders upload dropzone and guidance panel for Interface A', () => {
+  it('renders upload dropzone, sample gallery, and guidance panel for Interface A', () => {
     render(
       <MemoryRouter>
         <UploadPage interfaceId="interface_a" project={mockProject} />
@@ -77,10 +77,70 @@ describe('UploadPage Component', () => {
     );
 
     expect(screen.getByText('Interface A - Upload Image or Sketch')).toBeInTheDocument();
-    expect(screen.getByText(/Drag & drop your interface image here/i)).toBeInTheDocument();
+    expect(screen.getByText('Try these samples')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /shuffle/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /select sample/i })).toHaveLength(3);
+    expect(screen.getByText(/Upload your own image or drag & drop here/i)).toBeInTheDocument();
     expect(screen.getByText('Image Guidance')).toBeInTheDocument();
     expect(screen.getByText(/GOOD CAPTURE/i)).toBeInTheDocument();
     expect(screen.getByText(/BAD CAPTURE/i)).toBeInTheDocument();
+  });
+
+  it('triggers upload and analysis flow when a sample is selected from the gallery', async () => {
+    vi.mocked(apiModule.uploadInterfaceImage).mockResolvedValue({
+      artifact_ref: 'artifacts/uploads/sample-1.jpg',
+      original_filename: 'sample-1.jpg',
+      stored_filename: 'sample-1.jpg',
+      content_type: 'image/jpeg',
+      size_bytes: 500,
+      uploaded_at: '2026-07-31T00:00:00Z',
+    });
+    vi.mocked(apiModule.analyzeInterfaceImage).mockResolvedValue({
+      profile_type: 'circle',
+      candidate_points: [],
+      candidate_dimensions: [],
+      provenance: 'image_extracted',
+      confidence: 0.9,
+      warnings: [],
+      rejection_reasons: [],
+      success: true,
+    });
+    vi.mocked(apiModule.fetchProject).mockResolvedValue(mockProject);
+
+    const onComplete = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <UploadPage
+          interfaceId="interface_a"
+          project={mockProject}
+          onAnalysisComplete={onComplete}
+        />
+      </MemoryRouter>
+    );
+
+    // Click sample thumbnail
+    const thumbnails = screen.getAllByRole('button', { name: /select sample/i });
+    fireEvent.click(thumbnails[0]);
+
+    // Choose Use for Interface A
+    const useForA = screen.getByRole('button', { name: 'Use for Interface A' });
+    fireEvent.click(useForA);
+
+    await waitFor(() => {
+      expect(apiModule.uploadInterfaceImage).toHaveBeenCalledWith(
+        'proj-123',
+        'interface_a',
+        expect.any(File),
+        'tok-123'
+      );
+      expect(apiModule.analyzeInterfaceImage).toHaveBeenCalledWith(
+        'proj-123',
+        'interface_a',
+        'tok-123'
+      );
+      expect(onComplete).toHaveBeenCalled();
+    });
   });
 
   it('supports keyboard navigation and activation on Choose Image label', () => {
@@ -128,7 +188,7 @@ describe('UploadPage Component', () => {
     fireEvent.click(cancelButton);
 
     expect(screen.queryByText('Selected Image Preview')).not.toBeInTheDocument();
-    expect(screen.getByText('Drag & drop your interface image here')).toBeInTheDocument();
+    expect(screen.getByText(/Upload your own image or drag & drop here/i)).toBeInTheDocument();
   });
 
   it('executes upload and analysis flow on button click', async () => {

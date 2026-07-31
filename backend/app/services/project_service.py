@@ -1,4 +1,4 @@
-﻿"""Project service layer managing domain workflow state transitions and schema invariants."""
+"""Project service layer managing domain workflow state transitions and schema invariants."""
 
 import io
 import logging
@@ -196,6 +196,8 @@ def _merge_upload_measurement_after_analysis(interface: Interface, previous: Int
     if not previous_scale or previous_scale.source != "user_calibration":
         return
     measurement_type = previous_scale.reference_dimension or "overall_width"
+    if measurement_type not in SUPPORTED_MEASUREMENT_TYPES:
+        return
     value = previous_scale.real_distance_mm
     unit = "mm"
     result_pixel_distance = 0.0

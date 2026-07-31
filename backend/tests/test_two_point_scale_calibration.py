@@ -1,4 +1,4 @@
-﻿"""Two-point trace scale calibration regression tests."""
+"""Two-point trace scale calibration regression tests."""
 
 from fastapi.testclient import TestClient
 
@@ -579,3 +579,44 @@ def test_exact_circle_boundary_nodes_calibrate_and_far_points_are_rejected(clien
     )
     assert rejected.status_code == 400
     assert "outside the traced profile bounds" in rejected.json()["error"]["message"]
+
+
+def test_reanalyze_after_two_point_calibration_succeeds(client: TestClient) -> None:
+    pid, token, headers = create_project(client)
+    from tests.test_upload_and_analysis import create_sample_png_bytes
+    upload_res = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/upload",
+        files={"file": ("test.png", create_sample_png_bytes(), "image/png")},
+        headers=headers,
+    )
+    assert upload_res.status_code == 201
+
+    first_anal = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/analyze",
+        headers=headers,
+    )
+    assert first_anal.status_code == 200
+
+    boundary = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"]["calibration_boundary"]["points"]
+
+    res = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
+        json={
+            "point_a": boundary[0],
+            "point_b": boundary[2],
+            "real_distance_mm": 50.0,
+            "confirmed": True,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.json()
+
+    # Call analysis again on the interface after two-point calibration was saved (re-analysis)
+    reanalyze_res = client.post(
+        f"/api/projects/{pid}/interfaces/interface_a/analyze",
+        headers=headers,
+    )
+    assert reanalyze_res.status_code == 200, reanalyze_res.json()
+    proj = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
+    scale_cal = proj["interface_a"]["scale_calibration"]
+    assert scale_cal is None or scale_cal.get("confirmed") is False

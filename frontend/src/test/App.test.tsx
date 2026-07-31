@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from '../App';
 import * as apiModule from '../services/api';
-import { Project, ProviderModeStatus } from '../types/schema';
+import { ProviderModeStatus } from '../types/schema';
 
 vi.mock('../services/api', async () => {
   const actual = await vi.importActual('../services/api');
@@ -28,40 +28,7 @@ const mockProviderStatus: ProviderModeStatus = {
   message: 'Mock / offline providers are active for this project.',
 };
 
-const mockProject: Project = {
-  project_id: 'proj-test',
-  project_token: 'tok_test',
-  display_name: 'Adapter 1',
-  provider_mode: 'mock',
-  schema_version: '0.1',
-  state: 'new',
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-  current_schema_revision: 1,
-  current_model_revision: null,
-  last_known_good_model_revision: null,
-  interface_a: {
-    id: 'interface_a',
-    profile_type: 'circle',
-    profile_points: [],
-    center: { x: 0, y: 0 },
-    dimensions: [],
-    validation: { is_closed: true, self_intersects: false, warnings: [] },
-    approved: false,
-  },
-  interface_b: {
-    id: 'interface_b',
-    profile_type: 'circle',
-    profile_points: [],
-    center: { x: 0, y: 0 },
-    dimensions: [],
-    validation: { is_closed: true, self_intersects: false, warnings: [] },
-    approved: false,
-  },
-  connection: { mode: 'coaxial', length_mm: 0, offset_x_mm: 0, offset_y_mm: 0, angle_deg: 0 },
-  manufacturing: { process: 'fdm', material: 'PETG', wall_thickness_mm: 2.4, clearance_a_mm: 0.3, clearance_b_mm: 0.1 },
-  model_revisions: [],
-};
+
 
 function mockHealthyBackend() {
   vi.mocked(apiModule.fetchHealthStatus).mockResolvedValue({
