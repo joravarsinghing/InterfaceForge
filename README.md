@@ -1,19 +1,24 @@
-<div align="center">
-  <img src="InterfaceForge_logo.svg" alt="InterfaceForge logo" width="220" />
 
-  <h3>From two interface profiles to a reviewable parametric adapter.</h3>
+<div align="center">
+  <img src="InterfaceForge_logo.svg" alt="InterfaceForge logo" width="240" />
+
+  <h3>Turn two reviewed 2D profiles into a parametric transition adapter.</h3>
 
   <p>
-    InterfaceForge helps makers, technicians, hobbyists, and small workshops create adapter candidates between incompatible physical products without starting from a blank CAD workspace.
+    InterfaceForge is a guided adapter-design workflow for creating hollow transitions between clean circular, rectangular, and rounded-rectangular interfaces.
   </p>
 
   <p>
-    <a href="https://github.com/joravarsinghing/InterfaceForge"><img alt="Repository" src="https://img.shields.io/badge/GitHub-InterfaceForge-181717?logo=github" /></a>
-    <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-29AA3B" /></a>
-    <img alt="Python" src="https://img.shields.io/badge/Python-3.10.x-3776AB?logo=python&logoColor=white" />
-    <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=111827" />
+    <a href="https://github.com/joravarsinghing/InterfaceForge">
+      <img alt="GitHub repository" src="https://img.shields.io/badge/GitHub-InterfaceForge-181717?logo=github" />
+    </a>
+    <a href="LICENSE">
+      <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-29AA3B" />
+    </a>
+    <img alt="Python 3.14" src="https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white" />
+    <img alt="React 18" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=111827" />
     <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.110%2B-009688?logo=fastapi&logoColor=white" />
-    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
+    <img alt="TypeScript 5" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
     <img alt="Zoo API Makeathon 2026" src="https://img.shields.io/badge/Zoo_API_Makeathon-2026-29AA3B" />
   </p>
 </div>
@@ -22,26 +27,49 @@
 
 ## Overview
 
-InterfaceForge converts two reviewed 2D interface profiles and a small set of user-confirmed measurements into a deterministic parametric adapter workflow powered by [Zoo](https://zoo.dev/).
+InterfaceForge creates a hollow parametric transition between two reviewed planar interface profiles.
 
-It is designed for situations such as:
+The controlled submission workflow demonstrates a practical dust-extraction adapter:
 
-- adapting a vacuum hose to a CNC router dust port;
-- joining two incompatible round, rectangular, or traced interfaces;
-- creating a custom camera, workshop, or equipment adapter;
-- producing editable KCL together with STL and STEP artifacts for inspection.
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <strong>Interface A</strong><br><br>
+      Circular vacuum-hose profile
+    </td>
+    <td width="33%" valign="top">
+      <strong>Interface B</strong><br><br>
+      Rounded-rectangle CNC dust-port profile
+    </td>
+    <td width="33%" valign="top">
+      <strong>Result</strong><br><br>
+      Zoo-generated hollow transition adapter
+    </td>
+  </tr>
+</table>
 
-> InterfaceForge creates **editable adapter candidates that must be inspected and approved before manufacturing**. It does not claim unrestricted photo-to-CAD reconstruction or automatic manufacturing readiness.
+InterfaceForge guides the user through:
+
+- uploading each clean profile;
+- calibrating it using two selected points and a known real-world distance;
+- reviewing and approving the detected geometry;
+- configuring adapter length, wall thickness, clearances, offsets, and angle;
+- compiling deterministic KCL;
+- generating the model through Zoo Engine;
+- revising approved parameters through Zoo Agent;
+- exporting STL, STEP, and KCL artifacts.
+
+> InterfaceForge produces **user-reviewed design candidates**. It does not claim unrestricted photo-to-CAD reconstruction, automatic perspective correction, or certified manufacturing readiness.
 
 ---
 
 ## Product preview
 
-<!-- Replace the placeholder below with a wide application screenshot or animated GIF. -->
+<!-- Replace this placeholder with the final wide application screenshot or demo GIF. -->
 
 <div align="center">
 
-**[PLACEHOLDER — Add a wide screenshot or GIF showing upload → profile review → generated adapter]**
+**[PLACEHOLDER — Wide application screenshot or GIF showing upload → calibration → approval → generation → export]**
 
 </div>
 
@@ -49,86 +77,306 @@ It is designed for situations such as:
   <tr>
     <td width="50%" valign="top">
       <h3>Input</h3>
-      <p>Two clean, front-facing interface cross-sections and one known measurement for each profile.</p>
+      <p>Two clean, front-facing, filled 2D profiles with proportions already preserved.</p>
     </td>
     <td width="50%" valign="top">
       <h3>Output</h3>
-      <p>A reviewed parametric adapter with KCL source plus Zoo-generated STL and STEP artifacts.</p>
+      <p>A reviewed parametric adapter with deterministic KCL and Zoo-generated STL and STEP exports.</p>
     </td>
   </tr>
 </table>
 
 ---
 
-## How it works
+# User workflows
 
-<table>
-  <tr>
-    <th align="left">Stage</th>
-    <th align="left">What happens</th>
-    <th align="left">Primary safeguard</th>
-  </tr>
-  <tr>
-    <td><strong>1. Capture</strong></td>
-    <td>Upload a clean cross-section for Interface A and Interface B.</td>
-    <td>File, image, and workflow validation.</td>
-  </tr>
-  <tr>
-    <td><strong>2. Trace</strong></td>
-    <td>OpenCV extracts a deterministic closed profile and internal holes.</td>
-    <td>Trace warnings, rejection reasons, and review overlays.</td>
-  </tr>
-  <tr>
-    <td><strong>3. Scale</strong></td>
-    <td>The user confirms one known real-world measurement.</td>
-    <td>Scale is never applied silently.</td>
-  </tr>
-  <tr>
-    <td><strong>4. Approve</strong></td>
-    <td>Each interface is inspected and explicitly approved.</td>
-    <td>Invalid or incomplete profiles cannot proceed.</td>
-  </tr>
-  <tr>
-    <td><strong>5. Configure</strong></td>
-    <td>Select connection mode, length, wall thickness, clearances, and offsets.</td>
-    <td>Canonical schema and manufacturing-rule validation.</td>
-  </tr>
-  <tr>
-    <td><strong>6. Generate</strong></td>
-    <td>InterfaceForge compiles deterministic KCL and executes it through Zoo Engine.</td>
-    <td>Revision tracking and last-known-good preservation.</td>
-  </tr>
-  <tr>
-    <td><strong>7. Revise</strong></td>
-    <td>Request safe parameter changes in natural language through Zoo Agent.</td>
-    <td>Seven-field allowlist plus explicit confirmation.</td>
-  </tr>
-  <tr>
-    <td><strong>8. Export</strong></td>
-    <td>Download KCL, STL, and STEP artifacts.</td>
-    <td>Export provenance and artifact validation.</td>
-  </tr>
-</table>
+## Workflow 1 — Create an adapter from start to finish
 
-```text
-clean cross-section A + one known measurement
-                ↓
-      trace → review → approve
-                ↓
-clean cross-section B + one known measurement
-                ↓
-      trace → review → approve
-                ↓
-   configure -> Zoo Engine generation
-                ↓
- bounded revision → STL / STEP / KCL
-```
+This is the primary guided workflow.
 
 ---
 
-## Preferred input
+### Step 1 — Upload Interface A
 
-The reliable supported path uses a **clean, filled cross-section image**.
+Upload the first clean profile.
+
+For the controlled demo, Interface A is a **solid circular profile representing the vacuum-hose opening**.
+
+The image should be:
+
+- front-facing;
+- filled;
+- high contrast;
+- free of dimensions and annotations;
+- fully visible;
+- proportionally accurate.
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: Step 1 upload page with circular Interface A image selected]**
+
+</div>
+
+After upload, InterfaceForge validates the file and begins profile analysis.
+
+---
+
+### Step 2 — Calibrate and approve Interface A
+
+InterfaceForge displays the detected profile together with the source image.
+
+The user:
+
+1. selects two points on the image;
+2. enters the known real-world distance between them;
+3. confirms the scale;
+4. reviews the detected profile and dimensions;
+5. approves Interface A.
+
+Two-point calibration establishes the pixel-to-millimetre scale.
+
+It does not correct perspective distortion or repair an incorrect source image.
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: circular profile review with two calibration points and confirmed diameter]**
+
+</div>
+
+Interface B remains locked until Interface A is approved.
+
+---
+
+### Step 3 — Upload, calibrate, and approve Interface B
+
+Upload the second clean profile.
+
+For the controlled demo, Interface B is a **solid rounded-rectangle profile representing the CNC dust-port opening**.
+
+The same review process is repeated:
+
+1. upload the image;
+2. inspect the detected primitive;
+3. select two calibration points;
+4. enter the known real-world distance;
+5. confirm scale;
+6. approve Interface B.
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: rounded-rectangle Interface B upload and profile review]**
+
+</div>
+
+---
+
+### Step 4 — Configure the connection
+
+After both interfaces are approved, configure the transition.
+
+Available parameters include:
+
+- connection mode;
+- adapter length;
+- wall thickness;
+- Interface A clearance;
+- Interface B clearance;
+- X and Y offset;
+- limited transition angle;
+- manufacturing-related constraints.
+
+InterfaceForge validates these parameters before generation.
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: connection configuration page with length, wall thickness, and clearance controls]**
+
+</div>
+
+Supported connection modes include:
+
+<table>
+  <tr>
+    <th align="left">Mode</th>
+    <th align="left">Description</th>
+  </tr>
+  <tr>
+    <td><strong>Coaxial</strong></td>
+    <td>Both interfaces share the same central axis.</td>
+  </tr>
+  <tr>
+    <td><strong>Offset</strong></td>
+    <td>The second interface is displaced in X and/or Y.</td>
+  </tr>
+  <tr>
+    <td><strong>Limited-angle</strong></td>
+    <td>The adapter transitions between interfaces using a controlled angle.</td>
+  </tr>
+</table>
+
+---
+
+### Step 5 — Generate, inspect, and export
+
+InterfaceForge:
+
+1. validates the approved project schema;
+2. compiles deterministic KCL;
+3. submits the model to Zoo Engine;
+4. tracks the generation job;
+5. displays the generated result;
+6. prepares STL, STEP, and KCL exports.
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: Zoo-generated circular-to-rounded-rectangle adapter in the final result viewer]**
+
+</div>
+
+Available downloads:
+
+<table>
+  <tr>
+    <th align="left">Format</th>
+    <th align="left">Purpose</th>
+  </tr>
+  <tr>
+    <td><strong>KCL</strong></td>
+    <td>Editable parametric source used to generate the model.</td>
+  </tr>
+  <tr>
+    <td><strong>STL</strong></td>
+    <td>Mesh output for slicing, visualization, and 3D printing.</td>
+  </tr>
+  <tr>
+    <td><strong>STEP</strong></td>
+    <td>Solid CAD exchange format for downstream engineering tools.</td>
+  </tr>
+</table>
+
+Exports remain tied to the current model revision.
+
+If an upstream parameter changes, the existing model becomes stale and must be regenerated before current exports are available.
+
+---
+
+## Workflow 2 — Edit the generated adapter using AI chat
+
+After reaching **Step 5**, the user can request supported parameter changes through the chat-based revision panel.
+
+Example requests:
+
+```text
+Make the adapter 10 mm longer.
+````
+
+```text
+Increase the wall thickness to 3 mm.
+```
+
+```text
+Move the outlet 5 mm to the right.
+```
+
+```text
+Increase the clearance on Interface A.
+```
+
+### AI editing sequence
+
+1. The user enters a natural-language revision request.
+2. Zoo Agent interprets the requested parameter change.
+3. InterfaceForge compares the proposed values against the current project.
+4. Server-side validation checks that only approved parameters are being changed.
+5. The user reviews the before-and-after values.
+6. The proposal remains unapplied until explicitly confirmed.
+7. After confirmation, InterfaceForge updates the canonical schema.
+8. KCL is recompiled.
+9. Zoo Engine regenerates the adapter.
+10. Revised STL, STEP, and KCL exports become available.
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: AI revision chat with “Make it 10 mm longer” entered]**
+
+</div>
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: before-and-after proposal table with Confirm and Cancel actions]**
+
+</div>
+
+<div align="center">
+
+**[PLACEHOLDER — Screenshot: regenerated adapter with updated length and revised exports]**
+
+</div>
+
+### Revision safeguards
+
+Zoo Agent does not have unrestricted access to the project.
+
+The revision workflow is restricted by:
+
+* a server-side parameter allowlist;
+* engineering and manufacturing validation;
+* explicit user confirmation;
+* model revision tracking;
+* stale-export protection;
+* last-known-good model preservation.
+
+The chat workflow cannot directly modify:
+
+* approved profile contours;
+* uploaded source images;
+* project authorization;
+* provider settings;
+* export provenance.
+
+If regeneration fails, the previous successful model remains available as the last-known-good revision.
+
+---
+
+## Supported profile scope
+
+The submission build supports primitive profiles for final adapter generation.
+
+<table>
+  <tr>
+    <th align="left">Profile type</th>
+    <th align="left">Review</th>
+    <th align="left">Final generation</th>
+  </tr>
+  <tr>
+    <td><strong>Circle</strong></td>
+    <td>Supported</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td><strong>Rectangle</strong></td>
+    <td>Supported</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td><strong>Rounded rectangle</strong></td>
+    <td>Supported</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td><strong>Arbitrary traced closed profile</strong></td>
+    <td>Experimental</td>
+    <td>Not supported in the submission build</td>
+  </tr>
+</table>
+
+The controlled demo intentionally uses a circle and a rounded rectangle because that path is bounded, reviewable, and compatible with deterministic Zoo generation.
+
+---
+
+## Input requirements
+
+The reliable workflow uses a **clean, filled 2D profile image**.
 
 <table>
   <tr>
@@ -137,62 +385,125 @@ The reliable supported path uses a **clean, filled cross-section image**.
   </tr>
   <tr>
     <td><strong>One profile only</strong></td>
-    <td>Use a front-facing or orthographic cross-section.</td>
+    <td>Use a single front-facing or orthographic profile.</td>
+  </tr>
+  <tr>
+    <td><strong>Filled shape</strong></td>
+    <td>Use a solid silhouette instead of a thin outline.</td>
   </tr>
   <tr>
     <td><strong>Plain background</strong></td>
-    <td>Maintain strong contrast between profile and background.</td>
-  </tr>
-  <tr>
-    <td><strong>Solid shaded region</strong></td>
-    <td>Use a filled profile instead of a thin outline where possible.</td>
+    <td>Maintain strong contrast between the profile and background.</td>
   </tr>
   <tr>
     <td><strong>No annotations</strong></td>
-    <td>Remove dimension lines, arrows, leaders, text, and center marks.</td>
+    <td>Remove dimensions, arrows, leaders, text, and center marks.</td>
   </tr>
   <tr>
     <td><strong>Complete boundary</strong></td>
-    <td>Keep the entire uncropped profile visible.</td>
+    <td>Keep the full uncropped profile visible.</td>
   </tr>
   <tr>
-    <td><strong>One known dimension</strong></td>
-    <td>Provide overall width, overall height, hole diameter, or a reference distance separately.</td>
+    <td><strong>Preserved proportions</strong></td>
+    <td>The source must not contain camera-angle or perspective distortion.</td>
+  </tr>
+  <tr>
+    <td><strong>Known reference distance</strong></td>
+    <td>The user must know the real distance between two selectable image points.</td>
   </tr>
 </table>
-
-<!-- Replace these placeholders with side-by-side input examples. -->
 
 <table>
   <tr>
     <td width="50%" align="center" valign="top">
-      <strong>Recommended</strong><br><br>
-      [PLACEHOLDER — Clean shaded profile example]
+      <strong>Interface A — Recommended circular input</strong><br><br>
+      [PLACEHOLDER — Solid filled circular profile image]
     </td>
     <td width="50%" align="center" valign="top">
-      <strong>Experimental / manual cleanup likely</strong><br><br>
-      [PLACEHOLDER — Dimensioned technical drawing example]
+      <strong>Interface B — Recommended rounded-rectangle input</strong><br><br>
+      [PLACEHOLDER — Solid filled rounded-rectangle profile image]
     </td>
   </tr>
 </table>
 
+### Why ordinary photographs are unreliable
+
+Two-point calibration applies a uniform scale to the detected profile.
+
+It cannot correct:
+
+* perspective distortion;
+* camera tilt;
+* lens distortion;
+* an interface face positioned at an angle;
+* missing or obscured edges;
+* proportions already changed in the source image.
+
+For that reason, InterfaceForge expects a prepared planar profile, scan, silhouette, or orthographic representation rather than an unrestricted phone photograph.
+
 ### Why dimensioned drawings are experimental
 
-Dimension lines, leaders, extension lines, text, and center marks can be indistinguishable from true profile edges during classical image processing. They may create false cuts, false extensions, or closed regions that do not belong to the physical interface.
+Dimension lines, arrows, leaders, extension lines, center marks, and text may be detected as geometry during classical image processing.
 
-Dimensioned drawings may still be tested through the experimental cleanup path, but they must be manually inspected and corrected before approval.
+They can introduce:
+
+* false cuts;
+* false extensions;
+* additional closed regions;
+* incorrect contour selection.
+
+Dimensioned drawings and arbitrary traced profiles remain experimental in the submission build.
+
+---
+
+## Why InterfaceForge exists beside Zoo Design Studio
+
+InterfaceForge does not attempt to replace Zoo Design Studio.
+
+It provides a constrained, adapter-specific workflow around Zoo Engine and Zoo Agent.
+
+<table>
+  <tr>
+    <th align="left">InterfaceForge responsibility</th>
+    <th align="left">Zoo responsibility</th>
+  </tr>
+  <tr>
+    <td>Guided two-interface workflow</td>
+    <td>Authoritative CAD execution</td>
+  </tr>
+  <tr>
+    <td>Two-point scale confirmation</td>
+    <td>KCL modeling environment</td>
+  </tr>
+  <tr>
+    <td>Mandatory geometry approval</td>
+    <td>Parametric model generation</td>
+  </tr>
+  <tr>
+    <td>Adapter-specific parameters and constraints</td>
+    <td>Native STL and STEP conversion</td>
+  </tr>
+  <tr>
+    <td>Bounded revision confirmation</td>
+    <td>Natural-language revision interpretation</td>
+  </tr>
+  <tr>
+    <td>Model history and stale-export protection</td>
+    <td>Zoo Engine and Zoo Agent infrastructure</td>
+  </tr>
+</table>
 
 ---
 
 ## Zoo integration
 
-InterfaceForge was built as a **Zoo API Makeathon 2026** entry and uses Zoo as the authoritative CAD platform.
+InterfaceForge was built as a **Zoo API Makeathon 2026** entry.
 
 <div align="center">
   <a href="https://zoo.dev/">
     <img
       src="zoo.dev.logo.svg"
-      alt="Zoo — Parametric CAD infrastructure powering InterfaceForge"
+      alt="Zoo — CAD infrastructure powering InterfaceForge"
       width="180"
     />
   </a>
@@ -201,22 +512,20 @@ InterfaceForge was built as a **Zoo API Makeathon 2026** entry and uses Zoo as t
 <br>
 
 <table>
-
-<table>
   <tr>
     <td width="50%" valign="top">
       <h3>Zoo Engine API</h3>
       <ul>
-        <li>Executes deterministic KCL generated from the canonical project schema.</li>
-        <li>Produces the authoritative model used for final exports.</li>
-        <li>Returns STL and STEP artifact bytes tied to the exact stored KCL revision.</li>
+        <li>Executes deterministic KCL generated from the approved canonical project schema.</li>
+        <li>Produces the authoritative CAD model.</li>
+        <li>Generates STL and STEP artifacts associated with the current model revision.</li>
       </ul>
     </td>
     <td width="50%" valign="top">
       <h3>Zoo Agent API</h3>
       <ul>
         <li>Interprets natural-language parameter revision requests.</li>
-        <li>Operates behind a strict seven-field allowlist.</li>
+        <li>Operates behind a strict server-side allowlist.</li>
         <li>Never applies a proposal until the user explicitly confirms it.</li>
       </ul>
     </td>
@@ -229,28 +538,33 @@ Learn more at [zoo.dev](https://zoo.dev/) and in the project’s [API usage guid
 
 ## Core capabilities
 
-- Guided two-interface workflow with route guards and state restoration.
-- Clean-profile OpenCV tracing with outer contours and internal holes.
-- Explicit one-measurement scale calibration.
-- Editable SVG profile review.
-- Coaxial, offset, and limited-angle connection modes.
-- Manufacturing checks for dimensions, wall thickness, and clearances.
-- Deterministic KCL compilation.
-- Live Zoo Engine generation.
-- Bounded natural-language revisions through Zoo Agent.
-- Last-known-good model preservation after failed regeneration.
-- STL, STEP, and KCL exports for inspection.
-- Mock providers for deterministic offline development and automated testing.
+* Guided two-interface workflow.
+* Session restoration and route protection.
+* OpenCV-assisted primitive profile analysis.
+* Two-point scale calibration.
+* Explicit profile review and approval.
+* Circle, rectangle, and rounded-rectangle generation.
+* Coaxial, offset, and limited-angle connections.
+* Wall-thickness and clearance validation.
+* Deterministic KCL compilation.
+* Live Zoo Engine generation.
+* Bounded chat-based revisions through Zoo Agent.
+* Before-and-after revision confirmation.
+* Last-known-good model preservation.
+* Model and schema revision tracking.
+* Stale-export prevention.
+* STL, STEP, and KCL exports.
+* Mock providers for deterministic offline development and testing.
 
 ---
 
 ## Architecture
 
-<!-- Replace this placeholder with a rendered architecture diagram. -->
+<!-- Replace this placeholder with the final architecture diagram. -->
 
 <div align="center">
 
-**[PLACEHOLDER — Architecture diagram: React → FastAPI → canonical schema → KCL compiler → Zoo Engine / Zoo Agent]**
+**[PLACEHOLDER — Architecture diagram: React → FastAPI → canonical schema → KCL compiler → Zoo Engine / Zoo Agent → exports]**
 
 </div>
 
@@ -263,27 +577,27 @@ Learn more at [zoo.dev](https://zoo.dev/) and in the project’s [API usage guid
   <tr>
     <td><strong>Frontend</strong></td>
     <td>React 18, TypeScript 5, Vite 5, React Router 6</td>
-    <td>Guided workflow, profile review, generation status, revisions, and exports.</td>
+    <td>Guided workflow, calibration, profile approval, generation status, chat revisions, and exports.</td>
   </tr>
   <tr>
     <td><strong>Backend</strong></td>
     <td>Python 3.14, FastAPI, Pydantic 2, Pydantic Settings, Uvicorn</td>
-    <td>Workflow invariants, validation, analysis orchestration, generation, and exports.</td>
+    <td>Workflow invariants, validation, profile analysis, KCL generation, provider orchestration, and exports.</td>
   </tr>
   <tr>
     <td><strong>Persistence</strong></td>
     <td>SQLite</td>
-    <td>Canonical project state, schema revisions, and model revision history.</td>
+    <td>Canonical project state, schema revisions, model revisions, and last-known-good state.</td>
   </tr>
   <tr>
-    <td><strong>Vision</strong></td>
-    <td>OpenCV, NumPy, Pillow, optional Gemini guidance</td>
-    <td>OpenCV contour extraction and trace metrics, with optional Gemini input guidance.</td>
+    <td><strong>Profile analysis</strong></td>
+    <td>OpenCV, NumPy, Pillow</td>
+    <td>Image validation, primitive recognition, contour analysis, calibration support, and trace diagnostics.</td>
   </tr>
   <tr>
     <td><strong>CAD</strong></td>
     <td>KCL, Zoo Engine API, Zoo Agent API</td>
-    <td>Parametric model execution, bounded revisions, and tracked exports.</td>
+    <td>Parametric model generation, bounded revisions, and native CAD exports.</td>
   </tr>
   <tr>
     <td><strong>Quality</strong></td>
@@ -292,7 +606,12 @@ Learn more at [zoo.dev](https://zoo.dev/) and in the project’s [API usage guid
   </tr>
 </table>
 
-For the detailed system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [technical_design.md](technical_design.md).
+For detailed design information, see:
+
+* [Architecture](docs/ARCHITECTURE.md)
+* [Technical design](technical_design.md)
+* [API usage](docs/API_USAGE.md)
+* [Geometry rules](docs/GEOMETRY_RULES.md)
 
 ---
 
@@ -300,12 +619,12 @@ For the detailed system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ### Prerequisites
 
-- Python 3.14.x. The supported backend runtime is the repository root `venv314` environment.
-- Node.js 18 or newer.
-- npm 9 or newer.
-- Zoo API credentials for live generation and Agent workflows.
+* Python 3.14.x.
+* Node.js 18 or newer.
+* npm 9 or newer.
+* Zoo API credentials for live generation and chat-based revisions.
 
-Backend runtime dependencies are declared in [backend/pyproject.toml](backend/pyproject.toml): FastAPI, Uvicorn, Pydantic, Pydantic Settings, WebSockets, Pillow, NumPy, OpenCV headless, and Python Multipart. `httpx`, `msgpack`, and `google-genai` are declared in the backend `dev` extra because they are used by the test harness, WebSocket payload tests, or provider-mocked tests rather than local backend startup.
+Backend runtime dependencies are declared in [backend/pyproject.toml](backend/pyproject.toml).
 
 ### Install
 
@@ -320,7 +639,7 @@ npm install
 cd ..
 ```
 
-Create the local backend environment file from the included example and add the credentials required for the providers you plan to use.
+Create the backend environment file from the included example and add the required Zoo credentials.
 
 ### Run frontend and backend together
 
@@ -330,9 +649,9 @@ python scripts/start_local.py
 
 Open:
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-- FastAPI docs: `http://localhost:8000/docs`
+* Frontend: `http://localhost:5173`
+* Backend: `http://localhost:8000`
+* FastAPI documentation: `http://localhost:8000/docs`
 
 ### Run services individually
 
@@ -345,7 +664,7 @@ python scripts/run_frontend.py
 
 ## Testing and verification
 
-Run the complete local verification suite:
+Run the full local verification suite:
 
 ```powershell
 python scripts/run_all_checks.py
@@ -363,18 +682,23 @@ npm test
 cd ..
 ```
 
-Live provider verification may require valid Zoo or analysis-provider credentials and should remain separate from deterministic offline checks.
+Live Zoo verification requires valid credentials and should remain separate from deterministic offline checks.
 
 ---
 
 ## Current limitations
 
-- Clean, orthographic cross-sections are the reliable supported input.
-- Dimensioned engineering drawings remain experimental and may require manual SVG cleanup.
-- Annotation masking may leave residual false edges or remove valid detail.
-- Scale calibration always requires explicit user confirmation.
-- Geometry support is intentionally constrained to circles, rectangles, rounded rectangles, and reviewed closed traces.
-- Generated adapters remain user-reviewed engineering candidates rather than automatically certified manufacturing designs.
+* The reliable input is a clean, front-facing, filled 2D profile.
+* Source images must already preserve their proportions.
+* Two-point calibration establishes scale but does not correct perspective distortion.
+* Circle, rectangle, and rounded rectangle are supported for final adapter generation.
+* Arbitrary traced closed profiles remain experimental and cannot generate final adapters in the submission build.
+* Dimensioned engineering drawings may introduce false geometry.
+* Annotation-heavy drawings are outside the reliable submission workflow.
+* Threads, mounting holes, countersinks, dovetails, undercuts, and multi-depth interfaces are outside the current scope.
+* Camera and tripod mounting systems are not supported use cases.
+* Scale and detected geometry require explicit user confirmation.
+* Generated adapters are user-reviewed engineering candidates, not certified products.
 
 See [docs/BUGS_AND_LIMITATIONS.md](docs/BUGS_AND_LIMITATIONS.md) for the maintained limitation log.
 
@@ -392,32 +716,16 @@ See [docs/BUGS_AND_LIMITATIONS.md](docs/BUGS_AND_LIMITATIONS.md) for the maintai
     <td>Product scope, users, requirements, and success criteria.</td>
   </tr>
   <tr>
-    <td><a href="technical_design.md">Technical design</a></td>
-    <td>System architecture, data model, contracts, and accepted design decisions.</td>
-  </tr>
-  <tr>
-    <td><a href="user_flow.md">User flow</a></td>
-    <td>Guided workflow, route progression, and state-machine behavior.</td>
-  </tr>
-  <tr>
-    <td><a href="ascii_wireframes.md">Wireframes</a></td>
-    <td>Implementation-oriented layouts and interaction notes.</td>
-  </tr>
-  <tr>
     <td><a href="docs/ARCHITECTURE.md">Architecture</a></td>
     <td>Current system structure and provider boundaries.</td>
   </tr>
   <tr>
     <td><a href="docs/API_USAGE.md">API usage</a></td>
-    <td>Backend contracts and external-provider integration.</td>
+    <td>Backend contracts and Zoo integration.</td>
   </tr>
   <tr>
     <td><a href="docs/GEOMETRY_RULES.md">Geometry rules</a></td>
-    <td>Profile, connection, and manufacturing validation rules.</td>
-  </tr>
-  <tr>
-    <td><a href="docs/TEST_PLAN.md">Test plan</a></td>
-    <td>Verification strategy and scenario coverage.</td>
+    <td>Profile, connection, and manufacturing validation.</td>
   </tr>
   <tr>
     <td><a href="docs/TEST_RESULTS.md">Test results</a></td>
@@ -427,40 +735,17 @@ See [docs/BUGS_AND_LIMITATIONS.md](docs/BUGS_AND_LIMITATIONS.md) for the maintai
     <td><a href="docs/BUGS_AND_LIMITATIONS.md">Bugs and limitations</a></td>
     <td>Known issues, experimental paths, and product boundaries.</td>
   </tr>
-  <tr>
-    <td><a href="AGENTS.md">Agent governance</a></td>
-    <td>Repository rules and implementation-agent guidance.</td>
-  </tr>
 </table>
+
+Additional technical and development documentation is available throughout the repository.
 
 ---
 
-## Credits
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>Built by</h3>
-      <p><strong><a href="https://joravarsinghing.github.io/portfolio/">Joravar Singh</a></strong></p>
-      <p>Product concept, engineering direction, implementation coordination, testing, and submission development.</p>
-    </td>
-    <td width="50%" valign="top">
-      <h3>Powered by Zoo</h3>
-      <p><strong><a href="https://zoo.dev/">Zoo</a></strong></p>
-      <p>Parametric CAD execution, KCL tooling, native model exports, and bounded natural-language CAD revision capabilities.</p>
-    </td>
-  </tr>
-</table>
-
-InterfaceForge is an independent Zoo API Makeathon project and is not an official Zoo product.
-
----
-
-## License
+## Credits and license
 
 InterfaceForge is available under the [MIT License](LICENSE).
 
----
+InterfaceForge is an independent Zoo API Makeathon project and is not an official Zoo product.
 
 <div align="center">
 
@@ -471,12 +756,7 @@ InterfaceForge is available under the [MIT License](LICENSE).
   </a>
 
   <p>
-    Parametric CAD execution, KCL tooling, native model exports, and bounded natural-language CAD revision capabilities.
-  </p>
-
-  <p>
-    <strong>Vision-assisted by Google Gemini</strong><br>
-    Gemini provides optional multimodal guidance for interpreting uploaded interface images. Final geometry is produced deterministically through OpenCV, user review, KCL, and Zoo Engine.
+    Zoo Engine, KCL tooling, native CAD exports, and bounded natural-language revision capabilities.
   </p>
 
   <br>
@@ -499,7 +779,8 @@ InterfaceForge is available under the [MIT License](LICENSE).
   <img src="InterfaceForge_logo_in.svg" alt="InterfaceForge icon" width="110" />
 
   <p>
-    <sub>Designed for reviewed geometry, deterministic CAD, and honest engineering boundaries.</sub>
+    <sub>Reviewed geometry. Deterministic CAD. Bounded AI revisions.</sub>
   </p>
 
 </div>
+```

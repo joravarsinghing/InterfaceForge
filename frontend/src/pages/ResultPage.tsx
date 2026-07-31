@@ -601,17 +601,21 @@ export const ResultPage: React.FC<ResultPageProps> = ({
           <div style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <strong style={{ color: '#f0f6fc', fontSize: '1rem' }}>STEP Solid (.step)</strong>
-                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>LIVE ZOO REQUIRED</span>
+                <strong style={{ color: '#f0f6fc', fontSize: '1rem' }}>STEP Export (.step)</strong>
+                <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>PLANNED</span>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#8b949e', margin: '0 0 0.75rem 0' }}>
-                ISO 10303 B-Rep solid model for downstream CAD inspection or editing.
+                Editable STEP solid export will be added in a future iteration using the Zoo geometry pipeline.
               </p>
             </div>
             <div>
-              {renderExportAction('step', 'STEP (.step)')}
+              <div style={{ color: '#8b949e', fontSize: '0.75rem', marginBottom: '0.35rem' }}>Future Feature</div>
+              <button type="button" className="btn btn-sm export-action-button" disabled style={{ width: '100%', opacity: 0.5, cursor: 'not-allowed' }}>
+                Planned
+              </button>
             </div>
           </div>
+
 
           {/* KCL Code Format Card */}
           <div style={{ background: '#0d1117', border: '1px solid #238636', borderRadius: '6px', padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
