@@ -28,20 +28,7 @@ interface ProfileReviewPageProps {
 
 const supportedProfileTypes = ['circle', 'rectangle', 'rounded_rectangle'] as const;
 
-const formatProfileTypeLabel = (type: ProfileType) => {
-  switch (type) {
-    case 'circle':
-      return 'Circle';
-    case 'rectangle':
-      return 'Rectangle';
-    case 'rounded_rectangle':
-      return 'Rounded rectangle';
-    case 'traced_closed':
-      return 'Traced closed profile';
-    default:
-      return type;
-  }
-};
+
 export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   interfaceId,
   project,
