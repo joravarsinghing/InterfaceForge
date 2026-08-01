@@ -102,8 +102,8 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     );
 
     expect(screen.getByText(/Step 3 - Guided Connection/i)).toBeInTheDocument();
-    expect(screen.getByText(/APPROVED Interface A:/i)).toBeInTheDocument();
-    expect(screen.getByText(/APPROVED Interface B:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Interface A:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Interface B:/i)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Coaxial/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Parallel Offset/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Limited Angle/i })).toBeInTheDocument();

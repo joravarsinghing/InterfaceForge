@@ -18,6 +18,7 @@ dependencies = [
     "numpy>=1.26.0",
     "opencv-python-headless>=4.9.0",
     "python-multipart>=0.0.9",
+    "shapely>=2.0.0",
     "zoo-kcl"
 ]
 

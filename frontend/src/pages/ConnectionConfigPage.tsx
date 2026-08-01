@@ -277,16 +277,12 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       >
         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
           <div>
-            <strong style={{ color: '#3fb950' }}>APPROVED Interface A:</strong>{' '}
-            <span style={{ color: '#e6edf3' }}>
-              {interfaceA?.profile_type?.toUpperCase() || 'CIRCLE'}
-            </span>
+            <strong style={{ color: '#3fb950' }}>Interface A:</strong>{' '}
+            <span style={{ color: '#3fb950', fontWeight: 600 }}>[OK] Approved</span>
           </div>
           <div>
-            <strong style={{ color: '#a371f7' }}>APPROVED Interface B:</strong>{' '}
-            <span style={{ color: '#e6edf3' }}>
-              {interfaceB?.profile_type?.toUpperCase() || 'CIRCLE'}
-            </span>
+            <strong style={{ color: '#a371f7' }}>Interface B:</strong>{' '}
+            <span style={{ color: '#a371f7', fontWeight: 600 }}>[OK] Approved</span>
           </div>
         </div>
         <button

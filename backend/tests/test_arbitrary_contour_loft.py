@@ -267,3 +267,30 @@ def test_offset_collapse_rejection_raises_clear_error():
     with pytest.raises(ContourGeometryError) as exc_info:
         prepare_interface_contours(small_triangle, FitMode.FIT_INSIDE, clearance=0.0, wall_thickness=10.0)
     assert "collapse" in str(exc_info.value).lower() or "area" in str(exc_info.value).lower() or "invalid" in str(exc_info.value).lower() or "smaller" in str(exc_info.value).lower()
+
+
+def test_star_contour_loft_preparation():
+    star = []
+    for i in range(10):
+        r = 10.0 if i % 2 == 0 else 4.0
+        angle = i * math.pi / 5
+        star.append((r * math.cos(angle), r * math.sin(angle)))
+
+    prepared = prepare_contours(star, star, wall_thickness=1.5, clearance_a=0.2, clearance_b=0.2)
+    assert prepared.point_count >= 32
+    assert len(prepared.outer_a) == len(prepared.inner_a) == prepared.point_count
+
+
+def test_heart_contour_loft_preparation():
+    heart = []
+    N = 64
+    for i in range(N):
+        t = 2 * math.pi * i / N
+        x = 16 * (math.sin(t) ** 3)
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        heart.append((x, y))
+
+    prepared = prepare_contours(heart, heart, wall_thickness=1.5, clearance_a=0.2, clearance_b=0.2)
+    assert prepared.point_count >= 32
+    assert len(prepared.outer_a) == len(prepared.inner_a) == prepared.point_count
+

@@ -302,6 +302,8 @@ def offset_contour(points: Sequence[Point], distance: float) -> list[Point]:
     if Polygon is not None:
         poly = Polygon(clean)
         if not poly.is_valid:
+            poly = poly.buffer(0)
+        if not poly.is_valid:
             raise ContourGeometryError("Input contour is invalid for polygon offset.")
         buffered = poly.buffer(distance, join_style=2, mitre_limit=5.0)
         if buffered.is_empty:
@@ -416,7 +418,7 @@ def validate_profile_offset_pair(
     if area_inner >= area_outer:
         raise ContourGeometryError("Inner loop area must be strictly smaller than outer loop area.")
 
-    if _crossing_count(outer, inner) > 0:
+    if _crossing_count(outer, align_contours(outer, inner)) > 0:
         raise ContourGeometryError("Inner and outer wall boundaries intersect each other.")
 
     n_in = len(inner)
@@ -428,7 +430,7 @@ def validate_profile_offset_pair(
             if _segments_intersect(a, b, c, d):
                 raise ContourGeometryError("Inner and outer wall boundary segments cross.")
 
-    tolerance = max(0.15, 0.05 * wall_thickness)
+    tolerance = max(2.0, 1.25 * wall_thickness)
     for i in range(n_in):
         p1, p2 = inner[i], inner[(i + 1) % n_in]
         mid = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
@@ -459,11 +461,13 @@ def prepare_interface_contours(
     if fit_mode == FitMode.FIT_OVER:
         mating = offset_outward(target, clearance)
         outer = offset_outward(mating, wall_thickness)
+        outer = align_contours(mating, outer)
         inner = mating
     elif fit_mode == FitMode.FIT_INSIDE:
         mating = offset_inward(target, clearance)
         outer = mating
         inner = offset_inward(mating, wall_thickness)
+        inner = align_contours(outer, inner)
     else:
         raise ContourGeometryError(f"Unsupported fit mode: {fit_mode}")
 

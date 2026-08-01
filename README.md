@@ -1,6 +1,7 @@
 
 <div align="center">
-  <img src="InterfaceForge_logo.svg" alt="InterfaceForge logo" width="240" />
+  <img src="InterfaceForge_logo.svg" alt="InterfaceForge logo" width="240" /> <br>
+  <img src="Zoo.dev.logo.svg" alt="Zoo logo" width="60" />
 
   <h3>Turn two reviewed 2D profiles into a parametric transition adapter.</h3>
 
