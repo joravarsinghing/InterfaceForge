@@ -330,9 +330,10 @@ def validate_connection_and_manufacturing(
             )
         )
 
-    if connection.length_mm > 0 and math.isfinite(connection.angle_deg):
+    lateral_shift = math.hypot(connection.offset_x_mm, connection.offset_y_mm)
+    has_transition_motion = lateral_shift > 0.0 or abs(connection.angle_deg) > 0.0
+    if connection.length_mm > 0 and math.isfinite(connection.angle_deg) and has_transition_motion:
         abs_rad = math.radians(abs(connection.angle_deg))
-        lateral_shift = math.hypot(connection.offset_x_mm, connection.offset_y_mm)
         angular_shift = connection.length_mm * math.sin(abs_rad) + bound_b * math.cos(abs_rad)
         total_span = lateral_shift + angular_shift
 

@@ -117,6 +117,25 @@ def test_validate_all_three_valid_modes():
     assert res_angled.is_valid is True
     assert len(res_angled.blocking_errors) == 0
 
+def test_large_coaxial_profiles_do_not_trigger_motion_self_intersection_check():
+    """Coaxial geometry has no transition motion, even for large profiles."""
+    iface_a = create_approved_interface("interface_a", ProfileType.CIRCLE)
+    iface_b = create_approved_interface("interface_b", ProfileType.RECTANGLE)
+    iface_a.dimensions[0].value = 120.0
+    iface_b.dimensions[0].value = 180.0
+    iface_b.dimensions[1].value = 140.0
+
+    result = validate_connection_and_manufacturing(
+        iface_a,
+        iface_b,
+        Connection(mode=ConnectionMode.COAXIAL, length_mm=40.0),
+        Manufacturing(wall_thickness_mm=2.4),
+    )
+
+    assert result.is_valid is True
+    assert not any(issue.id == "IF-CONN-009" for issue in result.blocking_errors)
+
+
 
 def test_prerequisite_approval_failure():
     """Verify validation fails if either Interface A or Interface B is not approved."""

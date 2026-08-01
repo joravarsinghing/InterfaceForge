@@ -23,7 +23,7 @@ from app.models.schema import (
     Project,
     WorkflowState,
 )
-from app.services.export_provider import MockExportProvider, ZooExportProvider
+from app.services.export_provider import MockExportProvider, ZooExportProvider, get_export_provider, settings
 from app.services.geometry_generator import (
     generate_adapter_obj,
     get_local_obj_call_count,
@@ -31,6 +31,14 @@ from app.services.geometry_generator import (
     set_prohibit_local_obj,
 )
 from app.services.kcl_compiler import compile_project_to_kcl
+
+
+def test_mock_project_cannot_inherit_deployment_live_export_provider(monkeypatch):
+    """Mock projects remain offline even when deployment export settings are live."""
+    monkeypatch.setattr(settings, "export_provider", "zoo")
+    monkeypatch.setattr(settings, "zoo_api_token", "configured-token")
+
+    assert isinstance(get_export_provider("mock"), MockExportProvider)
 
 
 def create_valid_binary_stl_box() -> bytes:

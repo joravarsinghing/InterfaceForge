@@ -100,12 +100,12 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   const runValidation = useCallback(async () => {
     if (!project?.project_id) return;
     const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.angle_deg}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
-    const geometryChanged = prevGeoKeyRef.current !== null && prevGeoKeyRef.current !== currentGeoKey;
     prevGeoKeyRef.current = currentGeoKey;
 
-    if (geometryChanged) {
-      setIsGeometryLoading(true);
-    }
+    // The preview plan is returned with validation. Show an explicit loading
+    // state for the initial request as well as later edits, otherwise the
+    // empty pre-response plan looks like a broken preview.
+    setIsGeometryLoading(true);
     setIsValidating(true);
     try {
       const res = await validateConnectionConfig(

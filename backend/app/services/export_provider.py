@@ -1146,6 +1146,12 @@ class ZooExportProvider(ExportProvider):
 
 def get_export_provider(provider_mode: str | None = None) -> ExportProvider:
     """Factory function returning active ExportProvider based on configuration or project mode."""
+    # A project-level mock selection is an explicit offline boundary. Do not
+    # let a deployment-wide EXPORT_PROVIDER=zoo setting leak live export calls
+    # into mock projects.
+    if provider_mode == "mock":
+        return MockExportProvider()
+
     provider_name = (
         "zoo"
         if provider_mode == "live" and settings.zoo_api_token
