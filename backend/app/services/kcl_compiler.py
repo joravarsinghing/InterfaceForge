@@ -117,6 +117,8 @@ def _validate_finite_numbers(project: Project) -> List[ValidationIssue]:
         ("offset_x_mm", conn.offset_x_mm),
         ("offset_y_mm", conn.offset_y_mm),
         ("angle_deg", conn.angle_deg),
+        ("extension_a_mm", conn.extension_a_mm),
+        ("extension_b_mm", conn.extension_b_mm),
     ]
 
     for field_name, val in num_checks:
@@ -328,6 +330,8 @@ def compile_project_to_kcl(
     kcl_lines.append(f"offset_x_mm = {conn.offset_x_mm:.3f}")
     kcl_lines.append(f"offset_y_mm = {conn.offset_y_mm:.3f}")
     kcl_lines.append(f"angle_deg = {conn.angle_deg:.3f}")
+    kcl_lines.append(f"extension_a_mm = {conn.extension_a_mm:.3f}")
+    kcl_lines.append(f"extension_b_mm = {conn.extension_b_mm:.3f}")
     kcl_lines.append("")
 
     # Construction geometry is entirely driven by the persisted LoftPlan.

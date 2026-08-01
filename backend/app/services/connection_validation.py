@@ -131,6 +131,26 @@ def validate_connection_and_manufacturing(
                 )
             )
 
+    # 3a. Optional straight vertical profile extensions
+    for ext_field, ext_value, ext_label in [
+        ("extension_a_mm", connection.extension_a_mm, "Interface A vertical extension"),
+        ("extension_b_mm", connection.extension_b_mm, "Interface B vertical extension"),
+    ]:
+        if not math.isfinite(ext_value) or ext_value < 0.0:
+            errors.append(ValidationIssue(
+                id="IF-CONN-008",
+                message=f"{ext_label} must be a finite value of 0 mm or greater.",
+                field=ext_field,
+                recovery_steps=[f"Set {ext_label.lower()} to 0 mm or greater."],
+            ))
+        elif ext_value > 300.0:
+            warnings.append(ValidationIssue(
+                id="IF-CONN-W005",
+                message=f"{ext_label} is long (> 300 mm), increasing print volume.",
+                field=ext_field,
+                recovery_steps=[f"Verify {ext_label.lower()} against physical enclosure bounds."],
+            ))
+
     # 4. Positive finite wall thickness check
     if not math.isfinite(manufacturing.wall_thickness_mm) or manufacturing.wall_thickness_mm <= 0:
         errors.append(

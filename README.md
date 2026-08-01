@@ -196,9 +196,13 @@ Available parameters include:
 - Interface B clearance;
 - X and Y offset;
 - limited transition angle;
+- Interface A vertical extension;
+- Interface B vertical extension;
 - manufacturing-related constraints.
 
 InterfaceForge validates these parameters before generation.
+
+The two vertical extension parameters add straight fit sections above each approved profile. They are available in all three connection modes and default to `0 mm`, preserving a direct loft when no extension is needed. When configured, the transition begins after the Interface A extension and ends before the Interface B extension; the extensions remain vertical even for limited-angle connections. The live preview, persisted loft plan, deterministic KCL, and final STL and STEP outputs all use the same values.
 
 <div align="center">
 
@@ -423,11 +427,11 @@ The reliable workflow uses a **clean, filled 2D profile image**.
   <tr>
     <td width="50%" align="center" valign="top">
       <strong>Interface A — Recommended circular input</strong><br><br>
-        <img src="samples\manual_qa\profile9.jpg" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14;">
+        <img src="samples\manual_qa\profile9.png" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14; width=300px">
     </td>
     <td width="50%" align="center" valign="top">
       <strong>Interface B — Recommended custom profile input</strong><br><br>
-        <img src="samples\manual_qa\profile1.jpg" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14;">
+        <img src="samples\manual_qa\profile1.jpg" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14; width=300px">
     </td>
   </tr>
 </table>

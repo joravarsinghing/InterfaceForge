@@ -3,7 +3,7 @@ export interface SampleAsset {
   src: string;
 }
 
-export const SAMPLE_MANIFEST: SampleAsset[] = [
+const builtInSamples: SampleAsset[] = [
   { id: 'sample-1', src: '/samples/sample_01.jpg' },
   { id: 'sample-2', src: '/samples/sample_02.jpg' },
   { id: 'sample-3', src: '/samples/sample_03.jpg' },
@@ -14,7 +14,32 @@ export const SAMPLE_MANIFEST: SampleAsset[] = [
   { id: 'sample-8', src: '/samples/sample_08.jpg' },
   { id: 'sample-9', src: '/samples/sample_09.jpg' },
 ];
+// Keep manual-QA fixtures in the repository as the source of truth. Vite turns
+// these imports into served URLs during development and bundled assets during
+// production builds, so newly added profiles do not need a second copy under
+// frontend/public/samples.
+const manualQaImages = import.meta.glob('../../../samples/manual_qa/*.{jpg,jpeg,png,webp}', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+}) as Record<string, string>;
 
+const manualQaSamples: SampleAsset[] = Object.entries(manualQaImages)
+  .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+  .map(([path, src]) => {
+    const filename = path.split('/').pop() ?? path;
+    const id = filename.replace(/\.[^.]+$/, '');
+    const legacySampleMatch = /^profile([1-9])$/.exec(id);
+    return { id: legacySampleMatch ? `sample-${legacySampleMatch[1]}` : `manual-qa-${id}`, src };
+  });
+
+// The original gallery assets are copies of manual-QA profiles 1-9. Prefer the
+// manual-QA copy when it exists so the pool cannot show the same image twice.
+const manualQaIds = new Set(manualQaSamples.map((sample) => sample.id));
+export const SAMPLE_MANIFEST: SampleAsset[] = [
+  ...builtInSamples.filter((sample) => !manualQaIds.has(sample.id)),
+  ...manualQaSamples,
+];
 /** Minimalist 1x1 JPEG byte array for synthetic fallback in offline/test environments. */
 const FALLBACK_JPEG_BYTES = new Uint8Array([
   0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,

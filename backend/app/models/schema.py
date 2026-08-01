@@ -295,6 +295,8 @@ class Connection(BaseModel):
     offset_x_mm: float = 0.0
     offset_y_mm: float = 0.0
     angle_deg: float = 0.0
+    extension_a_mm: float = 0.0
+    extension_b_mm: float = 0.0
 
 
 class Manufacturing(BaseModel):
@@ -470,6 +472,8 @@ class ConnectionUpdateRequest(BaseModel):
     offset_x_mm: float = 0.0
     offset_y_mm: float = 0.0
     angle_deg: float = 0.0
+    extension_a_mm: float = 0.0
+    extension_b_mm: float = 0.0
 
 
 class ManufacturingUpdateRequest(BaseModel):

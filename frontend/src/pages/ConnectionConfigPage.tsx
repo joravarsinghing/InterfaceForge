@@ -63,6 +63,8 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       offset_x_mm: 0.0,
       offset_y_mm: 0.0,
       angle_deg: 0.0,
+      extension_a_mm: 0.0,
+      extension_b_mm: 0.0,
     }
   );
 
@@ -98,6 +100,8 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       offset_x_mm: 0.0,
       offset_y_mm: 0.0,
       angle_deg: 0.0,
+      extension_a_mm: 0.0,
+      extension_b_mm: 0.0,
     },
   });
 
@@ -129,7 +133,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   // Client & Server Validation Effect
   const runValidation = useCallback(async () => {
     if (!project?.project_id) return;
-    const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.angle_deg}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
+    const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.angle_deg}_${connection.extension_a_mm}_${connection.extension_b_mm}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
     prevGeoKeyRef.current = currentGeoKey;
 
     // The preview plan is returned with validation. Show an explicit loading
@@ -216,6 +220,8 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       offset_x_mm: rec.offset_x_mm ?? 0.0,
       offset_y_mm: rec.offset_y_mm ?? 0.0,
       angle_deg: rec.angle_deg ?? 0.0,
+      extension_a_mm: rec.extension_a_mm ?? 0.0,
+      extension_b_mm: rec.extension_b_mm ?? 0.0,
     }));
     setManufacturing((prev) => ({
       ...prev,
@@ -531,6 +537,18 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
                     {fieldErrorMap['length_mm']}
                 </span>
               )}
+            </div>
+
+            {/* Straight vertical fit extensions */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label htmlFor="extension_a_mm" style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}>Interface A Vertical Extension (mm):</label>
+              <input id="extension_a_mm" type="number" step="0.5" min="0" max="300" value={connection.extension_a_mm ?? 0} onChange={(e) => handleConnectionChange('extension_a_mm', parseFloat(e.target.value) || 0)} style={{ width: '100%', padding: '0.5rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '4px' }} />
+              <small style={{ color: '#8b949e' }}>Straight vertical fit section above Interface A.</small>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label htmlFor="extension_b_mm" style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}>Interface B Vertical Extension (mm):</label>
+              <input id="extension_b_mm" type="number" step="0.5" min="0" max="300" value={connection.extension_b_mm ?? 0} onChange={(e) => handleConnectionChange('extension_b_mm', parseFloat(e.target.value) || 0)} style={{ width: '100%', padding: '0.5rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '4px' }} />
+              <small style={{ color: '#8b949e' }}>Straight vertical fit section above Interface B.</small>
             </div>
 
             {/* X Offset (Offset & Angled modes) */}

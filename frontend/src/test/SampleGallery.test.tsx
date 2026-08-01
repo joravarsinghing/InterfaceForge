@@ -13,7 +13,15 @@ describe('SampleGallery Component', () => {
     expect(thumbnails).toHaveLength(3);
   });
 
-  it('rotates thumbnails deterministically when Shuffle is clicked', () => {
+  it('keeps manual-QA profiles in the sample pool when they are present', async () => {
+    const { SAMPLE_MANIFEST } = await import('../data/sampleManifest');
+
+    expect(SAMPLE_MANIFEST.some((sample) => sample.id === 'manual-qa-profile11')).toBe(true);
+    expect(SAMPLE_MANIFEST.some((sample) => sample.id === 'manual-qa-profile55')).toBe(true);
+    expect(SAMPLE_MANIFEST.some((sample) => sample.id === 'manual-qa-profile88')).toBe(true);
+  });
+
+  it('randomizes three unique thumbnails when Shuffle is clicked', async () => {
     render(<SampleGallery onSelectSample={vi.fn()} />);
 
     const firstSetImgs = screen.getAllByRole('img').map((img) => img.getAttribute('src'));
@@ -25,8 +33,12 @@ describe('SampleGallery Component', () => {
     const secondSetImgs = screen.getAllByRole('img').map((img) => img.getAttribute('src'));
     expect(secondSetImgs).toHaveLength(3);
 
-    // Verify sets are non-identical (changed)
+    // The shuffle guarantees a different set while randomizing the order.
+    expect(new Set(secondSetImgs).size).toBe(3);
     expect(secondSetImgs).not.toEqual(firstSetImgs);
+
+    const { SAMPLE_MANIFEST } = await import('../data/sampleManifest');
+    expect(new Set(SAMPLE_MANIFEST.map((sample) => sample.src)).size).toBe(SAMPLE_MANIFEST.length);
   });
 
   it('opens choice modal when a sample thumbnail is clicked', () => {

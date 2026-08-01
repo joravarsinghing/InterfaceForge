@@ -302,7 +302,7 @@ class MockAnalysisProvider(AnalysisProvider):
                     cleaned_bytes, cleaned_mask, w, h = cleanup_image_v2(
                         image_bytes, crop_box=[0.02, 0.02, 0.98, 0.98]
                     )
-                    trace_res = extract_pixel_contours(cleaned_mask, is_complex_expected=True)
+                    trace_res = extract_pixel_contours(cleaned_mask, is_complex_expected=True, include_inner_contours=False)
                     if trace_res.get("success", False):
                         outer_contour = trace_res["traced_outer_contour"]
                         hole_contours = trace_res["traced_hole_contours"]
@@ -518,7 +518,7 @@ class OpenCVAnalysisProvider(MockAnalysisProvider):
                 image_bytes
             )
             trace_result = extract_pixel_contours(
-                cleaned_mask, is_complex_expected=True
+                cleaned_mask, is_complex_expected=True, include_inner_contours=False
             )
             if not trace_result.get("success", False):
                 # Keep the same bounded retry used by the Gemini-guided path.
@@ -526,7 +526,7 @@ class OpenCVAnalysisProvider(MockAnalysisProvider):
                     image_bytes, crop_box=[0.02, 0.02, 0.98, 0.98]
                 )
                 trace_result = extract_pixel_contours(
-                    cleaned_mask, is_complex_expected=False
+                    cleaned_mask, is_complex_expected=False, include_inner_contours=False
                 )
             if not trace_result.get("success", False):
                 # Existing named test fixtures intentionally exercise the legacy
@@ -547,6 +547,7 @@ class OpenCVAnalysisProvider(MockAnalysisProvider):
                     "OpenCV pixel tracing was unavailable for this deterministic fixture; using its named fixture contour."
                 )
                 return result
+            result.profile_type = ProfileType.CUSTOM_CLOSED
             result.traced_outer_contour = trace_result["traced_outer_contour"]
             result.traced_hole_contours = trace_result.get("traced_hole_contours", [])
             result.candidate_points = result.traced_outer_contour.points
@@ -589,6 +590,7 @@ class OpenCVAnalysisProvider(MockAnalysisProvider):
         if not result.traced_outer_contour:
             from app.services.profile_geometry import primitive_boundary_contour
 
+            result.profile_type = ProfileType.CUSTOM_CLOSED
             result.traced_outer_contour = primitive_boundary_contour(
                 result.profile_type, result.candidate_dimensions, result.candidate_points
             )
@@ -963,7 +965,7 @@ class GeminiAnalysisProvider(AnalysisProvider):
                 image_bytes, crop_box=crop_box, annotation_regions=anno_regions, guidance=guidance
             )
             trace_res = extract_pixel_contours(
-                cleaned_mask, scale_calibration=scale_cal, is_complex_expected=is_complex
+                cleaned_mask, scale_calibration=scale_cal, is_complex_expected=is_complex, include_inner_contours=False
             )
 
             # 1 Retry attempt if initial cleanup produces self-intersection or rejection
@@ -975,7 +977,7 @@ class GeminiAnalysisProvider(AnalysisProvider):
                     image_bytes, crop_box=[0.02, 0.02, 0.98, 0.98], annotation_regions=None
                 )
                 trace_res = extract_pixel_contours(
-                    cleaned_mask, scale_calibration=scale_cal, is_complex_expected=is_complex
+                    cleaned_mask, scale_calibration=scale_cal, is_complex_expected=is_complex, include_inner_contours=False
                 )
 
             if not trace_res.get("success", False):
@@ -1017,7 +1019,7 @@ class GeminiAnalysisProvider(AnalysisProvider):
 
             return AnalysisResult(
                 input_type=str(data.get("input_type", "dimensioned_technical_drawing")),
-                profile_type=profile_type,
+                profile_type=ProfileType.CUSTOM_CLOSED,
                 candidate_points=traced_outer.points if traced_outer else candidate_points,
                 candidate_dimensions=candidate_dimensions,
                 provenance=DimensionProvenance.IMAGE_EXTRACTED,
@@ -1060,7 +1062,7 @@ class GeminiAnalysisProvider(AnalysisProvider):
 
         return AnalysisResult(
             input_type=str(data.get("input_type", "dimensioned_technical_drawing")),
-            profile_type=profile_type,
+            profile_type=ProfileType.CUSTOM_CLOSED,
             candidate_points=outer_points,
             candidate_dimensions=candidate_dimensions,
             provenance=DimensionProvenance.IMAGE_EXTRACTED,

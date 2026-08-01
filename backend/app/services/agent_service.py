@@ -218,6 +218,8 @@ class AgentService:
             offset_x_mm=new_conn.offset_x_mm,
             offset_y_mm=new_conn.offset_y_mm,
             angle_deg=new_conn.angle_deg,
+            extension_a_mm=new_conn.extension_a_mm,
+            extension_b_mm=new_conn.extension_b_mm,
         )
         mfg_req = ManufacturingUpdateRequest(
             process=new_mfg.process,

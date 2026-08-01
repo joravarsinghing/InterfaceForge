@@ -364,6 +364,8 @@ export async function validateConnectionConfig(
     offset_x_mm: number;
     offset_y_mm: number;
     angle_deg: number;
+    extension_a_mm?: number;
+    extension_b_mm?: number;
   },
   manufacturing: {
     process: string;
@@ -406,6 +408,8 @@ export async function updateConnectionConfig(
     offset_x_mm: number;
     offset_y_mm: number;
     angle_deg: number;
+    extension_a_mm?: number;
+    extension_b_mm?: number;
   },
   manufacturing: {
     process: string;

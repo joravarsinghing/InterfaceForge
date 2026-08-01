@@ -278,6 +278,7 @@ def extract_pixel_contours(
     cleaned_mask: np.ndarray,
     scale_calibration: Optional[ScaleCalibration] = None,
     is_complex_expected: bool = True,
+    include_inner_contours: bool = True,
     detail_mode: str = "high_fidelity",
 ) -> Dict[str, Any]:
     """Extract non-convex outer contour, enclosed inner contours, and hierarchy from OpenCV.
@@ -329,6 +330,14 @@ def extract_pixel_contours(
     outer_cnt = outer_rec["cnt"]
     outer_area = outer_rec["area"]
     raw_outer_count = len(outer_cnt)
+
+    # A nested contour occupying nearly the entire outer area is usually the
+    # second edge of a scanned/hatched solid profile, not a real cavity. In
+    # that case retain one closed outer profile and suppress all inner traces.
+    solid_profile_mode = (not include_inner_contours) or any(
+        rec["area"] >= 0.75 * outer_area
+        for rec in contour_records[1:]
+    )
 
     # Outer contour simplification according to detail_mode
     if detail_mode == "high_fidelity":
@@ -428,9 +437,18 @@ def extract_pixel_contours(
     inner_contours: List[TracedContour] = []
     inner_pixel_points: List[List[Tuple[float, float]]] = []
     min_hole_area = 0.001 * outer_area
+    if not include_inner_contours:
+        warnings.append("Solid profile mode enabled; suppressed all interior contours.")
+    elif solid_profile_mode:
+        warnings.append(
+            "Detected nested duplicate profile boundary; retained one closed outer profile."
+        )
     fitted_circles_count = 0
 
     for rec in contour_records[1:]:
+        if solid_profile_mode:
+            break
+
         c_area = rec["area"]
         c_cnt = rec["cnt"]
         parent = rec["parent"]

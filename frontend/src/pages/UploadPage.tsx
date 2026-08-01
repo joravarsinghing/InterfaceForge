@@ -423,7 +423,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
       {analysisResult && (
         <div className="analysis-summary-card" style={{ marginTop: '1.5rem', padding: '1rem', background: '#161b22', border: '1px solid #30363d', borderRadius: '8px' }}>
           <h3>Latest Analysis Result</h3>
-          <p>Profile Type: <strong>{analysisResult.profile_type}</strong></p>
+          <p>Outline detected</p>
           <p>
             Confidence:{' '}
             <strong style={{ color: analysisResult.confidence < 0.6 ? '#f85149' : '#3fb950' }}>

@@ -46,13 +46,14 @@ CALIBRATION_REQUIRED_MESSAGE = (
 
 
 def uses_calibrated_trace(interface: Interface) -> bool:
-    """Return whether traced geometry is authoritative for generation."""
+    """Return whether image-derived traced geometry is authoritative."""
     return bool(
-        interface.profile_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED)
-        and interface.traced_outer_contour is not None
-        # Direct in-memory contours used by geometry primitives are already mm;
-        # persisted/image-derived traces always carry a source or calibration record.
-        and (interface.source_image_ref is not None or interface.scale_calibration is not None)
+        interface.traced_outer_contour is not None
+        and (
+            interface.profile_type == ProfileType.CUSTOM_CLOSED
+            or interface.source_image_ref is not None
+            or interface.scale_calibration is not None
+        )
     )
 
 
@@ -168,8 +169,8 @@ def build_loft_plan(project: Project) -> LoftPlan:
     )
     for k in range(section_count):
         t = k / (section_count - 1)
-        z_mm = c.length_mm * t
-        angle_shift_y = angle_shear_per_mm * z_mm
+        z_mm = c.extension_a_mm + c.length_mm * t
+        angle_shift_y = angle_shear_per_mm * (c.length_mm * t)
         sections.append(
             LoftSection(
                 z_mm=z_mm,
@@ -189,6 +190,19 @@ def build_loft_plan(project: Project) -> LoftPlan:
                 ],
             )
         )
+    if c.extension_a_mm > 0.0:
+        sections.insert(0, LoftSection(
+            z_mm=0.0,
+            outer=[Point2D(x=p[0], y=p[1]) for p in outer_a],
+            inner=[Point2D(x=p[0], y=p[1]) for p in inner_a],
+        ))
+    if c.extension_b_mm > 0.0:
+        final_angle_shift_y = angle_shear_per_mm * c.length_mm
+        sections.append(LoftSection(
+            z_mm=c.extension_a_mm + c.length_mm + c.extension_b_mm,
+            outer=[Point2D(x=p[0] + c.offset_x_mm, y=p[1] + c.offset_y_mm + final_angle_shift_y) for p in outer_b],
+            inner=[Point2D(x=p[0] + c.offset_x_mm, y=p[1] + c.offset_y_mm + final_angle_shift_y) for p in inner_b],
+        ))
     cache_key = _plan_cache_key(project)
     payload = {
         "schema_revision": f"loft-plan-v1:{cache_key}",

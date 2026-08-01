@@ -492,6 +492,8 @@ def validate_connection(
             offset_x_mm=conn_obj.offset_x_mm,
             offset_y_mm=conn_obj.offset_y_mm,
             angle_deg=conn_obj.angle_deg,
+            extension_a_mm=conn_obj.extension_a_mm,
+            extension_b_mm=conn_obj.extension_b_mm,
         )
         if conn_obj
         else None

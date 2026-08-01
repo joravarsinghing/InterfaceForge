@@ -76,7 +76,7 @@ describe('focused landing-page correction pass', () => {
     expect(screen.queryByText(/Created by Joravar Singh/)).not.toBeInTheDocument();
   });
 
-  it('renders centered hero icon and accessible example image placeholders', () => {
+  it('renders centered hero icon and media for both example applications', () => {
     render(
       <MemoryRouter>
         <LandingPage healthState={healthState} onRetryHealth={vi.fn()} />
@@ -86,7 +86,10 @@ describe('focused landing-page correction pass', () => {
     expect(document.querySelector('.hero-icon')).toHaveAttribute('src', '/InterfaceForge_logo.svg');
     expect(screen.getByRole('img', { name: 'Zoo.dev' })).toHaveAttribute('src', '/Zoo.dev.logo.svg');
     expect(screen.getByRole('link', { name: 'Powered by Zoo.dev' })).toHaveAttribute('href', 'https://zoo.dev/');
-    expect(screen.getByRole('img', { name: 'Placeholder for future Vacuum Hose Adapter example image' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Placeholder for future Custom Funnel Adapter example image' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Vacuum Hose Adapter example render' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Vacuum Hose Adapter example animation' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Custom Funnel Adapter example render' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Custom Funnel Adapter example animation' })).toBeInTheDocument();
+    expect(document.querySelectorAll('.example-media-split')).toHaveLength(2);
   });
 });

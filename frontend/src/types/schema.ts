@@ -194,6 +194,8 @@ export interface Connection {
   offset_x_mm: number;
   offset_y_mm: number;
   angle_deg: number;
+  extension_a_mm?: number;
+  extension_b_mm?: number;
 }
 
 export interface Manufacturing {

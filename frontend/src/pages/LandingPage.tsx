@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import part1Gif from '../../../assets/part1.gif';
 import part1Png from '../../../assets/part1.png';
+import part2Gif from '../../../assets/part2.gif';
+import part2Png from '../../../assets/part2.png';
 import { HealthResponse, ServiceStatusRow } from '../services/api';
 import { getEarliestIncompleteStep } from '../services/workflow';
 import { Project } from '../types/schema';
@@ -214,8 +216,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <span className="card-badge">Coaxial Mode</span>
           </div>
           <div className="example-card">
-            <div className="example-image-placeholder" role="img" aria-label="Placeholder for future Custom Funnel Adapter example image">
-              <span>Custom Funnel Adapter image placeholder</span>
+            <div className="example-media-split" aria-label="Custom Funnel Adapter example media">
+              <div className="example-media-panel">
+                <img src={part2Png} alt="Custom Funnel Adapter example render" loading="lazy" decoding="async" />
+              </div>
+              <div className="example-media-panel">
+                <img src={part2Gif} alt="Custom Funnel Adapter example animation" loading="lazy" decoding="async" />
+              </div>
             </div>
             <h3>Custom Funnel Adapter</h3>
             <p>Transition between irregular custom inlets and standard round outlets for smooth, printable flow.</p>

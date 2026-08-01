@@ -3,6 +3,9 @@
 import hashlib
 import os
 
+import cv2
+import numpy as np
+
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -68,6 +71,18 @@ class TestS105AOpenCVProfileTracing:
         assert outer is not None
         assert len(outer.points) >= 30
 
+    def test_nested_duplicate_boundary_collapses_to_one_solid_profile(self):
+        """Scanned hatch/edge pairs produce one outer profile, not inner traces."""
+        mask = np.zeros((240, 240), dtype=np.uint8)
+        cv2.rectangle(mask, (20, 20), (220, 220), 255, -1)
+        cv2.rectangle(mask, (25, 25), (215, 215), 0, -1)
+
+        res = extract_pixel_contours(mask, is_complex_expected=False)
+
+        assert res["success"] is True
+        assert res["inner_contour_count"] == 0
+        assert res["traced_outer_contour"].is_closed is True
+        assert any("one closed outer profile" in warning for warning in res["warnings"])
     def test_drawing_b_opencv_contour_extraction(self):
         """Drawing B produces non-convex outer contour and corner screw holes."""
         path = get_sample_path("samples/test_fixtures/s10_interface_b_original.jpg")

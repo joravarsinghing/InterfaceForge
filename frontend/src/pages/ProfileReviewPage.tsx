@@ -26,8 +26,6 @@ interface ProfileReviewPageProps {
 }
 
 
-const supportedProfileTypes = ['circle', 'rectangle', 'rounded_rectangle'] as const;
-
 
 export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   interfaceId,
@@ -54,7 +52,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   const [imageError, setImageError] = useState<boolean>(false);
   // Image view tab: Original stays untouched; Overlay uses saved analysis artifacts.
   const [imageTab, setImageTab] = useState<'source' | 'analysis' | 'trace' | 'overlay'>(
-    targetInterface?.profile_type === 'traced_closed' ? 'overlay' : 'source'
+    Boolean(targetInterface?.traced_outer_contour) ? 'overlay' : 'source'
   );
   // Feature highlighting state
   const [highlightFeatureId, setHighlightFeatureId] = useState<string | null>(null);
@@ -110,7 +108,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
       if (targetInterface.approved) {
         setIsEditing(false);
       }
-      if (targetInterface.profile_type === 'traced_closed') {
+      if (Boolean(targetInterface.traced_outer_contour)) {
         setImageTab('overlay');
       }
     }
@@ -247,10 +245,9 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
   };
 
   // Structural Validation Summary Calculation
-  const resolutionStatus = targetInterface?.resolution_status || (targetInterface?.generation_unsupported ? 'unsupported' : 'resolved');
-  const resolvedProfileType = targetInterface?.resolved_profile_type || (profileType !== 'custom_closed' && supportedProfileTypes.includes(profileType as Exclude<ProfileType, 'traced_closed' | 'custom_closed'>) ? profileType : null);
-  const isResolvedSupportedProfile = resolutionStatus === 'resolved' && resolvedProfileType !== null && resolvedProfileType !== 'traced_closed';
-  const isTracedProfile = profileType === 'traced_closed';
+  const resolvedProfileType = 'custom_closed';
+  const isResolvedSupportedProfile = false;
+  const isTracedProfile = Boolean(targetInterface?.traced_outer_contour);
   const shapeAwaitingConfirmation = false;
   const effectiveProfileType = isResolvedSupportedProfile ? (resolvedProfileType as ProfileType) : profileType;
   const visibleDimensionIds =
@@ -293,9 +290,8 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     (dim) => !visibleDimensionIds.includes(dim.id) || !dim.feature_ref || dim.consistency_state === 'unmapped'
   );
   const requiresScaleConfirmation = true;
-  // The approved OpenCV contour is authoritative even when legacy shape resolution says circle/rectangle.
+  // The approved traced contour is authoritative.
   const traceBackedProfile = Boolean(targetInterface?.traced_outer_contour?.points?.length);
-  const supportedPrimitivePromotion = false;
 
   const validationErrors: string[] = [];
 
@@ -315,17 +311,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
     validationErrors.push('Derived profile dimensions are not ready yet. Confirm calibration first.');
   }
 
-  if (supportedPrimitivePromotion && !primitivePromotionConfirmed) {
-    validationErrors.push('Confirm the detected shape before approval.');
-  }
-
-  if (resolutionStatus === 'unsupported') {
-    validationErrors.push('This outline is more complex than the shapes supported in this version.');
-  } else if (resolutionStatus === 'needs_confirmation') {
-    validationErrors.push('Shape resolution needs confirmation before profile approval.');
-  } else if (isTracedProfile && !isResolvedSupportedProfile && !shapeAwaitingConfirmation) {
-    validationErrors.push('This outline is more complex than the shapes supported in this version.');
-  }
 
   displayDimensions.forEach((d) => {
     if (!isFinite(d.value) || d.value <= 0) {
@@ -424,11 +409,11 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             title={primitivePromotionConfirmed ? 'Supported shape confirmed' : shapeAwaitingConfirmation ? 'Detected shape needs confirmation' : 'Profile review status'}
           >
             {primitivePromotionConfirmed
-              ? 'Shape confirmed'
+              ? 'Approved'
               : shapeAwaitingConfirmation
-              ? 'Confirm shape'
+              ? 'Outline detected'
               : primitiveFallbackActive
-              ? 'Trace approximation'
+              ? 'Outline detected'
               : isTracedProfile
               ? isFormValid
                 ? 'Trace ready'
@@ -528,7 +513,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
           <h2>Source Image</h2>
 
           {/* Tab switcher - shown for traced profiles */}
-          {targetInterface?.profile_type === 'traced_closed' && (
+          {targetInterface && targetInterface.traced_outer_contour && (
             <div
               role="tablist"
               aria-label="Image view mode"
@@ -582,7 +567,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             }}
           >
             {/* Original Source Image tab (or non-traced profiles) */}
-            {(imageTab === 'source' || targetInterface?.profile_type !== 'traced_closed') &&
+            {(imageTab === 'source' || !targetInterface?.traced_outer_contour) &&
               targetInterface?.source_image_ref && (
                 imageError ? (
                   <div
@@ -622,7 +607,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
               )}
 
             {/* Analysis crop tab */}
-            {imageTab === 'analysis' && targetInterface?.profile_type === 'traced_closed' && (
+            {imageTab === 'analysis' && targetInterface && targetInterface.traced_outer_contour && (
               targetInterface.analysis_image_ref && targetInterface.analysis_image_width && targetInterface.analysis_image_height ? (
                 <img
                   src={getInterfaceArtifactUrl(
@@ -645,7 +630,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             )}
 
             {/* Trace tab */}
-            {imageTab === 'trace' && targetInterface?.profile_type === 'traced_closed' && (
+            {imageTab === 'trace' && targetInterface && targetInterface.traced_outer_contour && (
               targetInterface.trace_svg_ref && targetInterface.analysis_image_width && targetInterface.analysis_image_height ? (
                 <img
                   src={getInterfaceArtifactUrl(
@@ -667,7 +652,7 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
             )}
 
             {/* Overlay tab */}
-            {imageTab === 'overlay' && targetInterface?.profile_type === 'traced_closed' && (
+            {imageTab === 'overlay' && targetInterface && targetInterface.traced_outer_contour && (
               targetInterface.overlay_svg_ref && targetInterface.analysis_image_width && targetInterface.analysis_image_height ? (
                 <figure style={{ margin: 0 }} aria-label={`Analysis crop overlay for ${interfaceName}`}>
                   <img
@@ -939,13 +924,6 @@ export const ProfileReviewPage: React.FC<ProfileReviewPageProps> = ({
                 </div>
               )}
             </>
-          )}
-          {targetInterface?.generation_unsupported && (
-            <div style={{ gridColumn: '1 / -1', color: '#d29922' }}>
-              <strong>Generation limitation</strong>
-              <br />
-              This outline is more complex than the shapes supported in this version.
-            </div>
           )}
         </div>
       </details>

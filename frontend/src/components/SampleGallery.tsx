@@ -1,6 +1,25 @@
 import React, { useState } from 'react';
 import { SAMPLE_MANIFEST, SampleAsset } from '../data/sampleManifest';
 
+const SAMPLE_DISPLAY_COUNT = 3;
+
+function getRandomSamples(pool: SampleAsset[], previous: SampleAsset[] = []): SampleAsset[] {
+  if (pool.length <= SAMPLE_DISPLAY_COUNT) return [...pool];
+
+  const shuffled = [...pool];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+
+  const next = shuffled.slice(0, SAMPLE_DISPLAY_COUNT);
+  const unchanged = previous.length === next.length && next.every((sample) => previous.some((item) => item.id === sample.id));
+  if (unchanged) {
+    [next[0], next[1]] = [next[1], next[0]];
+  }
+  return next;
+}
+
 export interface SampleGalleryProps {
   onSelectSample: (sample: SampleAsset, targetInterface: 'interface_a' | 'interface_b') => void;
   currentInterface?: 'interface_a' | 'interface_b';
@@ -12,19 +31,14 @@ export const SampleGallery: React.FC<SampleGalleryProps> = ({
   currentInterface = 'interface_a',
   disabled = false,
 }) => {
-  const [startIndex, setStartIndex] = useState(0);
+  const [visibleSamples, setVisibleSamples] = useState<SampleAsset[]>(() =>
+    SAMPLE_MANIFEST.slice(0, SAMPLE_DISPLAY_COUNT)
+  );
   const [selectedSampleForModal, setSelectedSampleForModal] = useState<SampleAsset | null>(null);
-
-  // Deterministically select 3 unique samples from pool
-  const visibleSamples: SampleAsset[] = [
-    SAMPLE_MANIFEST[startIndex % SAMPLE_MANIFEST.length],
-    SAMPLE_MANIFEST[(startIndex + 1) % SAMPLE_MANIFEST.length],
-    SAMPLE_MANIFEST[(startIndex + 2) % SAMPLE_MANIFEST.length],
-  ];
 
   const handleShuffle = () => {
     if (disabled) return;
-    setStartIndex((prev) => (prev + 3) % SAMPLE_MANIFEST.length);
+    setVisibleSamples((previous) => getRandomSamples(SAMPLE_MANIFEST, previous));
   };
 
   const handleThumbnailClick = (sample: SampleAsset) => {
