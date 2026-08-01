@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import part1Gif from '../../../assets/part1.gif';
+import part1Png from '../../../assets/part1.png';
 import { HealthResponse, ServiceStatusRow } from '../services/api';
 import { getEarliestIncompleteStep } from '../services/workflow';
 import { Project } from '../types/schema';
@@ -189,8 +191,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <h2 id="examples-heading" className="section-title">Example Applications</h2>
         <div className="examples-grid">
           <div className="example-card">
-            <div className="example-image-placeholder" role="img" aria-label="Placeholder for future Vacuum Hose Adapter example image">
-              <span>Vacuum Hose Adapter image placeholder</span>
+            <div className="example-media-split" aria-label="Vacuum Hose Adapter example media">
+              <div className="example-media-panel">
+                <img
+                  src={part1Png}
+                  alt="Vacuum Hose Adapter example render"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+              <div className="example-media-panel">
+                <img
+                  src={part1Gif}
+                  alt="Vacuum Hose Adapter example animation"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
             </div>
             <h3>Vacuum Hose Adapter</h3>
             <p>Connect shop dust extractors to CNC router dust ports with tight slip fit.</p>

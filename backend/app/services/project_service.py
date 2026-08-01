@@ -1952,6 +1952,22 @@ class ProjectService:
                 "Cannot start model generation before connection configuration is complete."
             )
 
+        calibration_validation = validate_connection_and_manufacturing(
+            project.interface_a, project.interface_b, project.connection, project.manufacturing
+        )
+        if calibration_validation.blocking_errors:
+            error = calibration_validation.blocking_errors[0]
+            raise InvalidConnectionConfigError(
+                message=error.message,
+                error_id=error.id,
+                details={
+                    "blocking_errors": [
+                        item.model_dump() for item in calibration_validation.blocking_errors
+                    ]
+                },
+                recovery_steps=error.recovery_steps,
+            )
+
         next_model_rev = len(project.model_revisions) + 1
         now = current_iso_timestamp()
         new_rev = ModelRevision(

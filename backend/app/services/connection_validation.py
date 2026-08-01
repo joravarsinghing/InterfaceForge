@@ -12,6 +12,11 @@ from app.models.schema import (
     ProfileType,
     ValidationIssue,
 )
+from app.services.loft_plan import (
+    CALIBRATION_REQUIRED_MESSAGE,
+    has_valid_confirmed_calibration,
+    uses_calibrated_trace,
+)
 from app.services.profile_geometry import fitted_profile_size
 
 
@@ -48,6 +53,20 @@ def validate_connection_and_manufacturing(
         "offset_y_mm": 0.0,
         "angle_deg": 0.0,
     }
+
+    for iface_name, iface in (("Interface A", interface_a), ("Interface B", interface_b)):
+        if uses_calibrated_trace(iface) and not has_valid_confirmed_calibration(iface):
+            errors.append(
+                ValidationIssue(
+                    id="IF-CAL-001",
+                    message=CALIBRATION_REQUIRED_MESSAGE,
+                    field=iface_name.lower().replace(" ", "_"),
+                    recovery_steps=[
+                        "Select two trace points and confirm their known distance in millimetres."
+                    ],
+                )
+            )
+
 
     # 1. Prerequisite approval check
     if not interface_a.approved:

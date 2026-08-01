@@ -26,6 +26,59 @@ from app.services.contour_loft import (
 )
 
 Point = tuple[float, float]
+
+
+def _plan_cache_key(project: Project) -> str:
+    payload = {
+        "interface_a": project.interface_a.model_dump(mode="json"),
+        "interface_b": project.interface_b.model_dump(mode="json"),
+        "connection": project.connection.model_dump(mode="json"),
+        "manufacturing": project.manufacturing.model_dump(mode="json"),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:16]
+
+
+CALIBRATION_REQUIRED_MESSAGE = (
+    "Confirm one known distance for this outline before generating the adapter."
+)
+
+
+def uses_calibrated_trace(interface: Interface) -> bool:
+    """Return whether traced geometry is authoritative for generation."""
+    return bool(
+        interface.profile_type in (ProfileType.TRACED_CLOSED, ProfileType.CUSTOM_CLOSED)
+        and interface.traced_outer_contour is not None
+        # Direct in-memory contours used by geometry primitives are already mm;
+        # persisted/image-derived traces always carry a source or calibration record.
+        and (interface.source_image_ref is not None or interface.scale_calibration is not None)
+    )
+
+
+def has_valid_confirmed_calibration(interface: Interface) -> bool:
+    """Return whether a traced profile has a usable confirmed mm scale."""
+    if not uses_calibrated_trace(interface):
+        return True
+    calibration = interface.scale_calibration
+    return bool(
+        calibration
+        and calibration.confirmed
+        and math.isfinite(calibration.scale_factor)
+        and calibration.scale_factor > 0
+    )
+
+
+def calibrated_contour_mm(interface: Interface, count: int | None = None) -> list[Point]:
+    """Return the authoritative contour in mm without mutating trace-space points."""
+    if uses_calibrated_trace(interface):
+        if not has_valid_confirmed_calibration(interface):
+            raise ValueError(CALIBRATION_REQUIRED_MESSAGE)
+        scale = float(interface.scale_calibration.scale_factor)  # type: ignore[union-attr]
+        points = [(p.x * scale, p.y * scale) for p in interface.traced_outer_contour.points]  # type: ignore[union-attr]
+        normalized = normalize_contour(points)
+        return resample_closed(normalized, count) if count is not None else normalized
+    return _primitive_from_dimensions(interface, count or 64)
 def _resample(points: Sequence[Point], count: int) -> list[Point]:
     clean = list(points)
     lengths = [math.dist(clean[i], clean[(i+1) % len(clean)]) for i in range(len(clean))]
@@ -51,9 +104,7 @@ def _dim(iface: Interface, name: str, default: float) -> float:
     return default
 
 
-def _primitive(iface: Interface, count: int) -> list[Point]:
-    if iface.traced_outer_contour is not None:
-        return normalize_contour([(p.x, p.y) for p in iface.traced_outer_contour.points])
+def _primitive_from_dimensions(iface: Interface, count: int) -> list[Point]:
     if iface.profile_type == ProfileType.CIRCLE:
         r = _dim(iface, "outer_diameter", 50.0) / 2.0
         return normalize_contour([(r * math.cos(2 * math.pi * i / count), r * math.sin(2 * math.pi * i / count)) for i in range(count)])
@@ -68,6 +119,10 @@ def _primitive(iface: Interface, count: int) -> list[Point]:
                 path.append((cx + r*math.cos(t), cy + r*math.sin(t)))
         return normalize_contour(path)
     return normalize_contour([(hw, hh), (-hw, hh), (-hw, -hh), (hw, -hh)])
+
+
+def _primitive(iface: Interface, count: int) -> list[Point]:
+    return calibrated_contour_mm(iface, count)
 
 
 def _interp(a: Sequence[Point], b: Sequence[Point], t: float) -> list[Point]:
@@ -106,17 +161,37 @@ def build_loft_plan(project: Project) -> LoftPlan:
 
     section_count = _adaptive_count(outer_a, outer_b, c.length_mm, c.offset_x_mm, c.offset_y_mm, c.angle_deg)
     sections = []
+    angle_shear_per_mm = (
+        math.tan(math.radians(c.angle_deg))
+        if c.mode == ConnectionMode.ANGLED or c.mode == "angled"
+        else 0.0
+    )
     for k in range(section_count):
         t = k / (section_count - 1)
+        z_mm = c.length_mm * t
+        angle_shift_y = angle_shear_per_mm * z_mm
         sections.append(
             LoftSection(
-                z_mm=c.length_mm * t,
-                outer=[Point2D(x=x + c.offset_x_mm * t, y=y + c.offset_y_mm * t) for x, y in _interp(outer_a, outer_b, t)],
-                inner=[Point2D(x=x + c.offset_x_mm * t, y=y + c.offset_y_mm * t) for x, y in _interp(inner_a, inner_b, t)],
+                z_mm=z_mm,
+                outer=[
+                    Point2D(
+                        x=x + c.offset_x_mm * t,
+                        y=y + c.offset_y_mm * t + angle_shift_y,
+                    )
+                    for x, y in _interp(outer_a, outer_b, t)
+                ],
+                inner=[
+                    Point2D(
+                        x=x + c.offset_x_mm * t,
+                        y=y + c.offset_y_mm * t + angle_shift_y,
+                    )
+                    for x, y in _interp(inner_a, inner_b, t)
+                ],
             )
         )
+    cache_key = _plan_cache_key(project)
     payload = {
-        "schema_revision": "loft-plan-v1",
+        "schema_revision": f"loft-plan-v1:{cache_key}",
         "point_count": count,
         "outer_a": outer_a,
         "outer_b": outer_b,
@@ -151,7 +226,9 @@ def build_loft_plan(project: Project) -> LoftPlan:
 
 
 def ensure_loft_plan(project: Project) -> LoftPlan:
-    if project.loft_plan is None:
+    expected = f"loft-plan-v1:{_plan_cache_key(project)}"
+    if project.loft_plan is None or project.loft_plan.schema_revision != expected:
+        # A hydrated plan from an older scale or canonical input is never reused.
         project.loft_plan = build_loft_plan(project)
     return project.loft_plan
 

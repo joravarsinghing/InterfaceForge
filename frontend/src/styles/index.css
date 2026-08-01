@@ -2244,6 +2244,41 @@ html, body {
   margin: 0 auto 18px;
 }
 
+.example-media-split {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.example-media-panel {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(156, 163, 175, 0.35);
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(31, 41, 61, 0.72));
+}
+
+.example-media-panel img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+@media (max-width: 640px) {
+  .example-media-split {
+    aspect-ratio: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .example-media-panel {
+    aspect-ratio: 16 / 9;
+  }
+}
+
 .example-image-placeholder {
   width: 100%;
   aspect-ratio: 16 / 9;
