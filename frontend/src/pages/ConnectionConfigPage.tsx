@@ -15,6 +15,17 @@ import type {
 import fitInsideSvg from '../assets/fit_inside.svg';
 import fitOverSvg from '../assets/fit_over.svg';
 
+const STEP3_LOADING_DIALOGUES = [
+  'Zoo Design Studio is an AI-native CAD platform.',
+  'Zookeeper is a conversational agent that designs parts from natural language.',
+  'Zoo generates true B-rep geometry that is fully editable and parametric.',
+  'Designs can be created by clicking, coding, or prompting.',
+  'Zoo gives manufacturing-aware feedback as you model.',
+  'Zoo runs on Windows, Mac, Linux, and even in the browser.',
+  'Zoo supports ITAR-compliant workflows in a US-regulated region.',
+  'Zoo is SOC 2 Type II audited for security and reliability.',
+  'Zoo is headquartered at 8701 Aviation Blvd, Inglewood, California.',
+] as const;
 interface ConnectionConfigPageProps {
   project: Project | null;
   onProjectUpdate?: (project: Project) => void;
@@ -94,7 +105,26 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isGeometryLoading, setIsGeometryLoading] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
+  const [previewDialogueIndex, setPreviewDialogueIndex] = useState(0);
   const prevGeoKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isGeometryLoading) return;
+
+    setPreviewProgress(4);
+    const progressTimer = window.setInterval(() => {
+      setPreviewProgress((current) => Math.min(current + 3, 94));
+    }, 300);
+    const dialogueTimer = window.setInterval(() => {
+      setPreviewDialogueIndex((current) => (current + 1) % STEP3_LOADING_DIALOGUES.length);
+    }, 4500);
+
+    return () => {
+      window.clearInterval(progressTimer);
+      window.clearInterval(dialogueTimer);
+    };
+  }, [isGeometryLoading]);
 
   // Client & Server Validation Effect
   const runValidation = useCallback(async () => {
@@ -738,6 +768,20 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
           <h3 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#f0f6fc' }}>
             Live 2D Transition Schematic
           </h3>
+          {isGeometryLoading && (
+            <div className="step3-preview-loading-panel" data-testid="step3-preview-loading" aria-live="polite">
+              <div className="step3-preview-loading-heading">
+                <span>Preparing your loft preview</span>
+                <strong>{previewProgress}%</strong>
+              </div>
+              <div className="step3-preview-progress-track" role="progressbar" aria-label="Preview loading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={previewProgress}>
+                <div className="step3-preview-progress-fill" style={{ width: String(previewProgress) + '%' }} />
+              </div>
+              <div className="step3-preview-dialogue" role="status">
+                <strong>While Zoo is thinking:</strong> {STEP3_LOADING_DIALOGUES[previewDialogueIndex]}
+              </div>
+            </div>
+          )}
           <GeometryPreview
             project={{
               ...project!,
@@ -747,7 +791,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               interface_a: { ...project!.interface_a, fit_mode: fitModeA },
               interface_b: { ...project!.interface_b, fit_mode: fitModeB },
             }}
-            isLoading={isGeometryLoading}
+            isLoading={false}
           />
 
           {/* Validation Status Panel */}

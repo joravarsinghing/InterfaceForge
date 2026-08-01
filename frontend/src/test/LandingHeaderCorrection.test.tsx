@@ -87,6 +87,6 @@ describe('focused landing-page correction pass', () => {
     expect(screen.getByRole('img', { name: 'Zoo.dev' })).toHaveAttribute('src', '/Zoo.dev.logo.svg');
     expect(screen.getByRole('link', { name: 'Powered by Zoo.dev' })).toHaveAttribute('href', 'https://zoo.dev/');
     expect(screen.getByRole('img', { name: 'Placeholder for future Vacuum Hose Adapter example image' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Placeholder for future Camera Mount Adapter example image' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Placeholder for future Custom Funnel Adapter example image' })).toBeInTheDocument();
   });
 });

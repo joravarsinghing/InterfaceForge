@@ -32,6 +32,10 @@ InterfaceForge creates a hollow parametric transition between two reviewed plana
 
 The controlled submission workflow demonstrates a practical dust-extraction adapter:
 
+<p align="center">
+  <img src="assets\homepage.png" alt="Description" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
+
 <table>
   <tr>
     <td width="33%" valign="top">
@@ -70,7 +74,9 @@ InterfaceForge guides the user through:
 
 <div align="center">
 
-**[PLACEHOLDER — Wide application screenshot or GIF showing upload → calibration → approval → generation → export]**
+<p align="center">
+  <img src="assets\sample1.png" alt="Description" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -114,7 +120,9 @@ The image should be:
 
 <div align="center">
 
-**[PLACEHOLDER — Screenshot: Step 1 upload page with circular Interface A image selected]**
+<p align="center">
+  <img src="assets\step11.png" alt="Left image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -140,7 +148,9 @@ It does not correct perspective distortion or repair an incorrect source image.
 
 <div align="center">
 
-**[PLACEHOLDER — Screenshot: circular profile review with two calibration points and confirmed diameter]**
+<p align="center">
+  <img src="assets\step12.png" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -165,7 +175,9 @@ The same review process is repeated:
 
 <div align="center">
 
-**[PLACEHOLDER — Screenshot: rounded-rectangle Interface B upload and profile review]**
+<p align="center">
+  <img src="assets\step2.png" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -190,7 +202,9 @@ InterfaceForge validates these parameters before generation.
 
 <div align="center">
 
-**[PLACEHOLDER — Screenshot: connection configuration page with length, wall thickness, and clearance controls]**
+<p align="center">
+  <img src="assets\step3.png" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -230,7 +244,9 @@ InterfaceForge:
 
 <div align="center">
 
-**[PLACEHOLDER — Screenshot: Zoo-generated circular-to-rounded-rectangle adapter in the final result viewer]**
+<p align="center">
+  <img src="assets\step5.png" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -255,6 +271,11 @@ Available downloads:
   </tr>
 </table>
 
+<p align="center">
+  <img src="assets\export1.png" alt="Right image" style="width: 48%; border-radius: 5px; border: 1px solid #39FF14;">
+  <img src="assets\export2.png" alt="Right image" style="width: 48%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
+
 Exports remain tied to the current model revision.
 
 If an upstream parameter changes, the existing model becomes stale and must be regenerated before current exports are available.
@@ -267,21 +288,13 @@ After reaching **Step 5**, the user can request supported parameter changes thro
 
 Example requests:
 
-```text
-Make the adapter 10 mm longer.
-````
+`Make the adapter 10 mm longer.`
 
-```text
-Increase the wall thickness to 3 mm.
-```
+`Increase the wall thickness to 3 mm.`
 
-```text
-Move the outlet 5 mm to the right.
-```
+`Move the outlet 5 mm to the right.`
 
-```text
-Increase the clearance on Interface A.
-```
+`Increase the clearance on Interface A.`
 
 ### AI editing sequence
 
@@ -298,19 +311,11 @@ Increase the clearance on Interface A.
 
 <div align="center">
 
-**[PLACEHOLDER — Screenshot: AI revision chat with “Make it 10 mm longer” entered]**
-
-</div>
-
-<div align="center">
-
-**[PLACEHOLDER — Screenshot: before-and-after proposal table with Confirm and Cancel actions]**
-
-</div>
-
-<div align="center">
-
-**[PLACEHOLDER — Screenshot: regenerated adapter with updated length and revised exports]**
+<p align="center">
+  <img src="assets\step53.png" alt="Right image" style="width: 80%; border-radius: 5px; border: 1px solid #39FF14;">
+  <img src="assets\step52.png" alt="Right image" style="width: 39%; border-radius: 5px; border: 1px solid #39FF14;">
+  <img src="assets\step54.png" alt="Right image" style="width: 39%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 </div>
 
@@ -418,11 +423,11 @@ The reliable workflow uses a **clean, filled 2D profile image**.
   <tr>
     <td width="50%" align="center" valign="top">
       <strong>Interface A — Recommended circular input</strong><br><br>
-      [PLACEHOLDER — Solid filled circular profile image]
+        <img src="samples\manual_qa\profile9.jpg" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14;">
     </td>
     <td width="50%" align="center" valign="top">
-      <strong>Interface B — Recommended rounded-rectangle input</strong><br><br>
-      [PLACEHOLDER — Solid filled rounded-rectangle profile image]
+      <strong>Interface B — Recommended custom profile input</strong><br><br>
+        <img src="samples\manual_qa\profile1.jpg" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14;">
     </td>
   </tr>
 </table>
@@ -644,9 +649,8 @@ Create the backend environment file from the included example and add the requir
 
 ### Run frontend and backend together
 
-```powershell
-python scripts/start_local.py
-```
+`python scripts/start_local.py`
+<br><br>
 
 Open:
 
@@ -656,10 +660,9 @@ Open:
 
 ### Run services individually
 
-```powershell
-python scripts/run_backend.py
-python scripts/run_frontend.py
-```
+`python scripts/run_backend.py`
+<br>
+`python scripts/run_frontend.py`
 
 ---
 
@@ -667,9 +670,9 @@ python scripts/run_frontend.py
 
 Run the full local verification suite:
 
-```powershell
+`
 python scripts/run_all_checks.py
-```
+`
 
 Run component suites separately:
 

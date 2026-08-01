@@ -197,11 +197,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <span className="card-badge">Coaxial Mode</span>
           </div>
           <div className="example-card">
-            <div className="example-image-placeholder" role="img" aria-label="Placeholder for future Camera Mount Adapter example image">
-              <span>Camera Mount Adapter image placeholder</span>
+            <div className="example-image-placeholder" role="img" aria-label="Placeholder for future Custom Funnel Adapter example image">
+              <span>Custom Funnel Adapter image placeholder</span>
             </div>
-            <h3>Camera Mount Adapter</h3>
-            <p>Transition between non-standard tripod plates and camera rigs.</p>
+            <h3>Custom Funnel Adapter</h3>
+            <p>Transition between irregular custom inlets and standard round outlets for smooth, printable flow.</p>
             <span className="card-badge">Offset Mode</span>
           </div>
         </div>

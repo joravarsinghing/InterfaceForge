@@ -153,6 +153,12 @@ async def test_kcl_export_download(async_client: AsyncClient):
     assert dl_res.status_code == 200
     assert "text/plain" in dl_res.headers["content-type"]
     assert len(dl_res.content) > 0
+    query_dl_res = await async_client.get(
+        f"/api/projects/{project_id}/exports/kcl/download?token={token}"
+    )
+    assert query_dl_res.status_code == 200
+    assert "text/plain" in query_dl_res.headers["content-type"]
+    assert len(query_dl_res.content) > 0
 
 
 @pytest.mark.asyncio

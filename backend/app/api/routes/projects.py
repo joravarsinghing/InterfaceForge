@@ -1,4 +1,4 @@
-﻿"""API routes for canonical project and workflow state management."""
+"""API routes for canonical project and workflow state management."""
 
 from typing import Any, Dict, Optional
 
@@ -670,6 +670,7 @@ async def retry_format_export(
 def download_export_artifact(
     project_id: str,
     format_name: str,
+    token: Optional[str] = Query(None, description="Project token for browser download"),
     x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
 ) -> FileResponse:
     """Download verified export artifact file per S8."""
@@ -677,7 +678,7 @@ def download_export_artifact(
     file_path, filename, media_type = service.download_export_artifact(
         project_id=project_id,
         format_name=format_name,
-        project_token=x_project_token,
+        project_token=x_project_token or token,
     )
     return FileResponse(
         path=file_path,
