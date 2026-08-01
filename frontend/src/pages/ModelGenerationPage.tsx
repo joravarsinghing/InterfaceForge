@@ -18,6 +18,17 @@ import {
   fetchProject,
 } from '../services/api';
 
+const ZOO_LOADING_DIALOGUES = [
+  'Zoo Design Studio is an AI-native CAD platform.',
+  'Zookeeper is a conversational agent that designs parts from natural language.',
+  'Zoo generates true B-rep geometry that is fully editable and parametric.',
+  'Designs can be created by clicking, coding, or prompting.',
+  'Zoo gives manufacturing-aware feedback as you model.',
+  'Zoo runs on Windows, Mac, Linux, and even in the browser.',
+  'Zoo supports ITAR-compliant workflows in a US-regulated region.',
+  'Zoo is SOC 2 Type II audited for security and reliability.',
+  'Zoo is headquartered at 8701 Aviation Blvd, Inglewood, California.',
+] as const;
 interface ModelGenerationPageProps {
   project: Project | null;
   onProjectUpdate?: (updated: Project) => void;
@@ -44,6 +55,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
 
   const [selectedScenario] = useState<MockScenario>('success');
   const [activeJob, setActiveJob] = useState<GenerationJob | null>(null);
+  const [loadingDialogueIndex, setLoadingDialogueIndex] = useState(0);
   const [jobState, setJobState] = useState<{
     loading: boolean;
     error: string | null;
@@ -51,6 +63,19 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
     loading: false,
     error: null,
   });
+
+  useEffect(() => {
+    const isGenerating = activeJob?.status === 'queued' || activeJob?.status === 'running';
+    if (!isGenerating) {
+      setLoadingDialogueIndex(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setLoadingDialogueIndex((current) => (current + 1) % ZOO_LOADING_DIALOGUES.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [activeJob?.status]);
 
   const checkReadiness = useCallback(async () => {
     if (!project) return;
@@ -348,6 +373,17 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
 
           {/* Staged Progress Bar */}
           <div className="staged-progress-container">
+            {isJobActive && (
+              <div className="generation-loading-header" aria-live="polite">
+                <div>
+                  <span className="generation-loading-label">Zoo Engine generation progress</span>
+                  <strong className="generation-loading-percent">{Math.round(activeJob.progress_percent)}%</strong>
+                </div>
+                <div className="generation-loading-dialogue" role="status">
+                  <strong>While Zoo is thinking:</strong> {ZOO_LOADING_DIALOGUES[loadingDialogueIndex]}
+                </div>
+              </div>
+            )}
             <div className="progress-bar-track">
               <div
                 className={`progress-bar-fill ${activeJob.status}`}

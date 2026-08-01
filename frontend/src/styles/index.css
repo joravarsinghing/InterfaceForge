@@ -1115,6 +1115,47 @@ html, body {
   padding: 20px;
 }
 
+.generation-loading-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.generation-loading-header > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.generation-loading-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.generation-loading-percent {
+  color: var(--accent-neon-green);
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+}
+
+.generation-loading-dialogue {
+  min-height: 2.6rem;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: var(--radius-sm);
+  background: rgba(56, 189, 248, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.generation-loading-dialogue strong {
+  color: var(--accent-cyan);
+}
+
 .progress-bar-track {
   width: 100%;
   height: 10px;

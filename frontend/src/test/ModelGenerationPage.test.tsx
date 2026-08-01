@@ -77,6 +77,13 @@ const mockSucceededJob: GenerationJob = {
   updated_at: '2026-07-23T12:00:00Z',
 };
 
+const mockRunningJob: GenerationJob = {
+  ...mockSucceededJob,
+  status: 'running',
+  current_stage: 'executing',
+  progress_percent: 42,
+  preview_metadata: undefined,
+};
 const mockFailedJob: GenerationJob = {
   job_id: 'job_fail_123',
   project_id: 'proj-test-s55',
@@ -131,6 +138,33 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     );
 
     expect(screen.queryByLabelText(/Mock Test Scenario:/i)).not.toBeInTheDocument();
+  });
+  it('shows percentage progress and a rotating Zoo loading dialogue while the job runs', async () => {
+    vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+    vi.spyOn(api, 'startGeneration').mockResolvedValue(mockRunningJob);
+
+    render(
+      <BrowserRouter>
+        <ModelGenerationPage project={mockProject} />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Start 3D Generation/i })).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Start 3D Generation/i }));
+    });
+
+    expect(screen.getByText('42%')).toBeInTheDocument();
+    expect(screen.getByText(/While Zoo is thinking:/i)).toBeInTheDocument();
+    expect(screen.getByText(/AI-native CAD platform/i)).toBeInTheDocument();
   });
   it('triggers 3D generation and renders staged progress and preview metadata', async () => {
     vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
