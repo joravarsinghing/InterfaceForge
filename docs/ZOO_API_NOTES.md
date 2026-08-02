@@ -132,4 +132,12 @@ Because the backend currently declares Python >=3.10,<3.11, live KCL-native STL/
 
 - Zoo KCL identifiers use lowerCamelCase (`sketchOuter0`, `outerSurface`, and `adapterModel`) for Zoo compatibility.
 - Live KCL execution reports `The Zoo engine cannot handle this 3D subtraction yet` for the outer/inner loft Boolean. The primary compiler path is therefore the surface-shell construction: outer and inner surface lofts plus explicit bottom/top rim surfaces joined with `joinSurfaces()`.
-- The compiler-side parser/mock executor passing is not evidence of live Zoo boolean success.
+- The compiler-side parser/mock executor passing is not evidence of live Zoo boolean success. Live Design Studio reproduction on 2026-08-02 confirms the Boolean rejection and capped outer-solid symptom.
+### 2026-08-02 - P0 Zoo KCL Solid Loft Boolean Rejection
+
+- **Status:** Active Zoo Engine blocker; reported from Design Studio execution.
+- **Reproduction:** Execute the generated solid KCL containing `outerSolid = loft([...])`, `innerCutter = loft([...])`, and `adapterModel = subtract([outerSolid], tools = [innerCutter])`.
+- **Observed error:** `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
+- **Impact:** The outer loft is capped at both ends. Because the subtraction fails, the inner cutter is not applied and the result is not a hollow adapter with two open passages.
+- **Evidence:** Downloaded `interfaceforge_adapter_rev1 (5).kcl`; failure reported at the `outerSolid`/solid loft execution path and boolean stage. Local parser/mock execution is not evidence of live B-rep success.
+- **Workaround:** None accepted for live solid KCL. Do not claim the displayed capped geometry is a valid hollow adapter. Preserve the exact KCL and live error for Zoo support.

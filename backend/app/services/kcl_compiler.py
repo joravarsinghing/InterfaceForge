@@ -1,4 +1,4 @@
-﻿"""Deterministic KCL Compiler and Service Layer (Stage S5A).
+"""Deterministic KCL Compiler and Service Layer (Stage S5A).
 
 Converts validated canonical project data into deterministic, readable KCL code
 without calling Zoo per ADR-001 and ADR-002.
@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from app.models.schema import (
     ConnectionMode,
     Interface,
+    LoftSection,
+    Point2D,
     ProfileType,
     Project,
     ValidationIssue,
@@ -171,13 +173,53 @@ def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
     if math.dist((points[-1].x, points[-1].y), (points[0].x, points[0].y)) <= 1e-9:
         raise ValueError("Loft section repeats its first point")
     sketch_name = _kcl_identifier(f"sketch_{prefix}")
-    lines = [f"{sketch_name} = startSketchOn({plane_var})", f"  |> startProfile(at = [{points[0].x:.6f}, {points[0].y:.6f}])"]
+    lines = [f"{sketch_name} = startSketchOn({plane_var})", f"  |> startProfile(at = [{points[0].x:.9f}, {points[0].y:.9f}])"]
     for current, following in zip(points, points[1:]):
-        lines.append(f"  |> line(end = [{following.x-current.x:.6f}, {following.y-current.y:.6f}])")
+        lines.append(f"  |> line(end = [{following.x-current.x:.9f}, {following.y-current.y:.9f}])")
     last, first = points[-1], points[0]
-    lines.append(f"  |> line(end = [{first.x-last.x:.6f}, {first.y-last.y:.6f}])")
+    lines.append(f"  |> line(end = [{first.x-last.x:.9f}, {first.y-last.y:.9f}])")
     lines.append("  |> close()")
     return "\n".join(lines)
+
+
+def _transform_section(points: list[Point2D], project: Project) -> list[Point2D]:
+    """Apply the persisted B placement without changing point correspondence."""
+    conn = project.connection
+    shear = math.tan(math.radians(conn.angle_deg)) if conn.mode == ConnectionMode.ANGLED else 0.0
+    return [
+        Point2D(x=p.x + conn.offset_x_mm, y=p.y + conn.offset_y_mm + shear * conn.length_mm)
+        for p in points
+    ]
+
+
+def _stable_sections(project: Project, plan) -> tuple[list[LoftSection], list[LoftSection]]:
+    """Return minimal solid-loft sections plus a through cutter."""
+    conn = project.connection
+    transition_z = conn.extension_a_mm + conn.length_mm
+    total_z = transition_z + conn.extension_b_mm
+    outer_a = list(plan.outer_a)
+    outer_b = _transform_section(list(plan.outer_b), project)
+    inner_a = list(plan.inner_a)
+    inner_b = _transform_section(list(plan.inner_b), project)
+
+    def section(z: float, outer: list[Point2D], inner: list[Point2D]) -> LoftSection:
+        return LoftSection(z_mm=z, outer=outer, inner=inner)
+
+    outer_sections: list[LoftSection] = [section(0.0, outer_a, inner_a)]
+    if conn.extension_a_mm > 0.0:
+        outer_sections.append(section(conn.extension_a_mm, outer_a, inner_a))
+    outer_sections.append(section(transition_z, outer_b, inner_b))
+    if conn.extension_b_mm > 0.0:
+        outer_sections.append(section(total_z, outer_b, inner_b))
+
+    cutter_sections = [
+        section(-0.1, outer_a, inner_a),
+        *outer_sections,
+        section(total_z + 0.1, outer_b, inner_b),
+    ]
+    return outer_sections, cutter_sections
+
+
 def compile_project_to_kcl(
     project: Project, artifacts_dir: Optional[str] = None
 ) -> KCLCompileResult:
@@ -285,13 +327,13 @@ def compile_project_to_kcl(
     if_b = project.interface_b
 
     kcl_lines: List[str] = [
-        "// InterfaceForge ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Deterministic KCL Adapter Model",
+        "// InterfaceForge ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Deterministic KCL Adapter Model",
         f"// Compiler Version: {COMPILER_VERSION}",
         f"// Schema Version: {project.schema_version}",
         f"// Schema Revision: {project.current_schema_revision}",
         "// Units: Millimeters (mm)",
         "",
-        "@settings(defaultLengthUnit = mm)",
+        "@settings(defaultLengthUnit = mm, kclVersion = 2.0)",
         "",
         "// --- Interface A Parameters ---",
         f'interfaceAType = "{if_a.profile_type.value}"',
@@ -349,35 +391,23 @@ def compile_project_to_kcl(
     if conn.mode == ConnectionMode.ANGLED:
         kcl_lines.append(f"// |> rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
     kcl_lines.append("")
-    for index, section in enumerate(plan.sections):
+    outer_sections, cutter_sections = _stable_sections(project, plan)
+    kcl_lines.append(f"// Solid loft sections: {len(outer_sections)}")
+    kcl_lines.append("// Through cutter overrun: 0.1 mm")
+    kcl_lines.append("")
+    for index, section in enumerate(outer_sections):
         plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.6f})"
         kcl_lines.append(_generate_section_kcl(section.outer, f"outer_{index}", plane))
-        kcl_lines.append(_generate_section_kcl(section.inner, f"inner_{index}", plane))
         kcl_lines.append("")
-    last_index = len(plan.sections) - 1
-    outer_names = ", ".join(f"sketchOuter{i}" for i in range(len(plan.sections)))
-    inner_names = ", ".join(f"sketchInner{i}" for i in range(len(plan.sections)))
-    # Keep the Agentic API surface graph small and stable: one outer loft,
-    # one inner loft, and two annular rim surfaces.
-    kcl_lines.append(f'outerSurface = loft([{outer_names}], bodyType = "surface")')
-    kcl_lines.append(f'innerSurface = loft([{inner_names}], bodyType = "surface")')
-
-    # Keep the rim contours exact in XY, but offset only the duplicate rim
-    # planes so each rim is a non-zero-span surface loft.
-    rim_extension_mm = 0.001
-    kcl_lines.append(_generate_section_kcl(
-        plan.sections[0].inner,
-        "inner_rim_bottom",
-        f"offsetPlane('XY', offset = {-rim_extension_mm:.6f})",
-    ))
-    kcl_lines.append(_generate_section_kcl(
-        plan.sections[last_index].inner,
-        "inner_rim_top",
-        f"offsetPlane('XY', offset = {plan.sections[last_index].z_mm + rim_extension_mm:.6f})",
-    ))
-    kcl_lines.append('bottomRim = loft([sketchOuter0, sketchInnerRimBottom], bodyType = "surface")')
-    kcl_lines.append(f'topRim = loft([sketchOuter{last_index}, sketchInnerRimTop], bodyType = "surface")')
-    kcl_lines.append('adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])')
+    for index, section in enumerate(cutter_sections):
+        plane = f"offsetPlane('XY', offset = {section.z_mm:.6f})"
+        kcl_lines.append(_generate_section_kcl(section.inner, f"cutter_{index}", plane))
+        kcl_lines.append("")
+    outer_names = ", ".join(f"sketchOuter{i}" for i in range(len(outer_sections)))
+    cutter_names = ", ".join(f"sketchCutter{i}" for i in range(len(cutter_sections)))
+    kcl_lines.append(f"outerSolid = loft([{outer_names}])")
+    kcl_lines.append(f"innerCutter = loft([{cutter_names}])")
+    kcl_lines.append("adapterModel = subtract([outerSolid], tools = [innerCutter])")
     kcl_lines.append("")
     kcl_code = "\n".join(kcl_lines)
 

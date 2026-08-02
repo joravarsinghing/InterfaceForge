@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Tuple
 
 from app.core.config import settings
 from app.core.exceptions import APIError
-from app.models.generation import MockScenario
 from app.models.schema import (
     AgentProposalResult,
     Connection,
@@ -15,6 +14,7 @@ from app.models.schema import (
     ParameterChange,
     Project,
     ValidationIssue,
+    current_iso_timestamp,
 )
 from app.services.agent_provider import (
     ALLOWED_REVISION_FIELDS,
@@ -26,9 +26,7 @@ from app.services.connection_validation import (
     validate_connection_and_manufacturing,
 )
 from app.services.generation_job_service import GenerationJobService
-from app.services.kcl_compiler import compile_project_to_kcl
 from app.services.project_service import ProjectService
-from app.services.loft_plan import ensure_loft_plan
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +176,7 @@ class AgentService:
         changes: List[ParameterChange],
         mock_scenario: str = "success",
     ) -> Tuple[Project, Dict]:
-        """Confirm approved parameter changes, patch schema, recompile KCL, and start 3D generation.
+        """Confirm approved parameter changes and invalidate derived geometry for Step 3/4 regeneration.
 
         Preserves last-known-good model if 3D generation fails.
         """
@@ -235,33 +233,13 @@ class AgentService:
             manufacturing_req=mfg_req,
         )
 
-        # 3. Rebuild the derived LoftPlan from the newly updated canonical config,
-        # then compile the regenerated KCL before starting Zoo Engine generation.
+        # The canonical update is the revision confirmation boundary. Derived
+        # geometry is deliberately invalidated; Step 3 rebuilds the preview and
+        # Step 4 is the only compile/execute authority.
         updated_project.loft_plan = None
-        ensure_loft_plan(updated_project)
-        compile_result = compile_project_to_kcl(updated_project)
-        if not compile_result.success or not compile_result.kcl_code:
-            issue = compile_result.errors[0] if compile_result.errors else None
-            raise APIError(
-                error_id=issue.id if issue else "IF-KCL-400",
-                status_code=400,
-                message=issue.message if issue else "KCL recompilation failed after revision confirmation.",
-                details={"compiler_errors": [e.model_dump() for e in compile_result.errors]},
-                recovery_steps=issue.recovery_steps if issue else ["Retry the revision after correcting the design parameters."],
-            )
-
-        # 4. Initiate 3D Generation Job. The job reloads the persisted canonical
-        # project and compiles that same regenerated KCL as its authoritative input.
-        job = await self.generation_service.start_generation_job(
-            project_id=project_id,
-            mock_scenario=MockScenario(mock_scenario),
-        )
-
-        # Re-fetch project to return latest state
-        current_project = self.project_service.get_project(project_id)
-
-        return current_project, job.model_dump()
-
+        updated_project.updated_at = current_iso_timestamp()
+        self.project_service.repository.save(updated_project)
+        return self.project_service.get_project(project_id), {}
     def _get_trusted_field_value(self, project: Project, field: str) -> float:
         """Lookup exact trusted current value from canonical project schema."""
         if field == "connection.length_mm":

@@ -1,4 +1,4 @@
-﻿/**
+/**
   * TypeScript contract definitions matching Backend Canonical Design Schema (ADR-001, ADR-005)
   */
 
@@ -487,7 +487,7 @@ export interface AgentProposalResult {
 
 export interface RevisionConfirmResponse {
   project: Project;
-  job: GenerationJob;
+  job?: GenerationJob | null;
 }
 
 

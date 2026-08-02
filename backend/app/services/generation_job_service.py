@@ -1,6 +1,7 @@
 """Generation job service managing execution lifecycle and recovery per ADR-005."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from app.core.exceptions import APIError
@@ -14,6 +15,10 @@ from app.models.generation import (
 from app.models.schema import ModelRevision, ModelRevisionStatus, WorkflowState
 from app.services.engine_provider import get_engine_provider
 from app.services.project_service import ProjectService
+
+
+def current_iso_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class GenerationJobService:
@@ -158,9 +163,19 @@ class GenerationJobService:
             else str(project.provider_mode)
         )
         job.status = JobStatus.RUNNING
-        executed_job = await engine.execute_generation(
-            job, compile_result.kcl_code, project=project
-        )
+        try:
+            executed_job = await engine.execute_generation(
+                job, compile_result.kcl_code, project=project
+            )
+        except Exception as exc:
+            # Never leave a job stuck in RUNNING after an unexpected provider failure.
+            executed_job = job
+            executed_job.status = JobStatus.FAILED
+            executed_job.error_id = "IF-ENG-999"
+            executed_job.error_message = f"Generation provider failed unexpectedly: {exc}"
+            executed_job.recovery_steps = ["Retry model generation."]
+            executed_job.completed_at = current_iso_timestamp()
+            executed_job.updated_at = executed_job.completed_at
         self._jobs[job_id] = executed_job
 
         # 7. Finalize project state based on job execution result (ADR-005)

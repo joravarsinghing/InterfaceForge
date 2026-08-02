@@ -44,6 +44,18 @@ async def start_generation(
     return {"success": True, "data": job.model_dump()}
 
 
+@router.get("/{project_id}/generation/active", response_model=StandardResponse)
+def get_active_generation(
+    project_id: str,
+    x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
+) -> Dict[str, Any]:
+    """Return the active job so Step 4 can resume after navigation or refresh."""
+    service = get_generation_service()
+    service.project_service.get_project(project_id, x_project_token)
+    job = service.get_active_job_for_project(project_id)
+    return {"success": True, "data": job.model_dump() if job else None}
+
+
 @router.get("/{project_id}/generation/{job_id}", response_model=StandardResponse)
 def get_generation_status(
     project_id: str,

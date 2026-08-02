@@ -1784,7 +1784,7 @@ class ProjectService:
         candidate_mfg = Manufacturing(
             process=manufacturing_req.process,
             material=manufacturing_req.material,
-            wall_thickness_mm=manufacturing_req.wall_thickness_mm,
+            wall_thickness_mm=(manufacturing_req.wall_thickness_mm if hasattr(manufacturing_req, "wall_thickness_mm") else manufacturing_req.wallThicknessMm),
             clearance_a_mm=manufacturing_req.clearance_a_mm,
             clearance_b_mm=manufacturing_req.clearance_b_mm,
         )

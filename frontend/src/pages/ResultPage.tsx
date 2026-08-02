@@ -189,6 +189,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
       }
       setProposal(null);
       setRevisionPrompt('');
+      navigate('/step3');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Regeneration failed during revision confirmation.';
       setRegenerationError(msg);

@@ -1,33 +1,33 @@
-# InterfaceForge — Bugs and Limitations Log
+# InterfaceForge” Bugs and Limitations Log
 
 **Document Status:** Active Log  
 **Project:** InterfaceForge (Zoo API Makeathon 2026)  
 
 ---
 
-## 1. Active Stage Limitations (Stage S10.5H — Input Requirements and Honest Upload Guidance)
+## 1. Active Stage Limitations (Stage S10.5H” Input Requirements and Honest Upload Guidance)
 
 1. **Preferred Input: Clean Cross-Section Only (S10.5H):** The supported and reliable input is a clean cross-section image without dimension annotations. Upload guidance on both Interface A and B screens now communicates this explicitly with a preferred input section, example illustrations, checklist, and quality status badge.
 
 2. **Dimensioned Drawing Support: Experimental / Manual Review Required (S10.5H):** Dimensioned engineering drawings (with leaders, extension lines, center marks, and text) are **not automatically supported**. Annotation masking (S10.5G/S10.5G.1) is an experimental pre-processing step that reduces but does not eliminate false edges. The traced SVG profile must be reviewed and corrected manually before approval.
 
-3. **Gemini Cleanup Does Not Preserve CAD Geometry Perfectly:** Gemini vision analysis identifies annotation regions for masking — it does not redraw or reconstruct profile geometry. False edges near masked annotation junctions may persist. This is documented as a known limitation, not a production capability.
+3. **Gemini Cleanup Does Not Preserve CAD Geometry Perfectly:** Gemini vision analysis identifies annotation regions for masking â€” it does not redraw or reconstruct profile geometry. False edges near masked annotation junctions may persist. This is documented as a known limitation, not a production capability.
 
-4. **One-Dimension Scaling — User Confirmation Mandatory (S10.5H, ADR-004):** Scale calibration from a user-supplied known measurement is not automatically applied. The user must explicitly confirm the scale after the trace is reviewed. No manufacturing-ready output is claimed before this gate.
+4. **One-Dimension Scaling â€” User Confirmation Mandatory (S10.5H, ADR-004):** Scale calibration from a user-supplied known measurement is not automatically applied. The user must explicitly confirm the scale after the trace is reviewed. No manufacturing-ready output is claimed before this gate.
 
 5. **Input Quality Classification is Heuristic Only (S10.5H):** The client-side quality classification (Recommended / Usable with review / Manual cleanup likely / Unsupported) is a filename-based heuristic. It is a pre-analysis signal, not a guarantee. The authoritative quality assessment comes from the backend GeminiAnalysisProvider after upload.
 
 6. **Live Zoo Agent API Bounded Revisions Active (S9):** Natural-language model revisions use live Zoo Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`). AI proposals are strictly bounded by a 7-field server-side allowlist (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `connection.angle_deg`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Direct CAD/KCL code generation by the AI is strictly prohibited.
 7. **User Confirmation Gate Enforced:** Changes are presented as unapplied proposals in a before/after review panel. Canonical schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation.
 8. **Preservation of Last-Known-Good Model (ADR-005):** Failed 3D regeneration attempts preserve the last successful model revision without overwriting active model state.
-9. **Live Export Geometry Fidelity Audit PASSED (S8.4):** Proven that Zoo-native exported CAD geometry matches requested canonical design parameters (coaxial, parallel offset, angled, dissimilar profile transitions) with real hollow passage subtraction (`boolean_subtract`), matching linear dimensions (±0.2mm) and angle inclinations (±0.5°). Uniform 12-facet solid box fallbacks are eliminated.
+9. **Live Export Geometry Fidelity Audit PASSED (S8.4):** Proven that Zoo-native exported CAD geometry matches requested canonical design parameters (coaxial, parallel offset, angled, dissimilar profile transitions) with real hollow passage subtraction (`boolean_subtract`), matching linear dimensions (Â±0.2mm) and angle inclinations (Â±0.5Â°). Uniform 12-facet solid box fallbacks are eliminated.
 10. **Live Native WebSocket Export Active (S8.3 & S8.4):** Exports execute native `export` command directly on Zoo Engine WebSocket gateway (`wss://api.zoo.dev/ws/modeling/commands`) using `loft` and `boolean_subtract` modeling commands. Local OBJ mesh generator is strictly prohibited in production export path.
 11. **Deep Topology & Geometry Validation Active:** File format validation uses `parse_and_validate_stl()` and `parse_and_validate_step()`, rejecting empty ASCII STL files, zero-facet binary STL files, header-only STEP files, and STEP files lacking solid body entities.
 12. **Live Gemini Vision Provider Active & Verified (S7.3):** Real multimodal vision analysis (`GeminiAnalysisProvider`) uses `gemini-3.5-flash-lite` by default (`GEMINI_VISION_MODEL`) with single fallback to `gemini-3.6-flash`.
 13. **Camera Angle & Lighting Sensitivity:** Automatic vision profile extraction requires direct square-on camera orientation and adequate lighting; off-axis perspective skew or severe shadows trigger honest low-confidence rejection (< 0.60).
 14. **Live Zoo Engine Execution Active:** Stage S6 implements live Zoo Engine execution (`ZooEngineProvider`) via `wss://api.zoo.dev/ws/modeling/commands` with `MockEngineProvider` available as configurable fallback.
 15. **Supported Profile Scope:** Geometry scope remains strictly constrained to `circle`, `rectangle`, `rounded_rectangle`, and `traced_closed` per ADR-012.
-16. **Zoo KCL Boolean Subtraction Limitation (2026-08-02):** Zoo KCL rejects `subtract()` for the outer/inner loft solid path with `The Zoo engine cannot handle this 3D subtraction yet`. InterfaceForge now uses the surface-shell path with separate outer/inner surface lofts and explicit rim surfaces joined by `joinSurfaces()`.
+16. **Zoo KCL Boolean Subtraction Limitation (2026-08-02):** Zoo KCL rejects `subtract()` for the outer/inner loft solid path with `The Zoo engine cannot handle this 3D subtraction yet`. The solid KCL path is blocked by the live Zoo boolean limitation; the compiler-side parser/mock executor is not live proof.
 
 
 
@@ -59,3 +59,12 @@
 - **Observed:** `pip install zoo-kcl` reports available releases require Python >=3.11, while `backend/pyproject.toml` pins runtime support to Python >=3.10,<3.11. The local `zoo` CLI is also not installed, and `ZOO_API_TOKEN` is not configured in this environment.
 - **Impact:** The code path is covered by tests with a fake KCL executor, but live STL/STEP artifacts remain UNPROVEN until the backend runtime is upgraded/provisioned with a supported Zoo KCL export tool and credentials.
 - **Rejected workaround:** Do not fall back to local OBJ conversion, mock exports, or separate non-hollow solids as proof.
+
+### 2026-08-02 - P0 Zoo KCL Solid Loft Boolean Rejection
+
+- **Status:** Active Zoo Engine blocker; reported from Design Studio execution.
+- **Reproduction:** Execute the generated solid KCL containing `outerSolid = loft([...])`, `innerCutter = loft([...])`, and `adapterModel = subtract([outerSolid], tools = [innerCutter])`.
+- **Observed error:** `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
+- **Impact:** The outer loft is capped at both ends. Because the subtraction fails, the inner cutter is not applied and the result is not a hollow adapter with two open passages.
+- **Evidence:** Downloaded `interfaceforge_adapter_rev1 (5).kcl`; failure reported at the `outerSolid`/solid loft execution path and boolean stage. Local parser/mock execution is not evidence of live B-rep success.
+- **Workaround:** None accepted for live solid KCL. Do not claim the displayed capped geometry is a valid hollow adapter. Preserve the exact KCL and live error for Zoo support.

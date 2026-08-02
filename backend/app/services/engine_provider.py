@@ -221,6 +221,72 @@ class ZooEngineProvider(EngineProvider):
             job.completed_at = current_iso_timestamp()
             return job
 
+        # Execute the exact compiled bytes through the supported zoo-kcl runtime.
+        job.current_stage = GenerationStage.EXECUTING
+        job.progress_percent = 60
+        job.updated_at = current_iso_timestamp()
+        import base64
+        import hashlib
+        import os
+
+        job.kcl_hash = hashlib.sha256(kcl_code.encode("utf-8")).hexdigest()
+        previous_token = os.environ.get("ZOO_API_TOKEN")
+        os.environ["ZOO_API_TOKEN"] = token
+        try:
+            import kcl  # type: ignore[import-not-found]
+            from app.services.export_provider import parse_and_validate_stl
+
+            files = await asyncio.wait_for(
+                kcl.execute_code_and_export(kcl_code, kcl.FileExportFormat.Stl),
+                timeout=timeout_val,
+            )
+            if not files:
+                raise RuntimeError("Zoo KCL execution returned no STL files.")
+            payload = getattr(files[0], "contents", None)
+            if isinstance(payload, str):
+                stl_bytes = base64.b64decode(payload)
+            elif isinstance(payload, list):
+                stl_bytes = bytes(payload)
+            elif isinstance(payload, bytes):
+                stl_bytes = payload
+            else:
+                raise RuntimeError("Zoo KCL execution returned an unsupported STL payload.")
+            validation = parse_and_validate_stl(stl_bytes)
+            if not validation["is_valid"] or not validation["dimensions_mm"]:
+                raise RuntimeError(f"Zoo KCL STL validation failed: {validation['error']}")
+            dx, dy, dz = validation["dimensions_mm"]
+            job.current_stage = GenerationStage.RENDERING
+            job.progress_percent = 85
+            job.preview_metadata = PreviewMetadata(
+                preview_svg=f"zoo-kcl://{job.kcl_hash[:16]}",
+                bounding_box=BoundingBox(x_mm=dx, y_mm=dy, z_mm=dz),
+                volume_cm3=0.0,
+                facet_count=validation["facet_count"],
+                render_timestamp=current_iso_timestamp(),
+                is_mock=False,
+            )
+            job.current_stage = GenerationStage.FINALIZING
+            job.progress_percent = 100
+            job.status = JobStatus.SUCCEEDED
+            job.zoo_model_id = f"zoo-kcl-{job.kcl_hash[:16]}"
+            job.completed_at = current_iso_timestamp()
+            job.updated_at = job.completed_at
+            return job
+        except asyncio.TimeoutError:
+            raise
+        except Exception as exc:
+            job.status = JobStatus.FAILED
+            job.error_id = "IF-ENG-001"
+            job.error_message = f"Zoo KCL execution/validation failed: {redact_secrets(str(exc), token)}"
+            job.recovery_steps = ["Inspect the reported Zoo/KCL error and retry generation."]
+            job.completed_at = current_iso_timestamp()
+            return job
+        finally:
+            if previous_token is None:
+                os.environ.pop("ZOO_API_TOKEN", None)
+            else:
+                os.environ["ZOO_API_TOKEN"] = previous_token
+
         # Stage 2: COMPILING
         job.current_stage = GenerationStage.COMPILING
         job.progress_percent = 30

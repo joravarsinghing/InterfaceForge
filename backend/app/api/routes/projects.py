@@ -757,11 +757,11 @@ async def confirm_revision(
     mock_scenario: Optional[str] = Query("success"),
     x_project_token: Optional[str] = Header(None, alias="X-Project-Token"),
 ) -> Dict[str, Any]:
-    """Confirm parameter changes, patch schema, recompile KCL, and start 3D generation per S9."""
+    """Confirm parameter changes and return a stale project for Step 3/4 regeneration per S9."""
     service = get_service()
     service.get_project(project_id, project_token=x_project_token)
     agent_svc = get_agent_service()
-    project, job = await agent_svc.confirm_revision(
+    project, _ = await agent_svc.confirm_revision(
         project_id=project_id,
         changes=req.changes,
         mock_scenario=mock_scenario or "success",
@@ -770,7 +770,7 @@ async def confirm_revision(
         "success": True,
         "data": {
             "project": project.model_dump(),
-            "job": job,
+            "job": None,
         },
     }
 

@@ -11,6 +11,7 @@ import {
 } from '../types/schema';
 import {
   fetchKclReadiness,
+  fetchActiveGeneration,
   compileKcl,
   startGeneration,
   cancelGeneration,
@@ -95,6 +96,13 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
     }
   }, [project, checkReadiness]);
 
+  useEffect(() => {
+    if (!project) return;
+    fetchActiveGeneration(project.project_id, project.project_token)
+      .then((job) => { if (job) setActiveJob(job); })
+      .catch(() => { /* the readiness card remains usable */ });
+  }, [project]);
+
   const refreshProjectData = useCallback(async () => {
     if (!project) return;
     try {
@@ -134,6 +142,18 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
       await refreshProjectData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to start generation job.';
+      if (msg.includes('[IF-JOB-409]')) {
+        try {
+          const existing = await fetchActiveGeneration(project.project_id, project.project_token);
+          if (existing) {
+            setActiveJob(existing);
+            setJobState({ loading: false, error: null });
+            return;
+          }
+        } catch {
+          // Preserve the original server error when the recovery lookup fails.
+        }
+      }
       setJobState({ loading: false, error: msg });
     }
   };

@@ -528,6 +528,21 @@ export async function startGeneration(
   return json.data;
 }
 
+export async function fetchActiveGeneration(
+  projectId: string,
+  projectToken?: string
+): Promise<import('../types/schema').GenerationJob | null> {
+  const headers: Record<string, string> = {};
+  if (projectToken) headers['X-Project-Token'] = projectToken;
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/api/projects/${projectId}/generation/active`,
+    { headers }
+  );
+  const json: APIEnvelope<import('../types/schema').GenerationJob | null> = await response.json();
+  if (!json.success) throw new Error(`[${json.error.id}] ${json.error.message}`);
+  return json.data;
+}
+
 export async function fetchGenerationStatus(
   projectId: string,
   jobId: string,
