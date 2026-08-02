@@ -63,17 +63,20 @@ describe('focused landing-page correction pass', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument();
   });
 
-  it('renders creator help content with safe external portfolio link and close control', () => {
+  it('renders professional help content with safe links and close control', () => {
     render(<Header healthState={healthState} project={project} onRetryHealth={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle help panel' }));
-    expect(screen.getByRole('heading', { name: 'Created by Joravar Singh' })).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /Open Joravar Singh's portfolio/i });
+    expect(screen.getByRole('heading', { name: 'InterfaceForge Help' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How to use it' })).toBeInTheDocument();
+    expect(screen.getByText(/confirm one known measurement/i)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'View portfolio' });
     expect(link).toHaveAttribute('href', 'https://joravarsinghing.github.io/portfolio/');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByRole('link', { name: 'email Joravar' })).toHaveAttribute('href', 'mailto:joravarofficial@outlook.com');
     fireEvent.click(screen.getByRole('button', { name: 'Close Help' }));
-    expect(screen.queryByText(/Created by Joravar Singh/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'InterfaceForge Help' })).not.toBeInTheDocument();
   });
 
   it('renders centered hero icon and media for both example applications', () => {

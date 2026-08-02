@@ -109,24 +109,42 @@ export const Header: React.FC<HeaderProps> = ({
       )}
 
       {showHelp && (
-        <div className="help-panel" role="region" aria-label="Creator and workflow help">
+        <div className="help-panel" role="region" aria-label="InterfaceForge help">
           <div className="help-panel-content">
-            <h3>Created by Joravar Singh</h3>
+            <h3>InterfaceForge Help</h3>
             <p>
-              InterfaceForge was created by Joravar Singh for the Zoo API Makeathon 2026.
+              InterfaceForge guides you from two clean 2D interface profiles to a reviewed parametric transition adapter.
             </p>
-            <p>
+
+            <div className="help-columns">
+              <section aria-labelledby="help-workflow-heading">
+                <h4 id="help-workflow-heading">How to use it</h4>
+                <ol>
+                  <li>Upload Interface A and confirm one known measurement.</li>
+                  <li>Review and approve the detected profile, then repeat for Interface B.</li>
+                  <li>Configure the connection and manufacturing settings.</li>
+                  <li>Generate through Zoo Engine, review the adapter candidate, and export when ready.</li>
+                </ol>
+              </section>
+
+              <section aria-labelledby="help-input-heading">
+                <h4 id="help-input-heading">For the best results</h4>
+                <p>Use front-facing, filled, high-contrast profile images with the full shape visible and proportions preserved.</p>
+                <p className="status-note">All detected geometry and scale must be reviewed and confirmed. Outputs are editable design candidates and should be inspected before manufacturing.</p>
+              </section>
+            </div>
+
+            <p className="help-credit">
+              Created by Joravar Singh for the Zoo API Makeathon 2026.{' '}
               <a
                 href="https://joravarsinghing.github.io/portfolio/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="portfolio-link"
               >
-                Open Joravar Singh's portfolio
-              </a>
-            </p>
-            <p className="status-note">
-              Workflow: approve both interface profiles, configure the connection, then generate and review the adapter candidate before export.
+                View portfolio
+              </a>{' '}
+              or <a href="mailto:joravarofficial@outlook.com" className="portfolio-link">email Joravar</a>.
             </p>
             <button className="btn btn-secondary" onClick={() => setShowHelp(false)}>
               Close Help
