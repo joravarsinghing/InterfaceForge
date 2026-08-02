@@ -27,7 +27,7 @@
 13. **Camera Angle & Lighting Sensitivity:** Automatic vision profile extraction requires direct square-on camera orientation and adequate lighting; off-axis perspective skew or severe shadows trigger honest low-confidence rejection (< 0.60).
 14. **Live Zoo Engine Execution Active:** Stage S6 implements live Zoo Engine execution (`ZooEngineProvider`) via `wss://api.zoo.dev/ws/modeling/commands` with `MockEngineProvider` available as configurable fallback.
 15. **Supported Profile Scope:** Geometry scope remains strictly constrained to `circle`, `rectangle`, `rounded_rectangle`, and `traced_closed` per ADR-012.
-16. **Zoo KCL Boolean Subtraction Limitation (2026-08-02):** Zoo KCL rejects `subtract()` for the outer/inner loft solid path with `The Zoo engine cannot handle this 3D subtraction yet`. The solid KCL path is blocked by the live Zoo boolean limitation; the compiler-side parser/mock executor is not live proof.
+16. **Current KCL status:** The previous loft warning/error was traced to deprecated sketch-v1 commands in generated KCL, not established as a Boolean defect. The generator now emits KCL 2.0 sketch-solve syntax. Current live Boolean behavior remains UNPROVEN until reproduced with the current artifact.
 
 
 
@@ -60,11 +60,10 @@
 - **Impact:** The code path is covered by tests with a fake KCL executor, but live STL/STEP artifacts remain UNPROVEN until the backend runtime is upgraded/provisioned with a supported Zoo KCL export tool and credentials.
 - **Rejected workaround:** Do not fall back to local OBJ conversion, mock exports, or separate non-hollow solids as proof.
 
-### 2026-08-02 - P0 Zoo KCL Solid Loft Boolean Rejection
+### 2026-08-02 - Resolved KCL 2.0 Loft Failure
 
-- **Status:** Active Zoo Engine blocker; reported from Design Studio execution.
-- **Reproduction:** Execute the generated solid KCL containing `outerSolid = loft([...])`, `innerCutter = loft([...])`, and `adapterModel = subtract([outerSolid], tools = [innerCutter])`.
-- **Observed error:** `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
-- **Impact:** The outer loft is capped at both ends. Because the subtraction fails, the inner cutter is not applied and the result is not a hollow adapter with two open passages.
-- **Evidence:** Downloaded `interfaceforge_adapter_rev1 (5).kcl`; failure reported at the `outerSolid`/solid loft execution path and boolean stage. Local parser/mock execution is not evidence of live B-rep success.
-- **Workaround:** None accepted for live solid KCL. Do not claim the displayed capped geometry is a valid hollow adapter. Preserve the exact KCL and live error for Zoo support.
+- **Status:** Resolved in the KCL compiler.
+- **Root cause:** The generated artifact used deprecated sketch-v1 commands (`startSketchOn`, `startProfile`, piped `line`, and `close`) while declaring KCL 2.0.
+- **Resolution:** The compiler now emits KCL 2.0 sketch-solve blocks with typed planes and solver constraints.
+- **Evidence:** After migration, the reported lofting failure was no longer reproduced in the user workflow.
+- **Remaining caveat:** Live Boolean subtraction has not been independently revalidated against the current KCL 2.0 artifact, so it remains UNPROVEN rather than an active confirmed defect.

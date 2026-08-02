@@ -77,6 +77,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   const [previewProject, setPreviewProject] = useState<Project | null>(null);
   const [previewMetadata, setPreviewMetadata] = useState<import('../types/schema').PreviewMetadata | null>(null);
   const [loadingDialogueIndex, setLoadingDialogueIndex] = useState(0);
+  const isPipelineBusy = isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running' || regenerationJob?.status === 'cancel_requested';
 
   useEffect(() => {
     const isGenerating = regenerationJob?.status === 'queued' || regenerationJob?.status === 'running';
@@ -135,7 +136,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   };
 
   const handleDownloadKcl = () => {
-    if (exportStatus?.formats.kcl?.status !== 'ready') return;
+    if (isPipelineBusy || exportStatus?.formats.kcl?.status !== 'ready') return;
     window.open(getExportDownloadUrl(project.project_id, 'kcl', project.project_token), '_blank', 'noopener,noreferrer');
   };
 
@@ -147,6 +148,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
 
   const handleExport = async (format: string) => {
     const detail = exportStatus?.formats[format];
+    if (isPipelineBusy) return;
     if (detail?.status === 'ready') {
       window.open(getExportDownloadUrl(project.project_id, format, project.project_token), '_blank', 'noopener,noreferrer');
       return;
@@ -179,13 +181,13 @@ export const ResultPage: React.FC<ResultPageProps> = ({
     const statusLabel = isGenerating ? 'Generating' : detail?.status === 'unavailable' ? 'Unavailable in offline mode' : detail?.status === 'failed' ? 'Failed' : detail?.status === 'ready' ? 'Ready' : 'Not generated';
     const statusColor = detail?.status === 'failed' ? '#f85149' : detail?.status === 'unavailable' ? '#d29922' : detail?.status === 'ready' ? '#3fb950' : '#8b949e';
     if (detail?.status === 'ready') {
-      return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-primary btn-sm export-action-button export-action-button-ready" onClick={() => handleExport(format)} style={{ width: '100%' }}>Download {label}</button></div>;
+      return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className={`btn btn-primary btn-sm export-action-button export-action-button-ready${isPipelineBusy ? ' export-action-button-pipeline-busy' : ''}`} disabled={isPipelineBusy} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isPipelineBusy ? 0.5 : 1 }}>Download {label}</button></div>;
     }
     if (detail?.status === 'unavailable') {
       return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div></div>;
     }
     const actionLabel = isGenerating ? `Generating ${label}` : detail?.status === 'failed' ? `Retry ${label}` : `Generate ${label}`;
-    return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className="btn btn-sm export-action-button export-action-button-pending" disabled={isGenerating || isStale} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isStale ? 0.5 : 1 }}>{actionLabel}</button></div>;
+    return <div><div style={{ color: statusColor, fontSize: '0.75rem', marginBottom: '0.35rem' }}>{statusLabel}</div><button type="button" className={`btn btn-sm export-action-button export-action-button-pending${isPipelineBusy ? ' export-action-button-pipeline-busy' : ''}`} disabled={isPipelineBusy || isGenerating || isStale} onClick={() => handleExport(format)} style={{ width: '100%', opacity: isPipelineBusy || isStale ? 0.5 : 1 }}>{actionLabel}</button></div>;
   };
   // Stage S9 Revision Handlers
   const handleProposeRevision = async (e: React.FormEvent) => {
@@ -404,6 +406,15 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             {isProposing ? 'Analyzing Prompt...' : 'Propose Revision'}
           </button>
         </form>
+
+        {isProposing && (
+          <div className="agent-thinking-progress" role="status" aria-live="polite">
+            <div className="agent-thinking-progress-track" aria-hidden="true">
+              <div className="agent-thinking-progress-fill" />
+            </div>
+            <span>Zoo Agent is thinking...</span>
+          </div>
+        )}
 
         {proposalError && (
           <div role="alert" style={{ background: 'rgba(248, 81, 73, 0.15)', borderLeft: '4px solid #f85149', padding: '0.75rem 1rem', borderRadius: '6px', marginBottom: '1rem', color: '#f0f6fc', fontSize: '0.9rem' }}>
@@ -636,14 +647,17 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyKcl}>
               {copiedKcl ? ' Copied!' : 'Copy KCL'}
             </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={handleDownloadKcl}>
+            <button type="button" className={`btn btn-secondary btn-sm${isPipelineBusy ? ' export-action-button-pipeline-busy' : ''}`} disabled={isPipelineBusy} onClick={handleDownloadKcl} style={{ opacity: isPipelineBusy ? 0.5 : 1 }}>
               Download .kcl
             </button>
             <a
               href="https://zoo.dev/design-studio/download"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-primary btn-sm"
+              aria-disabled={isPipelineBusy}
+              className={`btn btn-primary btn-sm${isPipelineBusy ? ' export-action-button-pipeline-busy' : ''}`}
+              onClick={(event) => { if (isPipelineBusy) event.preventDefault(); }}
+              style={{ opacity: isPipelineBusy ? 0.5 : 1, pointerEvents: isPipelineBusy ? 'none' : 'auto' }}
             >
               Download Zoo Design Studio | Zoo
             </a>

@@ -128,16 +128,29 @@ pip install zoo-kcl -> available releases require Python >=3.11
 
 Because the backend currently declares Python >=3.10,<3.11, live KCL-native STL/STEP export cannot be proven in this venv without a runtime/tooling change. No local OBJ fallback or second WebSocket reconstruction is acceptable proof for live export.
 
-## 6. Live KCL Warnings and Boolean Failure (2026-08-02)
+## 6. Historical KCL 1.x Syntax Failure (Superseded)
 
 - Zoo KCL identifiers use lowerCamelCase (`sketchOuter0`, `outerSurface`, and `adapterModel`) for Zoo compatibility.
-- Live KCL execution reports `The Zoo engine cannot handle this 3D subtraction yet` for the outer/inner loft Boolean. The primary compiler path is therefore the surface-shell construction: outer and inner surface lofts plus explicit bottom/top rim surfaces joined with `joinSurfaces()`.
-- The compiler-side parser/mock executor passing is not evidence of live Zoo boolean success. Live Design Studio reproduction on 2026-08-02 confirms the Boolean rejection and capped outer-solid symptom.
+- The 2026-08-02 failure was observed on an artifact generated with deprecated sketch-v1 syntax and is superseded by the KCL 2.0 compiler migration.
+- Do not treat that artifact as evidence of a current Boolean defect. Revalidate any Boolean claim against the current KCL 2.0 artifact and a credentialed live Zoo run.
 ### 2026-08-02 - P0 Zoo KCL Solid Loft Boolean Rejection
 
-- **Status:** Active Zoo Engine blocker; reported from Design Studio execution.
+- **Status:** Historical / superseded; not confirmed against the current KCL 2.0 generator.
 - **Reproduction:** Execute the generated solid KCL containing `outerSolid = loft([...])`, `innerCutter = loft([...])`, and `adapterModel = subtract([outerSolid], tools = [innerCutter])`.
 - **Observed error:** `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
-- **Impact:** The outer loft is capped at both ends. Because the subtraction fails, the inner cutter is not applied and the result is not a hollow adapter with two open passages.
+- **Historical impact:** The old artifact displayed capped geometry because the deprecated KCL syntax failed before the intended hollow result could be trusted.
 - **Evidence:** Downloaded `interfaceforge_adapter_rev1 (5).kcl`; failure reported at the `outerSolid`/solid loft execution path and boolean stage. Local parser/mock execution is not evidence of live B-rep success.
-- **Workaround:** None accepted for live solid KCL. Do not claim the displayed capped geometry is a valid hollow adapter. Preserve the exact KCL and live error for Zoo support.
+- **Current status:** The generator now emits KCL 2.0 sketch-solve syntax. Live Boolean behavior remains UNPROVEN until tested with that current artifact.
+## 8. KCL 2.0 Generation Standard
+
+This is a mandatory generator rule for all future KCL output:
+
+- Emit KCL 2.0 with `@settings(defaultLengthUnit = mm, kclVersion = 2.0)`.
+- Use sketch-solve blocks: `sketch(on = ...)`, solver `line`, `coincident`, and `region` where a region is required.
+- Do not emit deprecated sketch-v1 commands: `startSketchOn`, `startProfile`, piped `line`, or `close`.
+- Do not emit unused parameter assignments. Preserve design facts as comments or use them in actual geometry expressions.
+- Use typed plane constants such as `XY`, not quoted plane names.
+- Use the current solid API signatures and omit deprecated options such as `legacyMethod`.
+- Every compiler change must include a generated-KCL assertion that deprecated tokens are absent and a parser/execution validation when the Zoo KCL runtime is available.
+
+The authoritative reference is the current [Zoo KCL standard library](https://zoo.dev/docs/kcl-std) and its [solver module](https://zoo.dev/docs/kcl-std/modules/std-solver). The generated artifact must remain deterministic, reviewable, and valid for the configured Zoo runtime.

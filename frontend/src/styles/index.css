@@ -546,6 +546,49 @@ html, body {
   box-shadow: none;
 }
 
+.agent-thinking-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: -0.25rem 0 1rem;
+  color: #8b949e;
+  font-size: 0.82rem;
+}
+
+.agent-thinking-progress-track {
+  position: relative;
+  height: 0.35rem;
+  flex: 1;
+  max-width: 420px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #30363d;
+}
+
+.agent-thinking-progress-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--accent-neon-green);
+  animation: agent-thinking-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes agent-thinking-slide {
+  0% { transform: translateX(-115%); }
+  100% { transform: translateX(315%); }
+}
+
+.export-action-button-pipeline-busy,
+.export-action-button-pipeline-busy:disabled {
+  background: #30363d !important;
+  color: #8b949e !important;
+  border-color: #484f58 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
 .export-action-button-pending {
   background: #0d1117;
   color: var(--accent-neon-green);

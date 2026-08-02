@@ -734,14 +734,11 @@ async def propose_revision(
 ) -> Dict[str, Any]:
     """Propose structured natural language parameter revisions per Stage S9."""
     service = get_service()
-    project = service.get_project(project_id, project_token=x_project_token)
+    service.get_project(project_id, project_token=x_project_token)
     agent_svc = get_agent_service()
-    project_mode = (
-        project.provider_mode.value
-        if hasattr(project.provider_mode, "value")
-        else str(project.provider_mode)
-    )
-    provider_name = req.provider or ("zoo" if project_mode == "live" else "mock")
+    # Agent selection is independent from geometry/generation provider mode.
+    # Mock is available only when explicitly requested by tests/development.
+    provider_name = req.provider or "zoo"
     proposal = await agent_svc.propose_revision(
         project_id=project_id,
         prompt=req.prompt,

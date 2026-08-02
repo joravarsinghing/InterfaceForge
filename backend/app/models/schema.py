@@ -649,6 +649,10 @@ class ParameterChange(BaseModel):
     proposed_value: float
     unit: str = "mm"
     reason: str = ""
+    # Agent metadata is optional for backwards-compatible confirmation payloads.
+    # The server remains authoritative for proposed_value.
+    operation: Optional[str] = None
+    amount: Optional[float] = None
 
 
 class RevisionProposeRequest(BaseModel):

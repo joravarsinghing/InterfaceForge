@@ -117,6 +117,42 @@ class MockAgentProvider(AgentProvider):
             )
 
         # 3. Specific Deterministic Cases
+        # Length terminology is aligned with the Zoo contract.
+        if any(
+            term in prompt_lower for term in ["length", "height", "taller", "shorter", "longer"]
+        ):
+            match = re.search(r"(\d+(?:\.\d+)?)\s*mm", prompt_lower)
+            amount = float(match.group(1)) if match else 0.0
+            operation = (
+                "set"
+                if ("set " in prompt_lower or " to " in prompt_lower)
+                else (
+                    "decrease"
+                    if ("decrease" in prompt_lower or "shorter" in prompt_lower)
+                    else "increase"
+                )
+            )
+            current = project.connection.length_mm
+            proposed = {"increase": current + amount, "decrease": current - amount, "set": amount}[
+                operation
+            ]
+            return AgentProposalResult(
+                changes=[
+                    ParameterChange(
+                        field="connection.length_mm",
+                        current_value=current,
+                        proposed_value=proposed,
+                        unit="mm",
+                        reason=f"{operation.title()} connection length by {amount:g} mm.",
+                        operation=operation,
+                        amount=amount,
+                    )
+                ],
+                summary=f"{operation.title()} connection length.",
+                is_valid=True,
+                provider_used="mock",
+            )
+
         # Case 1: "Make it 20 mm longer."
         if "longer" in prompt_lower or "increase length" in prompt_lower:
             m = re.search(r"(\d+(\.\d+)?)", prompt_lower)
@@ -232,8 +268,21 @@ class ZooAgentProvider(AgentProvider):
 
     async def propose_revision(self, project: Project, prompt: str) -> AgentProposalResult:
         if not self.token or not self.token.strip():
-            logger.warning("Zoo API token is missing. Falling back to MockAgentProvider.")
-            return await MockAgentProvider().propose_revision(project, prompt)
+            logger.error("agent_provider=zoo outcome=unavailable")
+            return AgentProposalResult(
+                changes=[],
+                summary="Zoo Agent is unavailable because no valid Zoo API token is configured.",
+                is_valid=False,
+                validation_errors=[
+                    ValidationIssue(
+                        id="IF-AGENT-503",
+                        message="Zoo Agent configuration is unavailable.",
+                        field="agent_api",
+                        recovery_steps=["Configure a valid ZOO_API_TOKEN and retry."],
+                    )
+                ],
+                provider_used="zoo",
+            )
 
         # Build prompt framing with strict instructions and current parameters
         conn = project.connection
@@ -254,10 +303,15 @@ class ZooAgentProvider(AgentProvider):
             "   - manufacturing.clearance_b_mm\n"
             "3. Any attempt to modify profile shapes (circle, square), materials, or unallowed "
             "fields must return an empty changes list with an explanation in summary.\n"
-            "4. If request is ambiguous, return empty changes list and ask for clarification "
-            "in summary.\n"
-            "5. Return strictly valid JSON format matching schema with keys 'changes' "
-            "and 'summary'.\n\n"
+            "4. Terminology: length, height, adapter height, transition height, taller, and "
+            "shorter all refer to connection.length_mm. Increase X by N means current value plus N; "  # noqa: E501
+            "decrease X by N means current value minus N; set X to N means absolute value N.\n"
+            "5. Examples: Increase height by 3 mm; Decrease length by 3 mm; Make it 5 mm shorter; "
+            "Set the height to 60 mm.\n"
+            "6. Each change must contain field, operation (increase, decrease, or set), amount/value, "  # noqa: E501
+            "unit, and reason. The backend calculates the final trusted value from current state.\n"
+            "7. If request is ambiguous, return empty changes list and ask for clarification in summary.\n"  # noqa: E501
+            "8. Return strictly valid JSON format matching schema with keys 'changes' and 'summary'.\n\n"  # noqa: E501
             f"Current trusted parameters:\n"
             f"- connection.length_mm = {conn.length_mm}\n"
             f"- connection.offset_x_mm = {conn.offset_x_mm}\n"
@@ -382,7 +436,9 @@ class ZooAgentProvider(AgentProvider):
             if not isinstance(item, dict):
                 continue
             field = str(item.get("field", ""))
-            proposed_val = item.get("proposed_value")
+            operation = str(item.get("operation", "")).strip().lower() or None
+            amount = item.get("amount", item.get("value", item.get("proposed_value")))
+            proposed_val = item.get("proposed_value", amount)
             unit = str(item.get("unit", FIELD_UNITS.get(field, "mm")))
             reason = str(item.get("reason", ""))
 
@@ -400,6 +456,8 @@ class ZooAgentProvider(AgentProvider):
                     proposed_value=float(proposed_val),
                     unit=unit,
                     reason=reason,
+                    operation=operation,
+                    amount=float(amount),
                 )
             )
 

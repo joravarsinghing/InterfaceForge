@@ -1,7 +1,7 @@
 """Deterministic KCL Compiler and Service Layer (Stage S5A).
 
-Converts validated canonical project data into deterministic, readable KCL code
-without calling Zoo per ADR-001 and ADR-002.
+Converts validated canonical project data into deterministic, readable KCL 2.0 code
+without deprecated sketch-v1 commands or unused generated variables, and without calling Zoo per ADR-001 and ADR-002.
 """
 
 import hashlib

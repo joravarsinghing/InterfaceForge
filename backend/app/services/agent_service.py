@@ -1,6 +1,8 @@
 """Agent service for server-side allowlist, range validation, and confirmation gates."""
 
 import logging
+import math
+import uuid
 from typing import Dict, List, Optional, Tuple
 
 from app.core.config import settings
@@ -54,21 +56,39 @@ class AgentService:
             project_service=self.project_service
         )
 
-    def _resolve_default_provider(self) -> AgentProvider:
-        """Resolve active agent provider based on settings."""
-
-        # Use ZooAgentProvider if ZOO_API_TOKEN is configured and ENGINE_PROVIDER != mock
-        if settings.zoo_api_token and settings.zoo_api_token.startswith("api-"):
+    def _resolve_default_provider(self) -> Optional[AgentProvider]:
+        """Resolve the Agent independently of the geometry provider."""
+        if settings.zoo_api_token and settings.zoo_api_token.strip():
             return ZooAgentProvider()
-        return MockAgentProvider()
+        return None
 
     def get_provider(self, provider_name: Optional[str] = None) -> AgentProvider:
-        """Get requested or default provider."""
-        if provider_name == "zoo":
-            return ZooAgentProvider()
-        elif provider_name == "mock":
+        """Get the explicitly requested provider or the configured Zoo provider."""
+        name = (provider_name or "").strip().lower()
+        if name == "mock":
             return MockAgentProvider()
-        return self.provider
+        if not name and self.provider is not None:
+            return self.provider
+        if name in {"", "zoo"}:
+            if not settings.zoo_api_token or not settings.zoo_api_token.strip():
+                raise APIError(
+                    error_id="IF-AGENT-503",
+                    status_code=503,
+                    message=("Zoo Agent is unavailable because no valid Zoo API token is " "configured."),  # noqa: E501
+                    recovery_steps=[
+                        "Configure ZOO_API_TOKEN or explicitly request the mock provider in tests."
+                    ],
+                )
+            if self.provider is not None and isinstance(self.provider, ZooAgentProvider):
+                return self.provider
+            return ZooAgentProvider()
+        raise APIError(
+            error_id="IF-AGENT-400",
+            message=f"Unknown Agent provider '{provider_name}'.",
+            recovery_steps=[
+                "Use the configured Zoo Agent or explicitly request mock for offline tests."
+            ],
+        )
 
     async def propose_revision(
         self, project_id: str, prompt: str, provider_name: Optional[str] = None
@@ -76,9 +96,29 @@ class AgentService:
         """Process prompt, fetch project state, query agent, and validate proposals."""
         project = self.project_service.get_project(project_id)
         provider = self.get_provider(provider_name)
+        actual_provider = "mock" if isinstance(provider, MockAgentProvider) else "zoo"
+        request_id = uuid.uuid4().hex
+        logger.info(
+            "agent_provider=%s request_id=%s outcome=request_started", actual_provider, request_id
+        )
 
         # 1. Query Agent Provider
-        proposal = await provider.propose_revision(project, prompt)
+        try:
+            proposal = await provider.propose_revision(project, prompt)
+        except Exception:
+            logger.exception(
+                "agent_provider=%s request_id=%s outcome=provider_error",
+                actual_provider,
+                request_id,
+            )
+            raise
+        proposal.provider_used = actual_provider
+        logger.info(
+            "agent_provider=%s request_id=%s outcome=%s",
+            actual_provider,
+            request_id,
+            "proposal_valid" if proposal.is_valid else "proposal_invalid",
+        )
 
         # If proposal already rejected (e.g. prompt injection, security gate, offline error)
         if not proposal.is_valid or not proposal.changes:
@@ -91,7 +131,15 @@ class AgentService:
         seen_fields: set[str] = set()
 
         for change in proposal.changes:
-            field = change.field.strip()
+            raw_field = change.field.strip().lower()
+            field = {
+                "length": "connection.length_mm",
+                "height": "connection.length_mm",
+                "adapter height": "connection.length_mm",
+                "transition height": "connection.length_mm",
+                "taller": "connection.length_mm",
+                "shorter": "connection.length_mm",
+            }.get(raw_field, raw_field)
 
             # Rule A: Allowlist enforcement
             if field not in ALLOWED_REVISION_FIELDS:
@@ -125,16 +173,55 @@ class AgentService:
             # Rule C: Populate trusted current_value from project schema
             trusted_current = self._get_trusted_field_value(project, field)
 
+            # The Agent supplies intent; the backend calculates the trusted result.
+            operation = (change.operation or "").strip().lower() or None
+            amount = change.amount if change.amount is not None else change.proposed_value
+            if operation is not None and operation not in {"increase", "decrease", "set"}:
+                blocking_errors.append(
+                    ValidationIssue(
+                        id="IF-AGENT-400",
+                        message="Agent operation must be increase, decrease, or set.",
+                        field=field,
+                    )
+                )
+                continue
+            if not isinstance(amount, (int, float)) or not math.isfinite(float(amount)):
+                blocking_errors.append(
+                    ValidationIssue(
+                        id="IF-AGENT-400", message="Agent amount/value must be finite.", field=field
+                    )
+                )
+                continue
+            proposed_value = float(change.proposed_value)
+            if operation == "increase":
+                proposed_value = float(trusted_current) + float(amount)
+            elif operation == "decrease":
+                proposed_value = float(trusted_current) - float(amount)
+            elif operation == "set":
+                proposed_value = float(amount)
+            if not math.isfinite(proposed_value) or (
+                field == "connection.length_mm" and proposed_value <= 0
+            ):
+                blocking_errors.append(
+                    ValidationIssue(
+                        id="IF-AGENT-400",
+                        message=("Resulting parameter value is invalid; connection length must be " "greater than zero."),  # noqa: E501
+                        field=field,
+                    )
+                )
+                continue
+
             # Unit check and normalization
             unit = "mm" if "angle" not in field else "deg"
-
             validated_changes.append(
                 ParameterChange(
                     field=field,
                     current_value=trusted_current,
-                    proposed_value=change.proposed_value,
+                    proposed_value=proposed_value,
                     unit=unit,
                     reason=change.reason,
+                    operation=operation,
+                    amount=float(amount),
                 )
             )
 
@@ -176,15 +263,26 @@ class AgentService:
         changes: List[ParameterChange],
         mock_scenario: str = "success",
     ) -> Tuple[Project, Dict]:
-        """Confirm approved parameter changes and invalidate derived geometry for Step 3/4 regeneration.
+        """Confirm approved changes and invalidate derived Step 3/4 geometry.
 
         Preserves last-known-good model if 3D generation fails.
         """
         project = self.project_service.get_project(project_id)
 
         # 1. Strict Server-Side Allowlist & Validation Gate
+        normalized_changes: List[ParameterChange] = []
+        aliases = {
+            "length": "connection.length_mm",
+            "height": "connection.length_mm",
+            "adapter height": "connection.length_mm",
+            "transition height": "connection.length_mm",
+            "taller": "connection.length_mm",
+            "shorter": "connection.length_mm",
+        }
         for change in changes:
-            if change.field not in ALLOWED_REVISION_FIELDS:
+            field = aliases.get(change.field.strip().lower(), change.field.strip())
+            change = change.model_copy(update={"field": field})
+            if field not in ALLOWED_REVISION_FIELDS:
                 raise APIError(
                     error_id="IF-AGENT-400",
                     status_code=400,
@@ -195,8 +293,9 @@ class AgentService:
                         "Select only allowed connection/manufacturing fields for revision."
                     ],
                 )
+            normalized_changes.append(change)
 
-        new_conn, new_mfg = self._apply_changes_to_cloned_config(project, changes)
+        new_conn, new_mfg = self._apply_changes_to_cloned_config(project, normalized_changes)
         val_res = validate_connection_and_manufacturing(
             project.interface_a, project.interface_b, new_conn, new_mfg
         )
@@ -240,6 +339,7 @@ class AgentService:
         updated_project.updated_at = current_iso_timestamp()
         self.project_service.repository.save(updated_project)
         return self.project_service.get_project(project_id), {}
+
     def _get_trusted_field_value(self, project: Project, field: str) -> float:
         """Lookup exact trusted current value from canonical project schema."""
         if field == "connection.length_mm":
@@ -268,10 +368,30 @@ class AgentService:
 
         for c in changes:
             field_name = c.field.split(".")[-1]
+            current = (conn_dict if c.field.startswith("connection.") else mfg_dict).get(field_name)
+            amount = c.amount if c.amount is not None else c.proposed_value
+            if not isinstance(amount, (int, float)) or not math.isfinite(float(amount)):
+                raise APIError(
+                    error_id="IF-AGENT-400",
+                    message=f"Parameter value for '{c.field}' must be finite.",
+                )
+            operation = (c.operation or "").strip().lower()
+            if operation == "increase":
+                value = float(current) + float(amount)
+            elif operation == "decrease":
+                value = float(current) - float(amount)
+            elif operation == "set":
+                value = float(amount)
+            else:
+                value = float(c.proposed_value)
+            if not math.isfinite(value) or (c.field == "connection.length_mm" and value <= 0):
+                raise APIError(
+                    error_id="IF-AGENT-400", message=f"Resulting value for '{c.field}' is invalid."
+                )
             if c.field.startswith("connection."):
-                conn_dict[field_name] = float(c.proposed_value)
+                conn_dict[field_name] = value
             elif c.field.startswith("manufacturing."):
-                mfg_dict[field_name] = float(c.proposed_value)
+                mfg_dict[field_name] = value
 
         # Automatically infer connection mode based on revised parameters
         if abs(float(conn_dict.get("angle_deg", 0.0))) > 1e-6:

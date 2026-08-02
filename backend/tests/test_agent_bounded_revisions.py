@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.core.exceptions import APIError
 from app.models.schema import (
+    AgentProposalResult,
     Connection,
     Manufacturing,
     ParameterChange,
@@ -14,6 +15,7 @@ from app.models.schema import (
 )
 from app.services.agent_provider import (
     MockAgentProvider,
+    ZooAgentProvider,
     redact_secrets,
 )
 from app.services.agent_service import AgentService
@@ -292,3 +294,79 @@ def test_api_revision_confirm_route(client: TestClient, approved_project: Projec
     json_data = resp.json()
     assert json_data["success"] is True
     assert json_data["data"]["project"]["connection"]["length_mm"] == 70.0
+
+
+@pytest.mark.asyncio
+async def test_configured_zoo_agent_is_selected_for_mock_geometry(
+    monkeypatch, project_service, approved_project, caplog
+):
+    """Agent selection must not inherit the project's geometry provider mode."""
+    original_token = settings.zoo_api_token
+    caplog.set_level("INFO")
+    calls = []
+
+    async def fake_propose(self, project, prompt):
+        calls.append(prompt)
+        return AgentProposalResult(
+            changes=[
+                ParameterChange(
+                    field="height",
+                    current_value=0,
+                    proposed_value=3,
+                    operation="increase",
+                    amount=3,
+                    unit="mm",
+                    reason="Increase height",
+                )
+            ],
+            provider_used="zoo",
+        )
+
+    monkeypatch.setattr(settings, "zoo_api_token", "api-test-token")
+    monkeypatch.setattr(ZooAgentProvider, "propose_revision", fake_propose)
+    try:
+        service = AgentService(project_service=project_service)
+        proposal = await service.propose_revision(
+            approved_project.project_id, "increase height by 3 mm"
+        )
+    finally:
+        settings.zoo_api_token = original_token
+
+    assert calls == ["increase height by 3 mm"]
+    assert proposal.provider_used == "zoo"
+    assert proposal.changes[0].field == "connection.length_mm"
+    assert proposal.changes[0].proposed_value == 53.0
+    assert "agent_provider=zoo" in caplog.text
+
+
+def test_missing_zoo_configuration_does_not_fallback_to_mock(
+    monkeypatch, project_service, approved_project
+):
+    """The production/default Zoo path fails clearly when credentials are absent."""
+    monkeypatch.setattr(settings, "zoo_api_token", "")
+    service = AgentService(project_service=project_service)
+    with pytest.raises(APIError) as exc_info:
+        import asyncio
+
+        asyncio.run(
+            service.propose_revision(approved_project.project_id, "increase length by 3 mm")
+        )
+    assert exc_info.value.error_id == "IF-AGENT-503"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prompt, expected",
+    [
+        ("increase length by 3 mm", 53.0),
+        ("decrease length by 3 mm", 47.0),
+        ("increase height by 3 mm", 53.0),
+        ("make it 3 mm shorter", 47.0),
+        ("set height to 55 mm", 55.0),
+    ],
+)
+async def test_mock_agent_contract_cases(agent_service, approved_project, prompt, expected):
+    proposal = await agent_service.propose_revision(approved_project.project_id, prompt)
+    assert proposal.provider_used == "mock"
+    assert proposal.changes[0].field == "connection.length_mm"
+    assert proposal.changes[0].proposed_value == expected
