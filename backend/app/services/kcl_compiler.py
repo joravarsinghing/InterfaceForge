@@ -1,4 +1,4 @@
-"""Deterministic KCL Compiler and Service Layer (Stage S5A).
+﻿"""Deterministic KCL Compiler and Service Layer (Stage S5A).
 
 Converts validated canonical project data into deterministic, readable KCL code
 without calling Zoo per ADR-001 and ADR-002.
@@ -156,9 +156,10 @@ def _validate_finite_numbers(project: Project) -> List[ValidationIssue]:
 
 
 def _kcl_identifier(value: str) -> str:
-    """Return a Zoo-style lowerCamelCase identifier from a snake_case name."""
+    """Return a Zoo-compatible lowerCamelCase identifier."""
     parts = value.split("_")
     return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+
 
 def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
     """Emit one authoritative closed polyline: absolute start, relative edges, one close."""
@@ -346,52 +347,37 @@ def compile_project_to_kcl(
     kcl_lines.append(f"// LoftPlan sections: {len(plan.sections)} points: {plan.point_count}")
     kcl_lines.append(f"// center = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}]")
     if conn.mode == ConnectionMode.ANGLED:
-        kcl_lines.append(f"// top_plane = offsetPlane(XY, offset = {conn.length_mm:.3f})")
         kcl_lines.append(f"// |> rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
-
     kcl_lines.append("")
     for index, section in enumerate(plan.sections):
-        plane = "XY" if index == 0 else f"offsetPlane(XY, offset = {section.z_mm:.3f})"
+        plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.6f})"
         kcl_lines.append(_generate_section_kcl(section.outer, f"outer_{index}", plane))
         kcl_lines.append(_generate_section_kcl(section.inner, f"inner_{index}", plane))
         kcl_lines.append("")
-
+    last_index = len(plan.sections) - 1
     outer_names = ", ".join(f"sketchOuter{i}" for i in range(len(plan.sections)))
     inner_names = ", ".join(f"sketchInner{i}" for i in range(len(plan.sections)))
-    kcl_lines.append(
-        f"outerSurface = loft([{outer_names}], bodyType = \"surface\")"
-    )
-    kcl_lines.append(
-        f"innerSurface = loft([{inner_names}], bodyType = \"surface\")"
-    )
-    # Zoo rejects a surface loft between coplanar profiles. Keep rim contours
-    # exact, but place only the duplicate rim profiles 0.001 mm outside the
-    # end planes so the rim loft has a valid non-zero span.
+    # Keep the Agentic API surface graph small and stable: one outer loft,
+    # one inner loft, and two annular rim surfaces.
+    kcl_lines.append(f'outerSurface = loft([{outer_names}], bodyType = "surface")')
+    kcl_lines.append(f'innerSurface = loft([{inner_names}], bodyType = "surface")')
+
+    # Keep the rim contours exact in XY, but offset only the duplicate rim
+    # planes so each rim is a non-zero-span surface loft.
     rim_extension_mm = 0.001
-    last_index = len(plan.sections) - 1
-    kcl_lines.append(
-        _generate_section_kcl(
-            plan.sections[0].inner,
-            "inner_rim_bottom",
-            f"offsetPlane(XY, offset = {-rim_extension_mm:.3f})",
-        )
-    )
-    kcl_lines.append(
-        _generate_section_kcl(
-            plan.sections[last_index].inner,
-            "inner_rim_top",
-            f"offsetPlane(XY, offset = {plan.sections[last_index].z_mm + rim_extension_mm:.3f})",
-        )
-    )
-    kcl_lines.append(
-        "bottomRim = loft([sketchOuter0, sketchInnerRimBottom], bodyType = \"surface\")"
-    )
-    kcl_lines.append(
-        f"topRim = loft([sketchOuter{last_index}, sketchInnerRimTop], bodyType = \"surface\")"
-    )
-    kcl_lines.append(
-        "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])"
-    )
+    kcl_lines.append(_generate_section_kcl(
+        plan.sections[0].inner,
+        "inner_rim_bottom",
+        f"offsetPlane('XY', offset = {-rim_extension_mm:.6f})",
+    ))
+    kcl_lines.append(_generate_section_kcl(
+        plan.sections[last_index].inner,
+        "inner_rim_top",
+        f"offsetPlane('XY', offset = {plan.sections[last_index].z_mm + rim_extension_mm:.6f})",
+    ))
+    kcl_lines.append('bottomRim = loft([sketchOuter0, sketchInnerRimBottom], bodyType = "surface")')
+    kcl_lines.append(f'topRim = loft([sketchOuter{last_index}, sketchInnerRimTop], bodyType = "surface")')
+    kcl_lines.append('adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])')
     kcl_lines.append("")
     kcl_code = "\n".join(kcl_lines)
 

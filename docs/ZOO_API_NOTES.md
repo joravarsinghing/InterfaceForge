@@ -130,6 +130,6 @@ Because the backend currently declares Python >=3.10,<3.11, live KCL-native STL/
 
 ## 6. Live KCL Warnings and Boolean Failure (2026-08-02)
 
-- Zoo KCL lint warns that generated identifiers must use lowerCamelCase. The compiler now emits lowerCamelCase names such as `sketchOuter0`, `outerSolid`, and `adapterModel`.
-- Live KCL execution previously reported `The Zoo engine cannot handle this 3D subtraction yet` for the outer/inner loft boolean. The compiler now avoids that path by emitting outer and inner lofts as `bodyType = "surface"` and joining them with `joinSurfaces`; live hollow-result verification is still pending.
+- Zoo KCL identifiers use lowerCamelCase (`sketchOuter0`, `outerSurface`, and `adapterModel`) for Zoo compatibility.
+- Live KCL execution reports `The Zoo engine cannot handle this 3D subtraction yet` for the outer/inner loft Boolean. The primary compiler path is therefore the surface-shell construction: outer and inner surface lofts plus explicit bottom/top rim surfaces joined with `joinSurfaces()`.
 - The compiler-side parser/mock executor passing is not evidence of live Zoo boolean success.

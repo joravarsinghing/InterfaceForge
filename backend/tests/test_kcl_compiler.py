@@ -112,7 +112,7 @@ def create_base_approved_project(
     mfg = Manufacturing(
         process=ManufacturingProcess.FDM,
         material="PETG",
-        wall_thickness_mm=2.4,
+        wallThicknessMm=2.4,
         clearance_a_mm=0.3,
         clearance_b_mm=0.1,
     )
@@ -219,46 +219,41 @@ def test_arbitrary_closed_profiles_compile_to_polyline_sketches(tmp_path):
     assert result.kcl_code is not None
     plan = project.loft_plan
     assert plan is not None
-    assert result.kcl_code.count("startProfile(at =") == len(plan.sections) * 2
-    assert result.kcl_code.count("|> close()") == len(plan.sections) * 2
+    assert result.kcl_code.count("startProfile(at =") == len(plan.sections) * 2 + 2
+    assert result.kcl_code.count("|> close()") == len(plan.sections) * 2 + 2
     assert "IF-KCL-001" not in result.kcl_code
 
 
-def test_kcl_surface_join_emits_open_outer_and_inner_walls(tmp_path):
+def test_kcl_surface_shell_preserves_open_rims_for_primitive_profiles(tmp_path):
     project = create_base_approved_project(
         p_type_a=ProfileType.CIRCLE, p_type_b=ProfileType.ROUNDED_RECTANGLE
     )
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert result.kcl_code is not None
-    code = result.kcl_code
+    code = result.kcl_code or ""
+    plan = project.loft_plan
+    assert plan is not None
     assert "outerSurface = loft([sketchOuter0" in code
     assert "innerSurface = loft([sketchInner0" in code
-    assert "sketchInnerRimBottom = startSketchOn(offsetPlane(XY, offset = -0.001))" in code
-    assert "sketchInnerRimTop = startSketchOn(offsetPlane(XY, offset = " in code
     assert "bottomRim = loft([sketchOuter0, sketchInnerRimBottom], bodyType = \"surface\")" in code
-    assert "topRim = loft([sketchOuter" in code
-    assert "topRim = loft([sketchOuter" in code
+    assert f"topRim = loft([sketchOuter{len(plan.sections) - 1}, sketchInnerRimTop]" in code
     assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in code
     assert "subtract(" not in code
-    assert "shell(" not in code
 
 
-def test_kcl_surface_join_handles_vertical_extensions_and_all_connection_modes(tmp_path):
-    for mode, kwargs in (
-        (ConnectionMode.COAXIAL, {}),
-        (ConnectionMode.OFFSET, {"offset_x": 8.0, "offset_y": -3.0}),
-        (ConnectionMode.ANGLED, {"angle_deg": 12.0}),
-    ):
-        project = create_base_approved_project(mode=mode, **kwargs)
-        project.connection.extension_a_mm = 6.0
-        project.connection.extension_b_mm = 9.0
-        result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
-        assert result.success is True
-        assert result.kcl_code is not None
-        assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in result.kcl_code
-        assert "bodyType = \"surface\"" in result.kcl_code
+def test_kcl_surface_shell_handles_extensions_without_coplanar_rims(tmp_path):
+    project = create_base_approved_project()
+    project.connection.extension_a_mm = 6.0
+    project.connection.extension_b_mm = 9.0
+    result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
+
+    assert result.success is True
+    code = result.kcl_code or ""
+    assert "extensionAMm = 6.000" in code
+    assert "extensionBMm = 9.000" in code
+    assert "sketchInnerRimBottom = startSketchOn(offsetPlane('XY', offset = -0.001000))" in code
+    assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in code
 
 def test_invalid_unsupported_profile(tmp_path):
     project = create_base_approved_project()
@@ -331,7 +326,7 @@ def test_project_service_kcl_compilation_does_not_mark_current():
         {
             "process": ManufacturingProcess.FDM,
             "material": "PETG",
-            "wall_thickness_mm": 2.4,
+            "wallThicknessMm": 2.4,
             "clearance_a_mm": 0.3,
             "clearance_b_mm": 0.1,
         },

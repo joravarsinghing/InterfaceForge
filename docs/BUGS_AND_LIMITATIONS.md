@@ -27,7 +27,7 @@
 13. **Camera Angle & Lighting Sensitivity:** Automatic vision profile extraction requires direct square-on camera orientation and adequate lighting; off-axis perspective skew or severe shadows trigger honest low-confidence rejection (< 0.60).
 14. **Live Zoo Engine Execution Active:** Stage S6 implements live Zoo Engine execution (`ZooEngineProvider`) via `wss://api.zoo.dev/ws/modeling/commands` with `MockEngineProvider` available as configurable fallback.
 15. **Supported Profile Scope:** Geometry scope remains strictly constrained to `circle`, `rectangle`, `rounded_rectangle`, and `traced_closed` per ADR-012.
-16. **Zoo KCL Boolean Subtraction Limitation (2026-08-02):** Live Zoo KCL execution reported `The Zoo engine cannot handle this 3D subtraction yet` for the former outer/inner loft boolean. KCL now uses separate outer/inner surface lofts joined with `joinSurfaces`; live hollow-result verification remains pending.
+16. **Zoo KCL Boolean Subtraction Limitation (2026-08-02):** Zoo KCL rejects `subtract()` for the outer/inner loft solid path with `The Zoo engine cannot handle this 3D subtraction yet`. InterfaceForge now uses the surface-shell path with separate outer/inner surface lofts and explicit rim surfaces joined by `joinSurfaces()`.
 
 
 

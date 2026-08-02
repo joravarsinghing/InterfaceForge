@@ -57,6 +57,8 @@ The controlled submission workflow demonstrates a practical dust-extraction adap
   </tr>
 </table>
 
+Known Zoo limitation: the live KCL engine currently rejects `subtract()` between loft-generated solid bodies. The active compiler path uses open outer and inner surface lofts with explicit annular rim surfaces joined by `joinSurfaces()`.
+
 InterfaceForge guides the user through:
 
 - uploading each clean profile;

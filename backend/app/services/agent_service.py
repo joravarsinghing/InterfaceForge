@@ -28,6 +28,7 @@ from app.services.connection_validation import (
 from app.services.generation_job_service import GenerationJobService
 from app.services.kcl_compiler import compile_project_to_kcl
 from app.services.project_service import ProjectService
+from app.services.loft_plan import ensure_loft_plan
 
 logger = logging.getLogger(__name__)
 
@@ -234,10 +235,23 @@ class AgentService:
             manufacturing_req=mfg_req,
         )
 
-        # 3. Deterministically recompile KCL
-        compile_project_to_kcl(updated_project)
+        # 3. Rebuild the derived LoftPlan from the newly updated canonical config,
+        # then compile the regenerated KCL before starting Zoo Engine generation.
+        updated_project.loft_plan = None
+        ensure_loft_plan(updated_project)
+        compile_result = compile_project_to_kcl(updated_project)
+        if not compile_result.success or not compile_result.kcl_code:
+            issue = compile_result.errors[0] if compile_result.errors else None
+            raise APIError(
+                error_id=issue.id if issue else "IF-KCL-400",
+                status_code=400,
+                message=issue.message if issue else "KCL recompilation failed after revision confirmation.",
+                details={"compiler_errors": [e.model_dump() for e in compile_result.errors]},
+                recovery_steps=issue.recovery_steps if issue else ["Retry the revision after correcting the design parameters."],
+            )
 
-        # 4. Initiate 3D Generation Job
+        # 4. Initiate 3D Generation Job. The job reloads the persisted canonical
+        # project and compiles that same regenerated KCL as its authoritative input.
         job = await self.generation_service.start_generation_job(
             project_id=project_id,
             mock_scenario=MockScenario(mock_scenario),

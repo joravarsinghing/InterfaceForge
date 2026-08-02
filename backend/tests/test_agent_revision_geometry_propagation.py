@@ -133,10 +133,14 @@ async def test_revision_to_export_measurement():
     assert updated_p.connection.length_mm == 70.0
     assert updated_p.current_schema_revision == 2
 
-    # 2. KCL code updated
+    # 2. KCL and derived LoftPlan reflect the confirmed canonical revision.
+    assert updated_p.loft_plan is not None
     kcl_res = compile_project_to_kcl(updated_p)
     kcl_code = kcl_res.kcl_code if kcl_res.success else ""
     assert "transitionLengthMm = 70.000" in kcl_code
+    assert "outerSurface = loft([sketchOuter0" in kcl_code
+    assert "innerSurface = loft([sketchInner0" in kcl_code
+    assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in kcl_code
 
     # 3. Export provider generates native export
     export_prov = MockExportProvider()
