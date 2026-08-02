@@ -106,6 +106,9 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [hasGeneratedModel, setHasGeneratedModel] = useState(
+    Boolean(project?.current_model_revision) || project?.state !== 'interfaces_approved'
+  );
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isGeometryLoading, setIsGeometryLoading] = useState(false);
@@ -130,7 +133,9 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
     };
   }, [isGeometryLoading]);
 
-  // Client & Server Validation Effect
+  // Client & Server Validation. This is intentionally called only by the
+  // explicit Generate Model action so typing in a field never starts a new
+  // preview request.
   const runValidation = useCallback(async () => {
     if (!project?.project_id) return;
     const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.angle_deg}_${connection.extension_a_mm}_${connection.extension_b_mm}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
@@ -149,6 +154,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
         project.project_token
       );
       setValidationResult(res);
+      return res;
     } catch {
       // Local fallback client validation if backend endpoint unavailable
       const localErrors = [];
@@ -168,21 +174,20 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
           recovery_steps: ['Set wall thickness > 0.'],
         });
       }
-      setValidationResult({
+      const fallbackResult: ConnectionValidationResult = {
         is_valid: localErrors.length === 0,
         blocking_errors: localErrors,
         warnings: [],
         recommended_values: { length_mm: 40, wall_thickness_mm: 2.4 },
-      });
+      };
+      setValidationResult(fallbackResult);
+      return fallbackResult;
     } finally {
       setIsValidating(false);
       setIsGeometryLoading(false);
     }
   }, [project, connection, manufacturing, fitModeA, fitModeB]);
 
-  useEffect(() => {
-    runValidation();
-  }, [runValidation]);
 
   // Mode Selection Handler
   const handleModeSelect = (mode: ConnectionMode) => {
@@ -202,6 +207,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   // Form Field Change Handlers
   const handleConnectionChange = (field: keyof Connection, value: number) => {
     setConnection((prev) => ({ ...prev, [field]: value }));
+    setValidationResult((prev) => ({ ...prev, is_valid: true, blocking_errors: [], warnings: [], loft_plan: undefined }));
   };
 
   const handleManufacturingChange = (
@@ -209,6 +215,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
     value: number | string
   ) => {
     setManufacturing((prev) => ({ ...prev, [field]: value }));
+    setValidationResult((prev) => ({ ...prev, is_valid: true, blocking_errors: [], warnings: [], loft_plan: undefined }));
   };
 
   // Apply Recommended Values
@@ -229,14 +236,20 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       clearance_a_mm: rec.clearance_a_mm ?? 0.3,
       clearance_b_mm: rec.clearance_b_mm ?? 0.1,
     }));
+    setValidationResult((prev) => ({ ...prev, is_valid: true, blocking_errors: [], warnings: [], loft_plan: undefined }));
   };
 
-  // Save & Proceed
-  const handleSaveAndProceed = async () => {
+  // Save and start the explicit generation workflow.
+  const handleGenerateModel = async () => {
     if (!project?.project_id) return;
     setIsSaving(true);
     setSaveError(null);
     try {
+      const validation = await runValidation();
+      if (!validation || !validation.is_valid || validation.blocking_errors.length > 0) {
+        setSaveError('Resolve the blocking configuration errors before generating the model.');
+        return;
+      }
       if (project.interface_a.fit_mode !== fitModeA) {
         await patchInterface(project.project_id, 'interface_a', { fit_mode: fitModeA }, project.project_token);
       }
@@ -252,7 +265,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       if (onProjectUpdate) {
         onProjectUpdate(updatedProject);
       }
-      navigate('/step4');
+      setHasGeneratedModel(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save connection configuration.';
       setSaveError(msg);
@@ -779,6 +792,41 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               </select>
             </div>
           </div>
+          <div style={{ marginTop: '1.25rem', display: 'flex', gap: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleGenerateModel}
+              disabled={!canProceed}
+              style={{
+                flex: 1,
+                padding: '0.75rem',
+                fontWeight: 'bold',
+                cursor: canProceed ? 'pointer' : 'not-allowed',
+                background: canProceed ? undefined : '#0d1117',
+                color: canProceed ? undefined : '#3fb950',
+                border: canProceed ? undefined : '1px solid #3fb950',
+                boxShadow: canProceed ? undefined : 'none',
+                opacity: 1,
+              }}
+            >
+              {isSaving ? 'Preparing Generation...' : 'Generate Model'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/step4')}
+              disabled={!hasGeneratedModel || isSaving || isValidating}
+              style={{
+                flex: 1,
+                padding: '0.75rem',
+                fontWeight: 'bold',
+                cursor: hasGeneratedModel && !isSaving && !isValidating ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Proceed to Step 4
+            </button>
+          </div>
         </div>
 
         {/* Right Column: Live 2D Visual Guide & Validation Summaries */}
@@ -914,28 +962,6 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div style={{ marginTop: '1.25rem', display: 'flex', gap: '1rem' }}>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSaveAndProceed}
-                disabled={!canProceed}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  fontWeight: 'bold',
-                  cursor: canProceed ? 'pointer' : 'not-allowed',
-                  background: canProceed ? undefined : '#0d1117',
-                  color: canProceed ? undefined : '#3fb950',
-                  border: canProceed ? undefined : '1px solid #3fb950',
-                  boxShadow: canProceed ? undefined : 'none',
-                  opacity: 1,
-                }}
-              >
-                {isSaving ? 'Saving...' : 'Save Connection & Continue to Model Generation'}
-              </button>
-            </div>
           </div>
         </div>
       </div>

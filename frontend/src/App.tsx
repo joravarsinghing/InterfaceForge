@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { SkipLink } from './components/SkipLink';
 import { Header } from './components/Header';
 import { StepNavigation } from './components/StepNavigation';
@@ -19,6 +19,12 @@ const PROVIDER_MODE_PREFERENCE_KEY = 'interfaceforge_provider_mode';
 
 export const AppContent: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname, location.search]);
   const [healthState, setHealthState] = useState<APIState<HealthResponse>>({
     data: null,
     loading: true,

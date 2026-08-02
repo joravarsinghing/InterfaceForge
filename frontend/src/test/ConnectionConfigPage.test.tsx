@@ -158,6 +158,7 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     expect((screen.getByLabelText(/Transition Length/i) as HTMLInputElement).value).toBe('40');
     fireEvent.change(screen.getByLabelText(/Transition Length/i), { target: { value: '70' } });
     expect((screen.getByLabelText(/Transition Length/i) as HTMLInputElement).value).toBe('70');
+    expect(api.validateConnectionConfig).not.toHaveBeenCalled();
   });
 
   it('displays field-level errors and blocks proceed button when validation fails', async () => {
@@ -181,13 +182,15 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
       </BrowserRouter>
     );
 
+    const submitBtn = screen.getByRole('button', { name: /Generate Model/i });
+    expect(submitBtn).not.toBeDisabled();
+    fireEvent.click(submitBtn);
+
     await waitFor(() => {
       expect(screen.getByText(/ERRORS DETECTED/i)).toBeInTheDocument();
     });
 
     expect(screen.getAllByText(/Transition length must be a positive finite number/i).length).toBeGreaterThan(0);
-
-    const submitBtn = screen.getByRole('button', { name: /Save Connection & Continue/i });
     expect(submitBtn).toBeDisabled();
   });
 
@@ -212,7 +215,7 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
       </BrowserRouter>
     );
 
-    const submitBtn = screen.getByRole('button', { name: /Save Connection & Continue/i });
+    const submitBtn = screen.getByRole('button', { name: /Generate Model/i });
     await waitFor(() => {
       expect(submitBtn).not.toBeDisabled();
     });
@@ -267,7 +270,7 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/ERRORS DETECTED/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Save Connection & Continue/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Generate Model/i })).toBeDisabled();
     });
   });
 
@@ -291,6 +294,8 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
         <ConnectionConfigPage project={mockApprovedProject} />
       </BrowserRouter>
     );
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate Model/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/VALID WITH WARNINGS/i)).toBeInTheDocument();

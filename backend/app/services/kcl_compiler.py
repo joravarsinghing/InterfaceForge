@@ -24,7 +24,7 @@ from app.services.connection_validation import validate_connection_and_manufactu
 from app.services.loft_plan import ensure_loft_plan
 from app.services.profile_geometry import fitted_profile_size
 
-COMPILER_VERSION = "1.0.0"
+COMPILER_VERSION = "2.0.0"
 
 
 def _validate_generated_kcl(kcl_code: str) -> Optional[ValidationIssue]:
@@ -164,7 +164,7 @@ def _kcl_identifier(value: str) -> str:
 
 
 def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
-    """Emit one authoritative closed polyline: absolute start, relative edges, one close."""
+    """Emit a KCL 2.0 sketch-solve polyline without deprecated sketch-v1 calls."""
     if len(points) < 3:
         raise ValueError("Loft section needs at least three points")
     for a, b in zip(points, points[1:]):
@@ -172,13 +172,27 @@ def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
             raise ValueError("Loft section contains duplicate adjacent points")
     if math.dist((points[-1].x, points[-1].y), (points[0].x, points[0].y)) <= 1e-9:
         raise ValueError("Loft section repeats its first point")
+
     sketch_name = _kcl_identifier(f"sketch_{prefix}")
-    lines = [f"{sketch_name} = startSketchOn({plane_var})", f"  |> startProfile(at = [{points[0].x:.9f}, {points[0].y:.9f}])"]
-    for current, following in zip(points, points[1:]):
-        lines.append(f"  |> line(end = [{following.x-current.x:.9f}, {following.y-current.y:.9f}])")
-    last, first = points[-1], points[0]
-    lines.append(f"  |> line(end = [{first.x-last.x:.9f}, {first.y-last.y:.9f}])")
-    lines.append("  |> close()")
+    lines = [f"{sketch_name} = sketch(on = {plane_var}) {{"]
+    closed_points = list(points) + [points[0]]
+    for index, (start, end) in enumerate(zip(closed_points, closed_points[1:])):
+        lines.append(
+            f"  edge{index} = line("
+            f"start = [var {start.x:.9f}mm, var {start.y:.9f}mm], "
+            f"end = [var {end.x:.9f}mm, var {end.y:.9f}mm]"
+            f")"
+        )
+        lines.append(
+            f"  coincident([edge{index}.start, [{start.x:.9f}mm, {start.y:.9f}mm]])"
+        )
+        lines.append(
+            f"  coincident([edge{index}.end, [{end.x:.9f}mm, {end.y:.9f}mm]])"
+        )
+        if index > 0:
+            lines.append(f"  coincident([edge{index - 1}.end, edge{index}.start])")
+    lines.append(f"  coincident([edge{len(points) - 1}.end, edge0.start])")
+    lines.append("}")
     return "\n".join(lines)
 
 
@@ -327,7 +341,7 @@ def compile_project_to_kcl(
     if_b = project.interface_b
 
     kcl_lines: List[str] = [
-        "// InterfaceForge ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Deterministic KCL Adapter Model",
+        "// InterfaceForge ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Deterministic KCL Adapter Model",
         f"// Compiler Version: {COMPILER_VERSION}",
         f"// Schema Version: {project.schema_version}",
         f"// Schema Revision: {project.current_schema_revision}",
@@ -336,51 +350,51 @@ def compile_project_to_kcl(
         "@settings(defaultLengthUnit = mm, kclVersion = 2.0)",
         "",
         "// --- Interface A Parameters ---",
-        f'interfaceAType = "{if_a.profile_type.value}"',
+        f'// interfaceAType = "{if_a.profile_type.value}"',
     ]
 
     if if_a.profile_type == ProfileType.CIRCLE:
         outer_a = _get_dim_val(if_a, "outer_diameter", 50.0)
-        kcl_lines.append(f"interfaceAOuterDiameterMm = {outer_a:.3f}")
+        kcl_lines.append(f"// interfaceAOuterDiameterMm = {outer_a:.3f}")
     else:
         w_a = _get_dim_val(if_a, "width", 50.0)
         h_a = _get_dim_val(if_a, "height", 50.0)
-        kcl_lines.append(f"interfaceAWidthMm = {w_a:.3f}")
-        kcl_lines.append(f"interfaceAHeightMm = {h_a:.3f}")
+        kcl_lines.append(f"// interfaceAWidthMm = {w_a:.3f}")
+        kcl_lines.append(f"// interfaceAHeightMm = {h_a:.3f}")
         if if_a.profile_type == ProfileType.ROUNDED_RECTANGLE:
             r_a = _get_dim_val(if_a, "corner_radius", 5.0)
-            kcl_lines.append(f"interfaceACornerRadiusMm = {r_a:.3f}")
+            kcl_lines.append(f"// interfaceACornerRadiusMm = {r_a:.3f}")
 
-    kcl_lines.append(f"interfaceAClearanceMm = {mfg.clearance_a_mm:.3f}")
+    kcl_lines.append(f"// interfaceAClearanceMm = {mfg.clearance_a_mm:.3f}")
     kcl_lines.append("")
 
     kcl_lines.append("// --- Interface B Parameters ---")
-    kcl_lines.append(f'interfaceBType = "{if_b.profile_type.value}"')
+    kcl_lines.append(f'// interfaceBType = "{if_b.profile_type.value}"')
 
     if if_b.profile_type == ProfileType.CIRCLE:
         outer_b = _get_dim_val(if_b, "outer_diameter", 34.5)
-        kcl_lines.append(f"interfaceBOuterDiameterMm = {outer_b:.3f}")
+        kcl_lines.append(f"// interfaceBOuterDiameterMm = {outer_b:.3f}")
     else:
         w_b = _get_dim_val(if_b, "width", 50.0)
         h_b = _get_dim_val(if_b, "height", 50.0)
-        kcl_lines.append(f"interfaceBWidthMm = {w_b:.3f}")
-        kcl_lines.append(f"interfaceBHeightMm = {h_b:.3f}")
+        kcl_lines.append(f"// interfaceBWidthMm = {w_b:.3f}")
+        kcl_lines.append(f"// interfaceBHeightMm = {h_b:.3f}")
         if if_b.profile_type == ProfileType.ROUNDED_RECTANGLE:
             r_b = _get_dim_val(if_b, "corner_radius", 5.0)
-            kcl_lines.append(f"interfaceBCornerRadiusMm = {r_b:.3f}")
+            kcl_lines.append(f"// interfaceBCornerRadiusMm = {r_b:.3f}")
 
-    kcl_lines.append(f"interfaceBClearanceMm = {mfg.clearance_b_mm:.3f}")
+    kcl_lines.append(f"// interfaceBClearanceMm = {mfg.clearance_b_mm:.3f}")
     kcl_lines.append("")
 
     kcl_lines.append("// --- Connection & Manufacturing Parameters ---")
-    kcl_lines.append(f'connectionMode = "{conn.mode.value}"')
-    kcl_lines.append(f"transitionLengthMm = {conn.length_mm:.3f}")
-    kcl_lines.append(f"wallThicknessMm = {mfg.wall_thickness_mm:.3f}")
-    kcl_lines.append(f"offsetXMm = {conn.offset_x_mm:.3f}")
-    kcl_lines.append(f"offsetYMm = {conn.offset_y_mm:.3f}")
-    kcl_lines.append(f"angleDeg = {conn.angle_deg:.3f}")
-    kcl_lines.append(f"extensionAMm = {conn.extension_a_mm:.3f}")
-    kcl_lines.append(f"extensionBMm = {conn.extension_b_mm:.3f}")
+    kcl_lines.append(f'// connectionMode = "{conn.mode.value}"')
+    kcl_lines.append(f"// transitionLengthMm = {conn.length_mm:.3f}")
+    kcl_lines.append(f"// wallThicknessMm = {mfg.wall_thickness_mm:.3f}")
+    kcl_lines.append(f"// offsetXMm = {conn.offset_x_mm:.3f}")
+    kcl_lines.append(f"// offsetYMm = {conn.offset_y_mm:.3f}")
+    kcl_lines.append(f"// angleDeg = {conn.angle_deg:.3f}")
+    kcl_lines.append(f"// extensionAMm = {conn.extension_a_mm:.3f}")
+    kcl_lines.append(f"// extensionBMm = {conn.extension_b_mm:.3f}")
     kcl_lines.append("")
 
     # Construction geometry is entirely driven by the persisted LoftPlan.
@@ -396,11 +410,11 @@ def compile_project_to_kcl(
     kcl_lines.append("// Through cutter overrun: 0.1 mm")
     kcl_lines.append("")
     for index, section in enumerate(outer_sections):
-        plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.6f})"
+        plane = "XY" if index == 0 else f"offsetPlane(XY, offset = {section.z_mm:.6f})"
         kcl_lines.append(_generate_section_kcl(section.outer, f"outer_{index}", plane))
         kcl_lines.append("")
     for index, section in enumerate(cutter_sections):
-        plane = f"offsetPlane('XY', offset = {section.z_mm:.6f})"
+        plane = f"offsetPlane(XY, offset = {section.z_mm:.6f})"
         kcl_lines.append(_generate_section_kcl(section.inner, f"cutter_{index}", plane))
         kcl_lines.append("")
     outer_names = ", ".join(f"sketchOuter{i}" for i in range(len(outer_sections)))
@@ -454,7 +468,3 @@ def compile_project_to_kcl(
         preview_snippet=preview_snippet,
         warnings=conn_val.warnings,
     )
-
-
-
-

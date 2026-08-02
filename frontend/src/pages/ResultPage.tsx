@@ -9,9 +9,24 @@ import {
   getExportDownloadUrl,
   proposeRevision,
   confirmRevision,
+  fetchGenerationStatus,
+  fetchProject,
+  validateConnectionConfig,
+  startGeneration,
   retryFormatExport,
 } from '../services/api';
 
+const ZOO_LOADING_DIALOGUES = [
+  'Zoo Design Studio is an AI-native CAD platform.',
+  'Zookeeper is a conversational agent that designs parts from natural language.',
+  'Zoo generates true B-rep geometry that is fully editable and parametric.',
+  'Designs can be created by clicking, coding, or prompting.',
+  'Zoo gives manufacturing-aware feedback as you model.',
+  'Zoo runs on Windows, Mac, Linux, and even in the browser.',
+  'Zoo supports ITAR-compliant workflows in a US-regulated region.',
+  'Zoo is SOC 2 Type II audited for security and reliability.',
+  'Zoo is headquartered at 8701 Aviation Blvd, Inglewood, California.',
+] as const;
 interface ResultPageProps {
   project: Project | null;
   onProjectUpdate?: (updated: Project) => void;
@@ -58,6 +73,23 @@ export const ResultPage: React.FC<ResultPageProps> = ({
   const [proposal, setProposal] = useState<AgentProposalResult | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
+  const [regenerationJob, setRegenerationJob] = useState<import('../types/schema').GenerationJob | null>(null);
+  const [previewProject, setPreviewProject] = useState<Project | null>(null);
+  const [previewMetadata, setPreviewMetadata] = useState<import('../types/schema').PreviewMetadata | null>(null);
+  const [loadingDialogueIndex, setLoadingDialogueIndex] = useState(0);
+
+  useEffect(() => {
+    const isGenerating = regenerationJob?.status === 'queued' || regenerationJob?.status === 'running';
+    if (!isGenerating) {
+      setLoadingDialogueIndex(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setLoadingDialogueIndex((current) => (current + 1) % ZOO_LOADING_DIALOGUES.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [regenerationJob?.status]);
+
 
   if (!project) {
     return (
@@ -184,12 +216,55 @@ export const ResultPage: React.FC<ResultPageProps> = ({
 
     try {
       const res = await confirmRevision(project.project_id, proposal.changes, project.project_token);
-      if (onProjectUpdate) {
-        onProjectUpdate(res.project);
-      }
+      if (onProjectUpdate) onProjectUpdate(res.project);
       setProposal(null);
       setRevisionPrompt('');
-      navigate('/step3');
+
+      setRegenerationJob({
+        job_id: 'pending_revision_' + Date.now(),
+        project_id: project.project_id,
+        model_revision: (project.current_model_revision || 0) + 1,
+        status: 'queued',
+        current_stage: 'validating',
+        progress_percent: 0,
+        mock_scenario: 'success',
+        recovery_steps: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      const queuedJob = await startGeneration(project.project_id, project.project_token);
+      setRegenerationJob(queuedJob);
+      let latestJob = queuedJob;
+      while (latestJob.status === 'queued' || latestJob.status === 'running' || latestJob.status === 'cancel_requested') {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        latestJob = await fetchGenerationStatus(project.project_id, latestJob.job_id, project.project_token);
+        setRegenerationJob(latestJob);
+      }
+
+      if (latestJob.status !== 'succeeded') {
+        throw new Error(latestJob.error_message || 'The updated model could not be generated.');
+      }
+      setPreviewMetadata(latestJob.preview_metadata || null);
+      let updatedProject = await fetchProject(project.project_id, project.project_token);
+      if (!updatedProject.loft_plan?.sections?.length) {
+        const refreshedGeometry = await validateConnectionConfig(
+          updatedProject.project_id,
+          updatedProject.connection,
+          updatedProject.manufacturing,
+          updatedProject.project_token,
+        );
+        if (refreshedGeometry.loft_plan?.sections?.length) {
+          updatedProject = { ...updatedProject, loft_plan: refreshedGeometry.loft_plan };
+        }
+      }
+      setPreviewProject(updatedProject);
+      if (onProjectUpdate) onProjectUpdate(updatedProject);
+      const [status, kcl] = await Promise.all([
+        fetchExportStatus(project.project_id, project.project_token),
+        fetchCurrentKcl(project.project_id, project.project_token),
+      ]);
+      setExportStatus(status);
+      setKclArtifact({ text: kcl.text, kcl_hash: kcl.kcl_hash });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Regeneration failed during revision confirmation.';
       setRegenerationError(msg);
@@ -247,6 +322,34 @@ export const ResultPage: React.FC<ResultPageProps> = ({
       </div>
 
       {/* Warning Banners */}
+      {regenerationJob && (regenerationJob.status === 'queued' || regenerationJob.status === 'running' || regenerationJob.status === 'cancel_requested') && (
+        <section className="generation-progress-card" aria-labelledby="step5-job-progress-heading">
+          <div className="card-header-row">
+            <h2 id="step5-job-progress-heading" className="card-title">Updating model - please wait</h2>
+            <span className={`status-badge-inline status-${regenerationJob.status}`}>
+              {regenerationJob.status.toUpperCase()}
+            </span>
+          </div>
+          <div className="staged-progress-container">
+            <div className="generation-loading-header" aria-live="polite">
+              <div>
+                <span className="generation-loading-label">Zoo Engine generation progress</span>
+                <strong className="generation-loading-percent">{Math.round(regenerationJob.progress_percent)}%</strong>
+              </div>
+              <div className="generation-loading-dialogue" role="status">
+                <strong>While Zoo is thinking:</strong> {ZOO_LOADING_DIALOGUES[loadingDialogueIndex]}
+              </div>
+            </div>
+            <div className="progress-bar-track">
+              <div className={`progress-bar-fill ${regenerationJob.status}`} style={{ width: `${regenerationJob.progress_percent}%` }} />
+            </div>
+            <div className="current-stage-callout">
+              <strong>Current Stage:</strong> <span className="stage-highlight">{regenerationJob.current_stage.toUpperCase()}</span> ({Math.round(regenerationJob.progress_percent)}%)
+            </div>
+          </div>
+        </section>
+      )}
+
       {isStale && (
         <div className="warning-banner" role="alert" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.5rem', color: '#f0f6fc' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -289,13 +392,13 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             value={revisionPrompt}
             onChange={(e) => setRevisionPrompt(e.target.value)}
             placeholder="e.g. 'Make it 20 mm longer', 'Move outlet 10 mm right and 5 mm up', 'Increase wall thickness to 3 mm'"
-            disabled={isProposing || isConfirming}
+            disabled={isProposing || isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running'}
             style={{ flex: 1, minWidth: '280px', padding: '0.6rem 0.9rem', background: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc', borderRadius: '6px' }}
           />
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={isProposing || isConfirming || !revisionPrompt.trim()}
+            disabled={isProposing || isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running' || !revisionPrompt.trim()}
             style={{ background: '#00e676', color: '#0d1117', border: 'none', fontWeight: 'bold', minWidth: '160px' }}
           >
             {isProposing ? 'Analyzing Prompt...' : 'Propose Revision'}
@@ -364,14 +467,14 @@ export const ResultPage: React.FC<ResultPageProps> = ({
                 )}
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" onClick={handleCancelRevision} disabled={isConfirming}>
+                  <button type="button" className="btn btn-secondary" onClick={handleCancelRevision} disabled={isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running'}>
                     Cancel Revision
                   </button>
                   <button
                     type="button"
                     className="btn btn-primary"
                     onClick={handleConfirmRevision}
-                    disabled={isConfirming}
+                    disabled={isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running'}
                     style={{ background: '#00e676', color: '#0d1117', border: 'none', fontWeight: 'bold' }}
                   >
                     {isConfirming ? 'Compiling & Generating 3D Model...' : ' Confirm & Regenerate 3D Model'}
@@ -426,7 +529,13 @@ export const ResultPage: React.FC<ResultPageProps> = ({
           </h2>
 
           <div className="preview-canvas-wrapper" style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '6px', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-            <GeometryPreview project={project} className="step5-geometry-preview" />
+            <GeometryPreview
+              key={(previewProject || project).current_model_revision || 'preview'}
+              project={previewProject || project}
+              boundingBox={previewMetadata?.bounding_box}
+              volumeCm3={previewMetadata?.volume_cm3 ?? activeRev?.volume_cm3}
+              className="step5-geometry-preview"
+            />
 
             <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(22, 27, 34, 0.85)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #30363d', fontSize: '0.75rem', color: '#8b949e' }}>
               Mock Render Canvas

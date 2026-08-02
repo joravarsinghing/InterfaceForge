@@ -36,7 +36,7 @@ async def start_generation(
     """Start 3D model generation job using configured engine provider."""
     service = get_generation_service()
     mock_scenario = req.mock_scenario if req else MockScenario.SUCCESS
-    job = await service.start_generation_job(
+    job = await service.start_generation_job_background(
         project_id=project_id,
         mock_scenario=mock_scenario,
         project_token=x_project_token,

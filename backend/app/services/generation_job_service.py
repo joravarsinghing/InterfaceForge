@@ -1,5 +1,6 @@
 """Generation job service managing execution lifecycle and recovery per ADR-005."""
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
@@ -220,6 +221,26 @@ class GenerationJobService:
 
         self.project_service.repository.save(fresh_project)
         return executed_job
+    async def start_generation_job_background(
+        self,
+        project_id: str,
+        mock_scenario: MockScenario = MockScenario.SUCCESS,
+        project_token: Optional[str] = None,
+    ) -> GenerationJob:
+        """Start the exact generation pipeline without holding the HTTP request open."""
+        task = asyncio.create_task(
+            self.start_generation_job(
+                project_id=project_id,
+                mock_scenario=mock_scenario,
+                project_token=project_token,
+            )
+        )
+        await asyncio.sleep(0)
+        active_job = self.get_active_job_for_project(project_id)
+        if active_job is not None:
+            return active_job
+        return await task
+
 
     async def cancel_job(
         self, project_id: str, job_id: str, project_token: Optional[str] = None

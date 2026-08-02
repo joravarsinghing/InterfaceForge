@@ -2339,6 +2339,7 @@ class ProjectService:
         result = compile_project_to_kcl(project)
 
         if result.success and result.artifact_ref:
+            project.loft_plan = ensure_loft_plan(project)
             next_model_rev = len(project.model_revisions) + 1
             now = current_iso_timestamp()
             new_rev = ModelRevision(
@@ -2354,7 +2355,3 @@ class ProjectService:
             self.repository.save(project)
 
         return result
-
-
-
-
