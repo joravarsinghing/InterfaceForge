@@ -13,8 +13,8 @@ export const Wordmark: React.FC<WordmarkProps> = ({
 }) => {
   return (
     <Component className={`wordmark ${className}`.trim()} data-testid={testId}>
-      <span className="wordmark-interface">Interface</span>
-      <span className="wordmark-forge">Forge</span>
+      <span className="wordmark-interface">INTERFACE</span>
+      <span className="wordmark-forge">FORGE</span>
     </Component>
   );
 };

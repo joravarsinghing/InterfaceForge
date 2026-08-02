@@ -12,8 +12,8 @@ describe('Wordmark Color Correction (S6A.6)', () => {
     expect(wordmark).toBeInTheDocument();
     expect(wordmark).toHaveClass('wordmark');
 
-    const interfaceSegment = screen.getByText('Interface');
-    const forgeSegment = screen.getByText('Forge');
+    const interfaceSegment = screen.getByText('INTERFACE');
+    const forgeSegment = screen.getByText('FORGE');
 
     expect(interfaceSegment).toBeInTheDocument();
     expect(interfaceSegment).toHaveClass('wordmark-interface');
@@ -38,9 +38,9 @@ describe('Wordmark Color Correction (S6A.6)', () => {
     const forgeText = logoLink.querySelector('.wordmark-forge');
 
     expect(interfaceText).toBeInTheDocument();
-    expect(interfaceText?.textContent).toBe('Interface');
+    expect(interfaceText?.textContent).toBe('INTERFACE');
     expect(forgeText).toBeInTheDocument();
-    expect(forgeText?.textContent).toBe('Forge');
+    expect(forgeText?.textContent).toBe('FORGE');
   });
 
   it('renders Wordmark component consistently inside ErrorBoundary fallback', () => {
@@ -57,8 +57,8 @@ describe('Wordmark Color Correction (S6A.6)', () => {
       </ErrorBoundary>
     );
 
-    const interfaceText = screen.getByText('Interface');
-    const forgeText = screen.getByText('Forge');
+    const interfaceText = screen.getByText('INTERFACE');
+    const forgeText = screen.getByText('FORGE');
 
     expect(interfaceText).toHaveClass('wordmark-interface');
     expect(forgeText).toHaveClass('wordmark-forge');

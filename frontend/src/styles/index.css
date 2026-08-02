@@ -668,6 +668,13 @@ html, body {
   transition: transform var(--transition-fast);
 }
 
+.workflow-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  margin-bottom: 12px;
+}
 .workflow-card:hover {
   transform: translateY(-3px);
   border-color: var(--accent-indigo);
@@ -683,7 +690,17 @@ html, body {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  margin-bottom: 12px;
+  flex: 0 0 32px;
+  margin-bottom: 0;
+}
+
+.workflow-step-art {
+  display: block;
+  margin-left: auto;
+  width: auto;
+  height: 32px;
+  max-width: 52px;
+  object-fit: contain;
 }
 
 .workflow-card h3 {

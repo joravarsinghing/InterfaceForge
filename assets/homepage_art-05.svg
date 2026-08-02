@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="5cm" height="3cm" viewBox="0 0 141.73 85.04">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #727272;
+        font-size: 12px;
+      }
+
+      .cls-1, .cls-2 {
+        font-family: ArialRoundedMTBold, 'Arial Rounded MT Bold';
+      }
+
+      .cls-2 {
+        fill: lime;
+        font-size: 31.54px;
+      }
+
+      .cls-3 {
+        letter-spacing: -.05em;
+      }
+    </style>
+  </defs>
+  <text class="cls-2" transform="translate(7.28 34.32)"><tspan x="0" y="0">STL</tspan></text>
+  <text class="cls-2" transform="translate(70.28 71.32)"><tspan class="cls-3" x="0" y="0">K</tspan><tspan x="21.78" y="0">CL</tspan></text>
+  <text class="cls-1" transform="translate(53.05 46.21)"><tspan x="0" y="0">STEP</tspan></text>
+</svg>

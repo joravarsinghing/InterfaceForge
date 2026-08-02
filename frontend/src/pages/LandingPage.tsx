@@ -4,6 +4,11 @@ import part1Gif from '../../../assets/part1.gif';
 import part1Png from '../../../assets/part1.png';
 import part2Gif from '../../../assets/part2.gif';
 import part2Png from '../../../assets/part2.png';
+import workflowArt01 from '../../../assets/homepage_art-01.svg';
+import workflowArt02 from '../../../assets/homepage_art-02.svg';
+import workflowArt03 from '../../../assets/homepage_art-03.svg';
+import workflowArt04 from '../../../assets/homepage_art-04.svg';
+import workflowArt05 from '../../../assets/homepage_art-05.svg';
 import { HealthResponse, ServiceStatusRow } from '../services/api';
 import { getEarliestIncompleteStep } from '../services/workflow';
 import { Project } from '../types/schema';
@@ -162,27 +167,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <h2 id="workflow-heading" className="section-title">How It Works</h2>
         <div className="workflow-steps-grid">
           <div className="workflow-card">
-            <div className="workflow-step-num">1</div>
+            <div className="workflow-card-top">
+              <div className="workflow-step-num">1</div>
+              <img src={workflowArt01} alt="" className="workflow-step-art" />
+            </div>
             <h3>Capture Interface A</h3>
             <p>Upload a clean front-facing cross-section of the first mating face.</p>
           </div>
           <div className="workflow-card">
-            <div className="workflow-step-num">2</div>
+            <div className="workflow-card-top">
+              <div className="workflow-step-num">2</div>
+              <img src={workflowArt02} alt="" className="workflow-step-art" />
+            </div>
             <h3>Capture Interface B</h3>
             <p>Approve A, then repeat trace and scale review for the second interface.</p>
           </div>
           <div className="workflow-card">
-            <div className="workflow-step-num">3</div>
+            <div className="workflow-card-top">
+              <div className="workflow-step-num">3</div>
+              <img src={workflowArt03} alt="" className="workflow-step-art" />
+            </div>
             <h3>Choose Connection</h3>
             <p>Select coaxial, offset, or limited-angle parametric relationship.</p>
           </div>
           <div className="workflow-card">
-            <div className="workflow-step-num">4</div>
+            <div className="workflow-card-top">
+              <div className="workflow-step-num">4</div>
+              <img src={workflowArt04} alt="" className="workflow-step-art" />
+            </div>
             <h3>Generate Model</h3>
             <p>Compile deterministic KCL from approved parameters and execute with Zoo Engine.</p>
           </div>
           <div className="workflow-card">
-            <div className="workflow-step-num">5</div>
+            <div className="workflow-card-top">
+              <div className="workflow-step-num">5</div>
+              <img src={workflowArt05} alt="" className="workflow-step-art" />
+            </div>
             <h3>Review &amp; Export</h3>
             <p>Inspect the adapter candidate, optionally revise parameters, and export STL/STEP/KCL.</p>
           </div>
