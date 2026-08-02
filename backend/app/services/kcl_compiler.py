@@ -155,6 +155,11 @@ def _validate_finite_numbers(project: Project) -> List[ValidationIssue]:
     return issues
 
 
+def _kcl_identifier(value: str) -> str:
+    """Return a Zoo-style lowerCamelCase identifier from a snake_case name."""
+    parts = value.split("_")
+    return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+
 def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
     """Emit one authoritative closed polyline: absolute start, relative edges, one close."""
     if len(points) < 3:
@@ -164,7 +169,8 @@ def _generate_section_kcl(points, prefix: str, plane_var: str) -> str:
             raise ValueError("Loft section contains duplicate adjacent points")
     if math.dist((points[-1].x, points[-1].y), (points[0].x, points[0].y)) <= 1e-9:
         raise ValueError("Loft section repeats its first point")
-    lines = [f"sketch_{prefix} = startSketchOn({plane_var})", f"  |> startProfile(at = [{points[0].x:.6f}, {points[0].y:.6f}])"]
+    sketch_name = _kcl_identifier(f"sketch_{prefix}")
+    lines = [f"{sketch_name} = startSketchOn({plane_var})", f"  |> startProfile(at = [{points[0].x:.6f}, {points[0].y:.6f}])"]
     for current, following in zip(points, points[1:]):
         lines.append(f"  |> line(end = [{following.x-current.x:.6f}, {following.y-current.y:.6f}])")
     last, first = points[-1], points[0]
@@ -287,51 +293,51 @@ def compile_project_to_kcl(
         "@settings(defaultLengthUnit = mm)",
         "",
         "// --- Interface A Parameters ---",
-        f'interface_a_type = "{if_a.profile_type.value}"',
+        f'interfaceAType = "{if_a.profile_type.value}"',
     ]
 
     if if_a.profile_type == ProfileType.CIRCLE:
         outer_a = _get_dim_val(if_a, "outer_diameter", 50.0)
-        kcl_lines.append(f"interface_a_outer_diameter_mm = {outer_a:.3f}")
+        kcl_lines.append(f"interfaceAOuterDiameterMm = {outer_a:.3f}")
     else:
         w_a = _get_dim_val(if_a, "width", 50.0)
         h_a = _get_dim_val(if_a, "height", 50.0)
-        kcl_lines.append(f"interface_a_width_mm = {w_a:.3f}")
-        kcl_lines.append(f"interface_a_height_mm = {h_a:.3f}")
+        kcl_lines.append(f"interfaceAWidthMm = {w_a:.3f}")
+        kcl_lines.append(f"interfaceAHeightMm = {h_a:.3f}")
         if if_a.profile_type == ProfileType.ROUNDED_RECTANGLE:
             r_a = _get_dim_val(if_a, "corner_radius", 5.0)
-            kcl_lines.append(f"interface_a_corner_radius_mm = {r_a:.3f}")
+            kcl_lines.append(f"interfaceACornerRadiusMm = {r_a:.3f}")
 
-    kcl_lines.append(f"interface_a_clearance_mm = {mfg.clearance_a_mm:.3f}")
+    kcl_lines.append(f"interfaceAClearanceMm = {mfg.clearance_a_mm:.3f}")
     kcl_lines.append("")
 
     kcl_lines.append("// --- Interface B Parameters ---")
-    kcl_lines.append(f'interface_b_type = "{if_b.profile_type.value}"')
+    kcl_lines.append(f'interfaceBType = "{if_b.profile_type.value}"')
 
     if if_b.profile_type == ProfileType.CIRCLE:
         outer_b = _get_dim_val(if_b, "outer_diameter", 34.5)
-        kcl_lines.append(f"interface_b_outer_diameter_mm = {outer_b:.3f}")
+        kcl_lines.append(f"interfaceBOuterDiameterMm = {outer_b:.3f}")
     else:
         w_b = _get_dim_val(if_b, "width", 50.0)
         h_b = _get_dim_val(if_b, "height", 50.0)
-        kcl_lines.append(f"interface_b_width_mm = {w_b:.3f}")
-        kcl_lines.append(f"interface_b_height_mm = {h_b:.3f}")
+        kcl_lines.append(f"interfaceBWidthMm = {w_b:.3f}")
+        kcl_lines.append(f"interfaceBHeightMm = {h_b:.3f}")
         if if_b.profile_type == ProfileType.ROUNDED_RECTANGLE:
             r_b = _get_dim_val(if_b, "corner_radius", 5.0)
-            kcl_lines.append(f"interface_b_corner_radius_mm = {r_b:.3f}")
+            kcl_lines.append(f"interfaceBCornerRadiusMm = {r_b:.3f}")
 
-    kcl_lines.append(f"interface_b_clearance_mm = {mfg.clearance_b_mm:.3f}")
+    kcl_lines.append(f"interfaceBClearanceMm = {mfg.clearance_b_mm:.3f}")
     kcl_lines.append("")
 
     kcl_lines.append("// --- Connection & Manufacturing Parameters ---")
-    kcl_lines.append(f'connection_mode = "{conn.mode.value}"')
-    kcl_lines.append(f"transition_length_mm = {conn.length_mm:.3f}")
-    kcl_lines.append(f"wall_thickness_mm = {mfg.wall_thickness_mm:.3f}")
-    kcl_lines.append(f"offset_x_mm = {conn.offset_x_mm:.3f}")
-    kcl_lines.append(f"offset_y_mm = {conn.offset_y_mm:.3f}")
-    kcl_lines.append(f"angle_deg = {conn.angle_deg:.3f}")
-    kcl_lines.append(f"extension_a_mm = {conn.extension_a_mm:.3f}")
-    kcl_lines.append(f"extension_b_mm = {conn.extension_b_mm:.3f}")
+    kcl_lines.append(f'connectionMode = "{conn.mode.value}"')
+    kcl_lines.append(f"transitionLengthMm = {conn.length_mm:.3f}")
+    kcl_lines.append(f"wallThicknessMm = {mfg.wall_thickness_mm:.3f}")
+    kcl_lines.append(f"offsetXMm = {conn.offset_x_mm:.3f}")
+    kcl_lines.append(f"offsetYMm = {conn.offset_y_mm:.3f}")
+    kcl_lines.append(f"angleDeg = {conn.angle_deg:.3f}")
+    kcl_lines.append(f"extensionAMm = {conn.extension_a_mm:.3f}")
+    kcl_lines.append(f"extensionBMm = {conn.extension_b_mm:.3f}")
     kcl_lines.append("")
 
     # Construction geometry is entirely driven by the persisted LoftPlan.
@@ -340,21 +346,52 @@ def compile_project_to_kcl(
     kcl_lines.append(f"// LoftPlan sections: {len(plan.sections)} points: {plan.point_count}")
     kcl_lines.append(f"// center = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}]")
     if conn.mode == ConnectionMode.ANGLED:
-        kcl_lines.append(f"// top_plane = offsetPlane('XY', offset = {conn.length_mm:.3f})")
+        kcl_lines.append(f"// top_plane = offsetPlane(XY, offset = {conn.length_mm:.3f})")
         kcl_lines.append(f"// |> rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
 
     kcl_lines.append("")
     for index, section in enumerate(plan.sections):
-        plane = "'XY'" if index == 0 else f"offsetPlane('XY', offset = {section.z_mm:.3f})"
+        plane = "XY" if index == 0 else f"offsetPlane(XY, offset = {section.z_mm:.3f})"
         kcl_lines.append(_generate_section_kcl(section.outer, f"outer_{index}", plane))
         kcl_lines.append(_generate_section_kcl(section.inner, f"inner_{index}", plane))
         kcl_lines.append("")
 
-    outer_names = ", ".join(f"sketch_outer_{i}" for i in range(len(plan.sections)))
-    inner_names = ", ".join(f"sketch_inner_{i}" for i in range(len(plan.sections)))
-    kcl_lines.append(f"outer_solid = loft([{outer_names}])")
-    kcl_lines.append(f"inner_void = loft([{inner_names}])")
-    kcl_lines.append("adapter_model = subtract(outer_solid, tools = [inner_void])")
+    outer_names = ", ".join(f"sketchOuter{i}" for i in range(len(plan.sections)))
+    inner_names = ", ".join(f"sketchInner{i}" for i in range(len(plan.sections)))
+    kcl_lines.append(
+        f"outerSurface = loft([{outer_names}], bodyType = \"surface\")"
+    )
+    kcl_lines.append(
+        f"innerSurface = loft([{inner_names}], bodyType = \"surface\")"
+    )
+    # Zoo rejects a surface loft between coplanar profiles. Keep rim contours
+    # exact, but place only the duplicate rim profiles 0.001 mm outside the
+    # end planes so the rim loft has a valid non-zero span.
+    rim_extension_mm = 0.001
+    last_index = len(plan.sections) - 1
+    kcl_lines.append(
+        _generate_section_kcl(
+            plan.sections[0].inner,
+            "inner_rim_bottom",
+            f"offsetPlane(XY, offset = {-rim_extension_mm:.3f})",
+        )
+    )
+    kcl_lines.append(
+        _generate_section_kcl(
+            plan.sections[last_index].inner,
+            "inner_rim_top",
+            f"offsetPlane(XY, offset = {plan.sections[last_index].z_mm + rim_extension_mm:.3f})",
+        )
+    )
+    kcl_lines.append(
+        "bottomRim = loft([sketchOuter0, sketchInnerRimBottom], bodyType = \"surface\")"
+    )
+    kcl_lines.append(
+        f"topRim = loft([sketchOuter{last_index}, sketchInnerRimTop], bodyType = \"surface\")"
+    )
+    kcl_lines.append(
+        "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])"
+    )
     kcl_lines.append("")
     kcl_code = "\n".join(kcl_lines)
 

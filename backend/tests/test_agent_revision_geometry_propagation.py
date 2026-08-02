@@ -101,11 +101,11 @@ def test_revision_to_kcl_propagation():
     assert kcl_res.success
     code = kcl_res.kcl_code
 
-    assert "transition_length_mm = 70.000" in code
-    assert "offset_x_mm = 10.000" in code
-    assert "offset_y_mm = 5.000" in code
-    assert "wall_thickness_mm = 3.000" in code
-    assert "angle_deg = 20.000" in code
+    assert "transitionLengthMm = 70.000" in code
+    assert "offsetXMm = 10.000" in code
+    assert "offsetYMm = 5.000" in code
+    assert "wallThicknessMm = 3.000" in code
+    assert "angleDeg = 20.000" in code
 
 
 @pytest.mark.asyncio
@@ -136,7 +136,7 @@ async def test_revision_to_export_measurement():
     # 2. KCL code updated
     kcl_res = compile_project_to_kcl(updated_p)
     kcl_code = kcl_res.kcl_code if kcl_res.success else ""
-    assert "transition_length_mm = 70.000" in kcl_code
+    assert "transitionLengthMm = 70.000" in kcl_code
 
     # 3. Export provider generates native export
     export_prov = MockExportProvider()

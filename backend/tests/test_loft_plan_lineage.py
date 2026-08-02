@@ -9,7 +9,8 @@ from tests.test_kcl_compiler import create_base_approved_project
 
 
 def _points_from_sketch(code: str, name: str):
-    block = re.split(r"\n(?=sketch_)", code.split(f"sketch_{name} =", 1)[1], maxsplit=1)[0]
+    target = "sketch" + "".join(part[:1].upper() + part[1:] for part in name.split("_"))
+    block = re.split(r"\n(?=sketch[A-Z])", code.split(f"{target} =", 1)[1], maxsplit=1)[0]
     start = re.search(r"startProfile\(at = \[([-0-9.]+), ([-0-9.]+)\]\)", block)
     assert start
     points = [(float(start.group(1)), float(start.group(2)))]
@@ -30,7 +31,7 @@ def test_triangle_to_rounded_rectangle_uses_one_polyline_plan():
     assert plan is not None
     assert 3 <= len(plan.sections) <= 12
     assert "tangentialArc" not in result.kcl_code
-    assert result.kcl_code.count("|> close()") == len(plan.sections) * 2
+    assert result.kcl_code.count("|> close()") == len(plan.sections) * 2 + 2
     for index, section in enumerate(plan.sections):
         actual = _points_from_sketch(result.kcl_code, f"outer_{index}")
         expected = [(p.x, p.y) for p in section.outer]

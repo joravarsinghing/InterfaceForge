@@ -90,14 +90,15 @@ def test_kcl_parameter_mapping_coaxial():
     assert res.success
     code = res.kcl_code
 
-    assert "interface_a_outer_diameter_mm = 60.000" in code
-    assert "interface_b_outer_diameter_mm = 40.000" in code
-    assert "transition_length_mm = 50.000" in code
-    assert "wall_thickness_mm = 2.400" in code
-    assert "outer_solid = loft([" in code
-    assert "inner_void = loft([" in code
+    assert "interfaceAOuterDiameterMm = 60.000" in code
+    assert "interfaceBOuterDiameterMm = 40.000" in code
+    assert "transitionLengthMm = 50.000" in code
+    assert "wallThicknessMm = 2.400" in code
+    assert "outerSurface = loft([" in code
+    assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in code
 
-    assert "adapter_model = subtract(outer_solid, tools = [inner_void])" in code
+    assert "subtract(" not in code
+    assert "shell(" not in code
 
 
 def test_kcl_parameter_mapping_offset():
@@ -116,8 +117,8 @@ def test_kcl_parameter_mapping_offset():
     assert res.success
     code = res.kcl_code
 
-    assert "offset_x_mm = 20.000" in code
-    assert "offset_y_mm = 10.000" in code
+    assert "offsetXMm = 20.000" in code
+    assert "offsetYMm = 10.000" in code
     assert "center = [20.000, 10.000]" in code
 
 
@@ -136,8 +137,8 @@ def test_kcl_parameter_mapping_angled():
     assert res.success
     code = res.kcl_code
 
-    assert "angle_deg = 25.000" in code
-    assert "top_plane = offsetPlane('XY', offset = 90.000)" in code
+    assert "angleDeg = 25.000" in code
+    assert "top_plane = offsetPlane(XY, offset = 90.000)" in code
     assert "|> rotate(axis = [1.000, 0.000, 0.000], angle = 25.000deg)" in code
 
 

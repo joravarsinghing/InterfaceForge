@@ -169,7 +169,7 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 ### 5.1 KCL Emitter Determinism
 1. **Deterministic String Emission:** Identical canonical JSON schema and compiler version (`v1.0.0`) produce byte-for-byte identical KCL output.
 2. **Explicit Units:** `@settings(defaultLengthUnit = mm)` is declared at the top of every emitted KCL file.
-3. **Stable Identifiers:** Constant variable names follow predictable identifiers (`interface_a_outer_diameter_mm`, `wall_thickness_mm`, `transition_length_mm`, `sketch_outer_a`, `sketch_outer_b`, `outer_solid`, `inner_void`, `adapter_model`).
+3. **Stable Identifiers:** Constant variable names follow predictable identifiers (`interfaceAOuterDiameterMm`, `wallThicknessMm`, `transitionLengthMm`, `sketchOuter0`, `sketchOuter1`, `outerSolid`, `adapterModel`).
 
 ### 5.2 Geometry Scope & Supported Families (in Order of Evaluation)
 1. **Circular Coaxial Hollow Adapter:** Circle to circle, `offset_x = 0`, `offset_y = 0`, `angle = 0`.
@@ -180,7 +180,7 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 ### 5.3 KCL Assumptions Requiring Zoo Verification (Stage S5B)
 1. **Loft Interpolation Across Dissimilar Profiles:** Lofting a circle to a rounded rectangle via `loft([sketch_a, sketch_b])` is syntactically valid in KCL, but exact surface curvature and tangent continuity require Zoo Engine execution verification.
 2. **Angled Plane Sketch Alignment:** Constructing an inclined top plane via `plane(origin = [...], xAxis = [...], yAxis = [...])` requires Zoo Engine execution to confirm plane normal direction and winding.
-3. **Void Subtraction Robustness:** Subtracting an inner lofted void solid from an outer lofted solid via `subtract(outer_solid, tools = [inner_void])` requires Zoo Engine execution to verify manifold solid output without non-manifold geometry edge errors.
+3. **Joined Surface Wall Robustness:** Joining separate outer and inner `loft(..., bodyType = "surface")` results with `joinSurfaces` requires Zoo Engine execution to verify open rims and exact wall-thickness behavior.
 
 ---
 

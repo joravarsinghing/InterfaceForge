@@ -14,7 +14,10 @@ from app.models.schema import (
     Project,
     TracedContour,
 )
-from app.services.kcl_compiler import COMPILER_VERSION, compile_project_to_kcl
+from app.services.kcl_compiler import (
+    COMPILER_VERSION,
+    compile_project_to_kcl,
+)
 from app.services.project_service import ProjectService
 
 
@@ -135,11 +138,11 @@ def test_circular_coaxial_compilation(tmp_path):
     assert result.schema_revision == 3
     assert result.kcl_code is not None
     assert "@settings(defaultLengthUnit = mm)" in result.kcl_code
-    assert "interface_a_outer_diameter_mm = 50.000" in result.kcl_code
-    assert "interface_b_outer_diameter_mm = 34.500" in result.kcl_code
-    assert "transition_length_mm = 40.000" in result.kcl_code
-    assert "wall_thickness_mm = 2.400" in result.kcl_code
-    assert "adapter_model = subtract(outer_solid, tools = [inner_void])" in result.kcl_code
+    assert "interfaceAOuterDiameterMm = 50.000" in result.kcl_code
+    assert "interfaceBOuterDiameterMm = 34.500" in result.kcl_code
+    assert "transitionLengthMm = 40.000" in result.kcl_code
+    assert "wallThicknessMm = 2.400" in result.kcl_code
+    assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in result.kcl_code
 
     assert result.artifact_ref is not None
     assert result.artifact_ref.startswith("artifacts/kcl_")
@@ -157,10 +160,10 @@ def test_rectangular_coaxial_compilation(tmp_path):
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert "interface_a_width_mm = 60.000" in result.kcl_code
-    assert "interface_a_height_mm = 40.000" in result.kcl_code
-    assert "interface_b_width_mm = 50.000" in result.kcl_code
-    assert "interface_b_corner_radius_mm = 4.000" in result.kcl_code
+    assert "interfaceAWidthMm = 60.000" in result.kcl_code
+    assert "interfaceAHeightMm = 40.000" in result.kcl_code
+    assert "interfaceBWidthMm = 50.000" in result.kcl_code
+    assert "interfaceBCornerRadiusMm = 4.000" in result.kcl_code
     assert "startProfile(" in result.kcl_code
 
 
@@ -173,9 +176,9 @@ def test_circular_offset_compilation(tmp_path):
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert 'connection_mode = "offset"' in result.kcl_code
-    assert "offset_x_mm = 15.000" in result.kcl_code
-    assert "offset_y_mm = 5.000" in result.kcl_code
+    assert 'connectionMode = "offset"' in result.kcl_code
+    assert "offsetXMm = 15.000" in result.kcl_code
+    assert "offsetYMm = 5.000" in result.kcl_code
     assert "center = [15.000, 5.000]" in result.kcl_code
 
 
@@ -189,8 +192,8 @@ def test_angled_compilation(tmp_path):
     result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
 
     assert result.success is True
-    assert 'connection_mode = "angled"' in result.kcl_code
-    assert "angle_deg = 15.000" in result.kcl_code
+    assert 'connectionMode = "angled"' in result.kcl_code
+    assert "angleDeg = 15.000" in result.kcl_code
     assert "|> rotate(axis = [1.000, 0.000, 0.000], angle = 15.000deg)" in result.kcl_code
 
 
@@ -220,6 +223,42 @@ def test_arbitrary_closed_profiles_compile_to_polyline_sketches(tmp_path):
     assert result.kcl_code.count("|> close()") == len(plan.sections) * 2
     assert "IF-KCL-001" not in result.kcl_code
 
+
+def test_kcl_surface_join_emits_open_outer_and_inner_walls(tmp_path):
+    project = create_base_approved_project(
+        p_type_a=ProfileType.CIRCLE, p_type_b=ProfileType.ROUNDED_RECTANGLE
+    )
+    result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
+
+    assert result.success is True
+    assert result.kcl_code is not None
+    code = result.kcl_code
+    assert "outerSurface = loft([sketchOuter0" in code
+    assert "innerSurface = loft([sketchInner0" in code
+    assert "sketchInnerRimBottom = startSketchOn(offsetPlane(XY, offset = -0.001))" in code
+    assert "sketchInnerRimTop = startSketchOn(offsetPlane(XY, offset = " in code
+    assert "bottomRim = loft([sketchOuter0, sketchInnerRimBottom], bodyType = \"surface\")" in code
+    assert "topRim = loft([sketchOuter" in code
+    assert "topRim = loft([sketchOuter" in code
+    assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in code
+    assert "subtract(" not in code
+    assert "shell(" not in code
+
+
+def test_kcl_surface_join_handles_vertical_extensions_and_all_connection_modes(tmp_path):
+    for mode, kwargs in (
+        (ConnectionMode.COAXIAL, {}),
+        (ConnectionMode.OFFSET, {"offset_x": 8.0, "offset_y": -3.0}),
+        (ConnectionMode.ANGLED, {"angle_deg": 12.0}),
+    ):
+        project = create_base_approved_project(mode=mode, **kwargs)
+        project.connection.extension_a_mm = 6.0
+        project.connection.extension_b_mm = 9.0
+        result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
+        assert result.success is True
+        assert result.kcl_code is not None
+        assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in result.kcl_code
+        assert "bodyType = \"surface\"" in result.kcl_code
 
 def test_invalid_unsupported_profile(tmp_path):
     project = create_base_approved_project()
@@ -320,7 +359,7 @@ def test_current_rounded_rectangle_to_circle_executes(tmp_path):
     assert result.success is True
     assert "startProfileAt" not in (result.kcl_code or "")
     assert "tangentialArcTo" not in (result.kcl_code or "")
-    assert "adapter_model = subtract(outer_solid, tools = [inner_void])" in (result.kcl_code or "")
+    assert "adapterModel = joinSurfaces([outerSurface, innerSurface, bottomRim, topRim])" in (result.kcl_code or "")
 
 
 def test_undefined_kcl_function_cannot_validate():

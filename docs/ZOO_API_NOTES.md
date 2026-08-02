@@ -127,3 +127,9 @@ pip install zoo-kcl -> available releases require Python >=3.11
 ```
 
 Because the backend currently declares Python >=3.10,<3.11, live KCL-native STL/STEP export cannot be proven in this venv without a runtime/tooling change. No local OBJ fallback or second WebSocket reconstruction is acceptable proof for live export.
+
+## 6. Live KCL Warnings and Boolean Failure (2026-08-02)
+
+- Zoo KCL lint warns that generated identifiers must use lowerCamelCase. The compiler now emits lowerCamelCase names such as `sketchOuter0`, `outerSolid`, and `adapterModel`.
+- Live KCL execution previously reported `The Zoo engine cannot handle this 3D subtraction yet` for the outer/inner loft boolean. The compiler now avoids that path by emitting outer and inner lofts as `bodyType = "surface"` and joining them with `joinSurfaces`; live hollow-result verification is still pending.
+- The compiler-side parser/mock executor passing is not evidence of live Zoo boolean success.
