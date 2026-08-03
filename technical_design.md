@@ -66,7 +66,7 @@ The Makeathon build window is short, so the architecture must be modular enough 
 - Image-assisted profile extraction is required.
 - Each interface requires user review and approval.
 - Generated geometry must remain parametric.
-- The system must produce KCL, STL, and STEP.
+- The system produces KCL and STL; STEP is planned but not implemented.
 - The user must not need to operate Zoo Design Studio manually.
 
 ### Geometry constraints
@@ -79,7 +79,7 @@ The Makeathon build window is short, so the architecture must be modular enough 
 - Supported connection modes:
   - coaxial;
   - offset;
-  - limited-angle.
+  - angle-based connections (not supported in submission).
 - Arbitrary freeform solids, assemblies, curved pipe paths, and complex surfacing are out of scope.
 - Traced profiles must be normalized before lofting.
 - Geometry limits must be conservative and configurable.
@@ -303,7 +303,7 @@ Must not directly replace full KCL.
 Responsible for:
 
 - export conversion;
-- STEP/STL generation or verification;
+- STL generation or verification;
 - volume analysis where reliable;
 - per-format status and error normalization.
 
@@ -1042,7 +1042,7 @@ Known-good flows:
 
 1. coaxial circular reducer;
 2. offset circular adapter;
-3. limited-angle circular adapter;
+3. angle-based connections (not supported in submission) circular adapter;
 4. rectangular transition;
 5. simple flat mounting plate.
 
@@ -1386,7 +1386,7 @@ A lightweight persistent store is preferred.
 - Server-side orchestration protects secrets but adds backend complexity.
 - SQLite improves recovery but introduces schema management.
 - Polling is simpler than WebSockets but less immediate.
-- STL/STEP/KCL exports create value but increase external API failure surfaces.
+- STL/KCL; STEP is planned but not implemented exports create value but increase external API failure surfaces.
 - Desktop-first design is practical but limits mobile use.
 - Preserving last known good models uses more storage but greatly improves recovery.
 

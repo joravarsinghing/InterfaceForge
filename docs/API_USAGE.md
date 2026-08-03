@@ -109,8 +109,8 @@ Retries a failed or cancelled generation job.
 Retrieves preview metadata (render SVG, volume cm³, bounding box mm, facet count).
 
 ### 1.19 `POST /api/projects/{project_id}/exports/generate`
-Triggers CAD format export generation for requested format(s) (`stl`, `step`, `kcl`).
-- **Body:** `{ "formats": ["stl", "step", "kcl"], "mock_scenario": "success" }`
+Triggers CAD format export generation for requested format(s) (`stl`, `kcl`).
+- **Body:** `{ "formats": ["stl", "kcl"], "mock_scenario": "success" }`
 - **Response (200 OK):** Returns `ExportStatusResponse` object containing per-format status, artifact references, file sizes, and revision numbers.
 - **Invariants:** Requires project state to be `model_current` and model revision to be `CURRENT`. Rejects stale models (`IF-STALE-400`). Handles partial failure without invalidating successful formats.
 
@@ -122,7 +122,7 @@ Queries per-format export status and artifact metadata.
 Retries export generation for a single failed format.
 
 ### 1.22 `GET /api/projects/{project_id}/exports/{format_name}/download`
-Downloads verified export artifact file (`.stl`, `.step`, `.kcl`).
+Downloads verified export artifact file (`\.stl`, `.kcl`).
 - **Headers:** Requires `X-Project-Token`.
 - **Validations:** Token ownership, non-zero file size, binary/text format signature, and path traversal sanitization. Returns `FileResponse` with safe filename and content-type header.
 
@@ -165,7 +165,7 @@ Confirms approved parameter changes, updates canonical schema, recompiles KCL, a
 | **`IF-KCL-004`** | 400 | Connection validation failure prior to KCL | Resolve blocking connection/mfg errors first |
 | **`IF-KCL-006`** | 400 | Schema revision mismatch during KCL emit | Re-synchronize canonical schema parameters |
 | **`IF-EXPORT-001`** | 400 | Export generation failed | Retry format export or check provider status |
-| **`IF-EXPORT-002`** | 400 | Unsupported export format requested | Select a supported format (stl, step, kcl) |
+| **`IF-EXPORT-002`** | 400 | Unsupported export format requested | Select a supported format (stl, kcl) |
 | **`IF-EXPORT-004`** | 404 | Export artifact missing or zero-byte | Re-trigger export generation for format |
 | **`IF-FILE-400`** | 400 | Invalid file upload | Upload valid PNG/JPEG/WEBP under 10MB |
 | **`IF-ANALYSIS-400`** | 400 | Image quality rejected | Upload clearer image facing interface directly |

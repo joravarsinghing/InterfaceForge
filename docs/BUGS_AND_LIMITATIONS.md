@@ -1,69 +1,34 @@
-# InterfaceForge” Bugs and Limitations Log
+# InterfaceForge - Bugs and Limitations
 
-**Document Status:** Active Log  
-**Project:** InterfaceForge (Zoo API Makeathon 2026)  
+**Document Status:** Active submission record
+**Project:** InterfaceForge (Zoo API Makeathon 2026)
+**Last reviewed:** 2026-08-03
 
----
+## Current verified state
 
-## 1. Active Stage Limitations (Stage S10.5H” Input Requirements and Honest Upload Guidance)
+- Generated KCL uses current KCL 2.0 solid-body standards and produces valid solid-body geometry.
+- The deprecated-KCL geometry issue is resolved. It was caused by deprecated sketch-v1 syntax in the generated artifact, not by an established solid-subtraction limitation.
+- Solid subtraction is part of the working solid-body generation path; it is not currently classified as unproven or blocked.
+- STL export works and has been verified.
+- STEP export is not implemented and is out of scope for this submission.
+- Limited-angle connection mode is not supported.
+- Live Zoo Agent execution has not been credential-tested for this submission and remains unproven.
 
-1. **Preferred Input: Clean Cross-Section Only (S10.5H):** The supported and reliable input is a clean cross-section image without dimension annotations. Upload guidance on both Interface A and B screens now communicates this explicitly with a preferred input section, example illustrations, checklist, and quality status badge.
+## Genuine current limitations
 
-2. **Dimensioned Drawing Support: Experimental / Manual Review Required (S10.5H):** Dimensioned engineering drawings (with leaders, extension lines, center marks, and text) are **not automatically supported**. Annotation masking (S10.5G/S10.5G.1) is an experimental pre-processing step that reduces but does not eliminate false edges. The traced SVG profile must be reviewed and corrected manually before approval.
+1. **Preferred input:** Clean, front-facing, filled 2D cross-section images are the reliable submission input. Perspective distortion, poor lighting, and annotation-heavy drawings can reduce tracing quality.
+2. **Dimensioned drawings:** Dimensioned engineering drawings are experimental/manual-review inputs. Annotation masking may reduce false edges but does not guarantee a correct trace. The profile must be reviewed and approved by the user.
+3. **Scale confirmation:** A known measurement is used for calibration, but scale and detected geometry require explicit user confirmation. Perspective distortion is not automatically corrected.
+4. **Profile scope:** Final adapter generation is limited to the supported circle, rectangle, rounded-rectangle, and approved traced-profile paths. Arbitrary geometry may require manual review or may be rejected.
+5. **Manufacturing scope:** Threads, mounting holes, countersinks, dovetails, undercuts, multi-depth interfaces, and certified manufacturing readiness are outside the current scope.
+6. **Output status:** Generated adapters are user-reviewed engineering candidates and require inspection before manufacturing.
 
-3. **Gemini Cleanup Does Not Preserve CAD Geometry Perfectly:** Gemini vision analysis identifies annotation regions for masking â€” it does not redraw or reconstruct profile geometry. False edges near masked annotation junctions may persist. This is documented as a known limitation, not a production capability.
+## Resolved issues retained for context
 
-4. **One-Dimension Scaling â€” User Confirmation Mandatory (S10.5H, ADR-004):** Scale calibration from a user-supplied known measurement is not automatically applied. The user must explicitly confirm the scale after the trace is reviewed. No manufacturing-ready output is claimed before this gate.
+### Deprecated KCL geometry syntax - resolved
 
-5. **Input Quality Classification is Heuristic Only (S10.5H):** The client-side quality classification (Recommended / Usable with review / Manual cleanup likely / Unsupported) is a filename-based heuristic. It is a pre-analysis signal, not a guarantee. The authoritative quality assessment comes from the backend GeminiAnalysisProvider after upload.
+The prior geometry failure was traced to deprecated sketch-v1 commands emitted in a KCL 2.0 artifact. The compiler now emits current KCL 2.0 solid-body syntax. The failure is closed and must not be described as a current Boolean or solid-generation blocker.
 
-6. **Live Zoo Agent API Bounded Revisions Active (S9):** Natural-language model revisions use live Zoo Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`). AI proposals are strictly bounded by a 7-field server-side allowlist (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `connection.angle_deg`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Direct CAD/KCL code generation by the AI is strictly prohibited.
-7. **User Confirmation Gate Enforced:** Changes are presented as unapplied proposals in a before/after review panel. Canonical schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation.
-8. **Preservation of Last-Known-Good Model (ADR-005):** Failed 3D regeneration attempts preserve the last successful model revision without overwriting active model state.
-9. **Live Export Geometry Fidelity Audit PASSED (S8.4):** Proven that Zoo-native exported CAD geometry matches requested canonical design parameters (coaxial, parallel offset, angled, dissimilar profile transitions) with real hollow passage subtraction (`boolean_subtract`), matching linear dimensions (Â±0.2mm) and angle inclinations (Â±0.5Â°). Uniform 12-facet solid box fallbacks are eliminated.
-10. **Live Native WebSocket Export Active (S8.3 & S8.4):** Exports execute native `export` command directly on Zoo Engine WebSocket gateway (`wss://api.zoo.dev/ws/modeling/commands`) using `loft` and `boolean_subtract` modeling commands. Local OBJ mesh generator is strictly prohibited in production export path.
-11. **Deep Topology & Geometry Validation Active:** File format validation uses `parse_and_validate_stl()` and `parse_and_validate_step()`, rejecting empty ASCII STL files, zero-facet binary STL files, header-only STEP files, and STEP files lacking solid body entities.
-12. **Live Gemini Vision Provider Active & Verified (S7.3):** Real multimodal vision analysis (`GeminiAnalysisProvider`) uses `gemini-3.5-flash-lite` by default (`GEMINI_VISION_MODEL`) with single fallback to `gemini-3.6-flash`.
-13. **Camera Angle & Lighting Sensitivity:** Automatic vision profile extraction requires direct square-on camera orientation and adequate lighting; off-axis perspective skew or severe shadows trigger honest low-confidence rejection (< 0.60).
-14. **Live Zoo Engine Execution Active:** Stage S6 implements live Zoo Engine execution (`ZooEngineProvider`) via `wss://api.zoo.dev/ws/modeling/commands` with `MockEngineProvider` available as configurable fallback.
-15. **Supported Profile Scope:** Geometry scope remains strictly constrained to `circle`, `rectangle`, `rounded_rectangle`, and `traced_closed` per ADR-012.
-16. **Current KCL status:** The previous loft warning/error was traced to deprecated sketch-v1 commands in generated KCL, not established as a Boolean defect. The generator now emits KCL 2.0 sketch-solve syntax. Current live Boolean behavior remains UNPROVEN until reproduced with the current artifact.
+## Evidence boundaries
 
-
-
----
-
-## 2. Bug Tracking & Resolved Issues
-
-* **P0 Defects (Resolved in S6A.5):**
-  - **RESOLVED:** Fixed runtime `Cannot read properties of undefined (reading 'approved')` crash by introducing optional chaining on `project?.interface_a?.approved` and `project?.interface_b?.approved` across all workflow components, route guards (`ProtectedRoute`), and navigation helpers (`workflow.ts`). Added session recovery for expired or malformed session state.
-* **P1/P2 Defect Fixes (Resolved in S6A.5):**
-  - **Upload Page Stabilization:** Rebuilt Upload Page with styled drag-and-drop card, hidden accessible native file input, fixed `object-fit: contain` responsive preview frame, compact metadata panel, and structured GOOD/BAD guidance cards.
-  - **Visual Hierarchy & Theme:** Enforced approved dark/neon-green theme token direction (`--accent-neon-green`), removing purple as dominant CTA color. Demoted prominent developer banners on Landing Page into a collapsible details section.
-  - **Privacy Wording Correction:** Updated user-facing privacy copy in Footer and documentation to accurately explain local SQLite backend persistence and temporary file storage.
-* **P1/P2 Non-Blocking Notices:**
-  - JSDOM test runner emits React Router v7 startTransition future flag warnings during test execution (non-blocking, standard React Router v6 migration notice).
-
-### 2026-07-29 - P0 Golden Path Live STL/STEP Export Blocker
-
-- **Status:** Active blocker for Day 1 AM golden path proof.
-- **Scope:** Live Zoo-native STL and STEP export after successful live model generation for circle -> rounded_rectangle adapter.
-- **Observed:** KCL export is ready, but STL and STEP exports fail with `IF-EXPORT-001` because Zoo Engine returns: `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
-- **Impact:** The workflow is PARTIAL/UNPROVEN for valid STL and STEP downloads in Live mode. Mock or local geometry output must not be used as proof.
-- **Workaround:** None accepted for the P0 proof. Preserve validation and report the blocker.
-
-### 2026-07-29 - Zoo KCL Export Runtime Compatibility Blocker
-
-- **Status:** The backend now uses the Python 3.14 `venv314` runtime; live STL/STEP proof remains unproven until Zoo credentials and live execution are available.
-- **Scope:** Authoritative export from the stored KCL/model revision without rebuilding a second WebSocket model.
-- **Observed:** `pip install zoo-kcl` reports available releases require Python >=3.11, while `backend/pyproject.toml` pins runtime support to Python >=3.10,<3.11. The local `zoo` CLI is also not installed, and `ZOO_API_TOKEN` is not configured in this environment.
-- **Impact:** The code path is covered by tests with a fake KCL executor, but live STL/STEP artifacts remain UNPROVEN until the backend runtime is upgraded/provisioned with a supported Zoo KCL export tool and credentials.
-- **Rejected workaround:** Do not fall back to local OBJ conversion, mock exports, or separate non-hollow solids as proof.
-
-### 2026-08-02 - Resolved KCL 2.0 Loft Failure
-
-- **Status:** Resolved in the KCL compiler.
-- **Root cause:** The generated artifact used deprecated sketch-v1 commands (`startSketchOn`, `startProfile`, piped `line`, and `close`) while declaring KCL 2.0.
-- **Resolution:** The compiler now emits KCL 2.0 sketch-solve blocks with typed planes and solver constraints.
-- **Evidence:** After migration, the reported lofting failure was no longer reproduced in the user workflow.
-- **Remaining caveat:** Live Boolean subtraction has not been independently revalidated against the current KCL 2.0 artifact, so it remains UNPROVEN rather than an active confirmed defect.
+Offline tests and current verified submission checks must not be presented as credentialed live-provider proof. In particular, live Zoo Agent execution remains unproven until it is run with valid credentials. No STEP evidence is retained because STEP is not implemented for this submission.

@@ -138,7 +138,7 @@ Stage S6A connects all individual page components into one end-to-end web applic
 2. **Server-Side & Client-Side Route Guards (`ProtectedRoute.tsx`):** Computes `getEarliestIncompleteStep(project)`. Redirects invalid direct URL access automatically.
 3. **Stale Model Handling:** Upstream edits to approved interfaces or connection parameters set model state to `STALE` and trigger warning notices on Step 4 and Step 5.
 4. **Preservation of Last-Known-Good Model:** Failed generation attempts preserve `last_known_good_model_revision` without overwriting active model state.
-5. **Result and Export Review (`ResultPage.tsx`):** Presents the generated adapter as an inspectable candidate, preserves stale/last-known-good status, and offers STL/STEP/KCL exports only from the current approved model revision.
+5. **Result and Export Review (`ResultPage.tsx`):** Presents the generated adapter as an inspectable candidate, preserves stale/last-known-good status, and offers STL/KCL exports only from the current approved model revision.
 
 ---
 

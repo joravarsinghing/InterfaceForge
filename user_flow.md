@@ -29,7 +29,7 @@ It covers the primary unauthenticated maker/workshop user. The PRD explicitly ex
 2. **Session persistence:** Local project persistence is optional in the PRD. Unless implemented, leaving or refreshing the page may discard progress. This is marked `TBD` where relevant.
 3. **Profile extraction:** The PRD requires image/sketch upload and editable SVG extraction but does not define whether users can manually draw a profile from scratch. Manual drawing is therefore not assumed.
 4. **3D viewer:** The PRD requires a final 3D preview but does not specify whether it is interactive geometry, streamed rendering, snapshots, or GLB. User-facing flow language remains viewer-neutral.
-5. **Export source:** The PRD requires STL, STEP, and KCL, but the exact API path for each remains `TBD`.
+5. **Export source:** The PRD requires STL and KCL; STEP is planned but not implemented, but the exact API path for each remains `TBD`.
 
 ---
 
@@ -840,7 +840,7 @@ flowchart TD
 
 ---
 
-## UF-009: Export STL, STEP, and KCL
+## UF-009: Export STL and KCL
 
 * **Actor:** Primary user
 * **Goal:** Download the current adapter in useful manufacturing and editable formats.
@@ -853,7 +853,7 @@ flowchart TD
 * **Happy path:**
   1. The system displays available formats:
      - STL — 3D printing;
-     - STEP — further CAD editing/manufacturing;
+
      - KCL — parametric source.
   2. The system shows current units and key metadata.
   3. The user selects one or more formats.
@@ -864,7 +864,7 @@ flowchart TD
   8. The user downloads the files.
   9. The system shows export success and recommended next step:
      - inspect in slicer for STL;
-     - review in CAD for STEP;
+
      - retain KCL for parametric editing.
 * **Alternative paths:**
   - User downloads one format at a time.
@@ -921,7 +921,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Open export] --> B[Select STL, STEP, KCL]
+    A[Open export] --> B[Select STL, KCL]
     B --> C{Current model valid?}
     C -->|No| D[Require regeneration]
     C -->|Yes| E[Prepare selected formats]

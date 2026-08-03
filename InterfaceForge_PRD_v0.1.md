@@ -163,7 +163,7 @@ This demonstrates image-assisted profile extraction, profile calibration, fit cl
 
 **Scenario:** Convert one simple camera or tripod mounting interface to another flat mounting pattern.
 
-This demonstrates flat geometry, hole patterns, plate thickness, offsets, mounting clearances, parametric editing, and STEP export.
+This demonstrates flat geometry, hole patterns, plate thickness, offsets, mounting clearances, parametric editing, and planned STEP export.
 
 The camera example must remain simple and must not expand into a complete camera-rig system.
 
@@ -214,14 +214,14 @@ Poor input or unsafe geometry must trigger correction, not confident output.
 10. Connection modes:
    - coaxial;
    - offset;
-   - limited-angle.
+   - angle-based connections (not supported in submission).
 11. Visual guidance for connection parameters.
 12. Controls for transition length, X/Y offset, angle, wall thickness, and clearance.
 13. Parametric 3D generation through Zoo.
 14. Final 3D preview.
 15. Structured warnings and assumptions.
 16. Natural-language parameter revision through the Agent API.
-17. STL, STEP, and KCL export.
+17. STL and KCL; STEP is planned but not implemented export.
 18. Useful File Format API conversion or analysis.
 19. Model volume output if reliable.
 20. One physically printed and tested hero adapter.
@@ -269,7 +269,7 @@ Only after all required capabilities are stable:
 9. **Generate:** Validate schema, generate deterministic KCL, execute through Zoo Engine API.
 10. **Review result:** Show 3D preview, parameters, warnings, assumptions, and volume where available.
 11. **Revise:** Change fields or submit a bounded natural-language revision.
-12. **Export:** Download STL, STEP, and KCL.
+12. **Export:** Download STL and KCL; STEP is planned but not implemented.
 
 ---
 
@@ -300,7 +300,7 @@ Users can edit displayed dimension values and regenerate the SVG.
 Reject or flag open contours, self-intersections, duplicate points, excessive noise, invalid scale, unsupported internal features, and unsafe loft conditions.
 
 ### FR-009 — Connection modes
-Support coaxial, offset, and limited-angle relationships.
+Support coaxial, offset, and angle-based connections (not supported in submission) relationships.
 
 ### FR-010 — Guided parameters
 Each connection mode exposes only valid controls.
@@ -330,7 +330,7 @@ Every user-facing error must explain the issue and corrective action. Internal e
 Log schema, generated KCL, API operation, status, error, duration, output references, and timestamp. Do not log secrets or raw uploads unnecessarily.
 
 ### FR-019 — Export
-Successful projects produce STL, STEP, and KCL outputs.
+Successful projects produce STL and KCL; STEP is planned but not implemented outputs.
 
 ### FR-020 — Reproducibility
 At least one known-good fixture must regenerate consistently.
@@ -465,7 +465,7 @@ Required for model generation, regeneration, geometry execution, rendering/snaps
 Required for structured revisions, explanation, or recovery.
 
 ### File Format API
-Required for useful output conversion, STEP/STL production or verification, and model analysis such as volume where reliable.
+Required for useful output conversion, STL production or verification, and model analysis such as volume where reliable.
 
 Zoo use must be meaningful, visible, and documented.
 
@@ -559,7 +559,7 @@ Example:
 - User completes the workflow without CAD software.
 - Both profiles are reviewed and corrected.
 - Model regenerates after parameter changes.
-- STL, STEP, and KCL are produced.
+- STL and KCL; STEP is planned but not implemented are produced.
 - At least one printed adapter physically fits.
 - Workflow is understandable in the demo.
 - Failures are clearly explained.
@@ -688,7 +688,7 @@ The stack may change if API testing reveals a clearly superior supported path.
 
 1. coaxial circular vacuum reducer;
 2. offset circular adapter;
-3. limited-angle circular adapter;
+3. angle-based connections (not supported in submission) circular adapter;
 4. simple rectangular transition;
 5. flat camera mounting plate.
 
@@ -724,13 +724,13 @@ The hero vacuum adapter must be generated, exported, printed, test-fitted, measu
 - generate deterministic KCL;
 - execute through Zoo;
 - preview result;
-- export STL/STEP/KCL;
+- export STL/KCL; STEP is planned but not implemented;
 - document everything.
 
 ### P1 — should work
 
 - offset connection;
-- limited-angle connection;
+- angle-based connections (not supported in submission) connection;
 - natural-language revision;
 - volume analysis;
 - physical vacuum-adapter proof;
@@ -779,7 +779,7 @@ No P2 work may begin while any P0 item is unstable.
 - minimum transition-length formula;
 - default clearance presets;
 - default wall-thickness recommendation;
-- export route for STEP and STL;
+- export route for STL; STEP is planned but not implemented;
 - reliability of volume analysis;
 - whether camera adapter remains in MVP.
 
@@ -797,7 +797,7 @@ InterfaceForge MVP is done when:
 4. At least coaxial generation is reliable.
 5. The model can be revised through safe controls.
 6. Zoo APIs are meaningfully and visibly used.
-7. STL, STEP, and KCL are downloadable.
+7. STL and KCL; STEP is planned but not implemented are downloadable.
 8. One adapter has been physically printed and tested.
 9. Critical errors have clear handling.
 10. The repository is public, documented, reproducible, and secret-free.

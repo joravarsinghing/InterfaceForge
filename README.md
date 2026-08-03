@@ -57,7 +57,7 @@ The controlled submission workflow demonstrates a practical dust-extraction adap
   </tr>
 </table>
 
-Known Zoo limitation: the live KCL engine currently rejects `subtract()` between loft-generated solid bodies. The active compiler path uses open outer and inner surface lofts with explicit annular rim surfaces joined by `joinSurfaces()`.
+KCL 2.0 solid-body generation is working and the deprecated-KCL geometry issue is resolved. STL export is verified. STEP export is not implemented for this submission.
 
 InterfaceForge guides the user through:
 
@@ -68,7 +68,7 @@ InterfaceForge guides the user through:
 - compiling deterministic KCL;
 - generating the model through Zoo Engine;
 - revising approved parameters through Zoo Agent;
-- exporting STL, STEP, and KCL artifacts.
+- exporting STL and KCL artifacts.
 
 > InterfaceForge produces **user-reviewed design candidates**. It does not claim unrestricted photo-to-CAD reconstruction, automatic perspective correction, or certified manufacturing readiness.
 
@@ -94,7 +94,7 @@ InterfaceForge guides the user through:
     </td>
     <td width="50%" valign="top">
       <h3>Output</h3>
-      <p>A reviewed parametric adapter with deterministic KCL and Zoo-generated STL and STEP exports.</p>
+      <p>A reviewed parametric adapter with deterministic KCL and verified STL export.</p>
     </td>
   </tr>
 </table>
@@ -207,7 +207,7 @@ Available parameters include:
 
 InterfaceForge validates these parameters before generation.
 
-The two vertical extension parameters add straight fit sections above each approved profile. They are available in both connection modes and default to `0 mm`, preserving a direct loft when no extension is needed. When configured, the transition begins after the Interface A extension and ends before the Interface B extension; the extensions remain straight and aligned with their respective approved interface profiles. The live preview, persisted loft plan, deterministic KCL, and final STL and STEP outputs all use the same values.
+The two vertical extension parameters add straight fit sections above each approved profile. They are available in both connection modes and default to `0 mm`, preserving a direct loft when no extension is needed. When configured, the transition begins after the Interface A extension and ends before the Interface B extension; the extensions remain straight and aligned with their respective approved interface profiles. The live preview, persisted loft plan, deterministic KCL, and final STL output all use the same values.
 
 <div align="center">
 
@@ -245,7 +245,7 @@ InterfaceForge:
 3. submits the model to Zoo Engine;
 4. tracks the generation job;
 5. displays the generated result;
-6. prepares STL, STEP, and KCL exports.
+6. prepares STL and KCL exports.
 
 <div align="center">
 
@@ -269,10 +269,6 @@ Available downloads:
   <tr>
     <td><strong>STL</strong></td>
     <td>Mesh output for slicing, visualization, and 3D printing.</td>
-  </tr>
-  <tr>
-    <td><strong>STEP</strong></td>
-    <td>Solid CAD exchange format for downstream engineering tools.</td>
   </tr>
 </table>
 
@@ -312,7 +308,7 @@ Example requests:
 7. After confirmation, InterfaceForge updates the canonical schema.
 8. KCL is recompiled.
 9. Zoo Engine regenerates the adapter.
-10. Revised STL, STEP, and KCL exports become available.
+10. Revised STL and KCL exports become available.
 
 <div align="center">
 
@@ -492,7 +488,7 @@ It provides a constrained, adapter-specific workflow around Zoo Engine and Zoo A
   </tr>
   <tr>
     <td>Adapter-specific parameters and constraints</td>
-    <td>Native STL and STEP conversion</td>
+    <td>Native STL conversion</td>
   </tr>
   <tr>
     <td>Bounded revision confirmation</td>
@@ -529,7 +525,7 @@ InterfaceForge was built as a **Zoo API Makeathon 2026** entry.
       <ul>
         <li>Executes deterministic KCL generated from the approved canonical project schema.</li>
         <li>Produces the authoritative CAD model.</li>
-        <li>Generates STL and STEP artifacts associated with the current model revision.</li>
+        <li>Generates verified STL artifacts and the KCL source associated with the current model revision.</li>
       </ul>
     </td>
     <td width="50%" valign="top">
@@ -564,7 +560,7 @@ Learn more at [zoo.dev](https://zoo.dev/) and in the project’s [API usage guid
 * Last-known-good model preservation.
 * Model and schema revision tracking.
 * Stale-export prevention.
-* STL, STEP, and KCL exports.
+* STL and KCL exports.
 * Mock providers for deterministic offline development and testing.
 
 ---

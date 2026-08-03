@@ -14,7 +14,6 @@
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ InterfaceForge logo     Project status     Help     Service status indicator │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│ Step 1       Step 2       Step 3       Step 4       Step 5                   │
 │ Interface A  Interface B  Connection    Generate     Review & Export          │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
@@ -32,10 +31,7 @@
   - Current project status
   - Help access
   - Remote-service availability
-- **Step navigation**
   - Shows progress through the guided workflow
-  - Allows return to completed steps
-  - Prevents skipping required approval steps
 - **Main content**
   - Contains one focused task per page
 - **Footer**
@@ -46,15 +42,11 @@
 ### Navigation
 
 - Logo → Landing page
-- Completed step → Corresponding completed step
-- Incomplete or locked step → No navigation; explain prerequisite
 - Help → Contextual guidance panel
 - Service status → Service-status details
 
 ### Responsive
 
-- Step labels shorten below the desktop breakpoint.
-- On narrow screens, step navigation becomes a horizontal scrollable progress bar.
 - Header actions collapse into a compact menu.
 - Main task remains above secondary help content.
 - MVP remains desktop-first; narrow layouts must remain usable but are not optimized for advanced editing.
@@ -63,8 +55,6 @@
 
 - Skip link precedes the header.
 - Header and workflow navigation have accessible names.
-- Current step uses `aria-current="step"`.
-- Locked steps announce their prerequisite.
 - Service-status changes use a polite live region.
 - Main page contains one primary H1.
 
@@ -197,7 +187,6 @@
 
 ### Navigation
 
-- Back → Landing or previous completed step
 - Choose file → System file picker
 - Replace image → Return to empty upload state
 - Use This Image and Analyze → Processing state
@@ -815,7 +804,6 @@
 │ [✓] STL                                                                      │
 │     For 3D printing and slicer software                                      │
 │                                                                              │
-│ [✓] STEP                                                                     │
 │     For further CAD editing and manufacturing workflows                      │
 │                                                                              │
 │ [✓] KCL                                                                      │
@@ -835,10 +823,8 @@
 │ Files ready                                                                  │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ STL   interfaceforge-vacuum-adapter.stl     [Download STL]                   │
-│ STEP  interfaceforge-vacuum-adapter.step    [Download STEP]                  │
 │ KCL   interfaceforge-vacuum-adapter.kcl     [Download KCL]                   │
 │                                                                              │
-│ Next step                                                                    │
 │ Inspect the STL in your slicer before printing.                              │
 │                                                                              │
 │ [Back to Model]                                                              │
@@ -852,7 +838,6 @@
 │ Export completed with one issue                                              │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ STL   Ready                                      [Download STL]              │
-│ STEP  Failed: conversion service timeout         [Retry STEP]                │
 │ KCL   Ready                                      [Download KCL]              │
 │                                                                              │
 │ Error ID: IF-EXPORT-003                                                      │
@@ -1020,14 +1005,12 @@
   - source image + SVG;
   - parameters + live guide;
   - 3D model + design summary.
-- Step navigation remains fully visible.
 - Primary action sits near the bottom-right of the task area.
 
 ## Tablet / narrow laptop
 
 - Two-column regions may reduce width but remain side by side where practical.
 - Secondary help content may move below the main task.
-- Step navigation may scroll horizontally.
 
 ## Mobile / very narrow viewport
 
@@ -1045,7 +1028,6 @@
 - One H1 per page.
 - Skip link before header.
 - Workflow navigation has an accessible label.
-- Current step uses `aria-current`.
 - All form controls have visible labels.
 - Units are programmatically associated with numeric fields.
 - Color never carries meaning alone.
@@ -1061,7 +1043,6 @@
 
 # 19. Navigation and Redirect Rules
 
-- Invalid direct access to a later step redirects to the earliest incomplete required step.
 - Editing an approved interface invalidates downstream generated artifacts.
 - Stale models cannot be exported as current.
 - Failed revisions preserve the last successful model.

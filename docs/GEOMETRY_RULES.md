@@ -80,7 +80,7 @@ The following claim must **always be accurate**:
 
 ## 1. Overview
 
-Per **ADR-001** and **ADR-012**, connection parameters (transition length, lateral offsets, angle inclination) and manufacturing parameters (wall thickness, clearances) define the 3D transition geometry linking Interface A to Interface B. This document defines all mathematical formulas, validation rules, stable error IDs, non-blocking warnings, conservative initial defaults, and engineering limitations.
+Per **ADR-001** and **ADR-012**, connection parameters (transition length, lateral offsets, connection parameters) and manufacturing parameters (wall thickness, clearances) define the 3D transition geometry linking Interface A to Interface B. This document defines all mathematical formulas, validation rules, stable error IDs, non-blocking warnings, conservative initial defaults, and engineering limitations.
 
 ---
 
@@ -94,7 +94,7 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
    - Interfaces A and B remain parallel (z-planes parallel) with lateral translation.
    - Parameters: `offset_x_mm`, `offset_y_mm`.
    - Requirements: `angle_deg = 0`.
-3. **`angled` (Limited-Angle Transition):**
+3. **`angled` (Angle-based connections (not supported in submission) Transition):**
    - Interface B is inclined relative to Interface A by an angle up to 45°.
    - Parameters: `length_mm`, `offset_x_mm`, `offset_y_mm`, `angle_deg`.
 
@@ -175,12 +175,11 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 1. **Circular Coaxial Hollow Adapter:** Circle to circle, `offset_x = 0`, `offset_y = 0`, `angle = 0`.
 2. **Rectangular / Rounded-Rectangle Coaxial Transition:** Rectangle/rounded-rectangle to rectangle/rounded-rectangle or circle, `offset_x = 0`, `offset_y = 0`, `angle = 0`.
 3. **Circular Offset Adapter:** Circle to circle, parallel z-planes with non-zero lateral offset (`offset_x`, `offset_y`), `angle = 0`.
-4. **Limited-Angle Adapter:** Inclined top plane (up to 45°) with `angle_deg != 0`.
-
+4. **Angle-based adapters:** Not supported in the submission build.`r`n
 ### 5.3 KCL Assumptions Requiring Zoo Verification (Stage S5B)
 1. **Loft Interpolation Across Dissimilar Profiles:** Lofting a circle to a rounded rectangle via `loft([sketch_a, sketch_b])` is syntactically valid in KCL, but exact surface curvature and tangent continuity require Zoo Engine execution verification.
 2. **Angled Plane Sketch Alignment:** Constructing an inclined top plane via `plane(origin = [...], xAxis = [...], yAxis = [...])` requires Zoo Engine execution to confirm plane normal direction and winding.
-3. **Joined Surface Wall Robustness:** Joining separate outer and inner `loft(..., bodyType = "surface")` results with `joinSurfaces` requires Zoo Engine execution to verify open rims and exact wall-thickness behavior.
+3. **Solid-body generation:** Current KCL 2.0 solid-body generation is the submission path; no surface-shell workaround is used.
 
 ---
 
@@ -188,10 +187,9 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 
 Per **ADR-001** and **ADR-003**, exported CAD models must be verified for geometric fidelity against requested canonical parameters:
 
-1. **Linear Dimension Tolerance:** Measured STL/STEP bounding box and profile dimensions must match requested schema values within **±0.2 mm**.
-2. **Angle Inclination Tolerance:** Measured top plane orientation must match requested inclination angle within **±0.5°**.
+1. **Linear Dimension Tolerance:** Measured STL bounding box and profile dimensions must match requested schema values within **±0.2 mm**.`r`n2. **Angle-based output:** No angle-based output claim is made for the submission.
 3. **Lateral Offset Tolerance:** Measured bounding box span must reflect requested `offset_x` and `offset_y` translation within **±0.2 mm**.
-4. **Hollow Passage Verification:** Every exported adapter solid must contain a hollow passage created via inner void subtraction (`boolean_subtract`), producing non-box facet topologies (> 12 facets for STL).
+4. **Hollow Passage Verification:** Every exported adapter solid must contain a hollow passage created via inner void subtraction via solid-body subtraction, producing non-box facet topologies (> 12 facets for STL).
 5. **Non-Box Topology Requirement:** Uniform 12-facet / 684-byte solid boxes are rejected as unproven fallback geometry.
 
 

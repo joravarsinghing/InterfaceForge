@@ -1,156 +1,24 @@
 # Zoo API Integration Notes
 
-**Status:** Active & Verified (Stage S8.2 Zoo Model Export Alignment)  
-**Purpose:** Records technical insights, SDK usage patterns, latency observations, performance benchmarks, and implementation notes across Engine, Agent, and File Format APIs.
+**Status:** Active submission notes
+**Last reviewed:** 2026-08-03
 
----
+## Current submission boundary
 
-## 1. Engine API WebSocket Protocol (`/ws/modeling/commands`)
+- Zoo Engine remains the authoritative CAD executor.
+- InterfaceForge emits deterministic KCL 2.0 solid-body source from approved project data.
+- STL export is verified for the current submission.
+- STEP export is not implemented and is out of scope.
+- Limited-angle mode is not supported.
+- Zoo Agent proposals remain bounded by server-side validation and require explicit user confirmation.
+- Live Zoo Agent execution is unproven until credential-tested.
 
-- **Gateway URL:** `wss://api.zoo.dev/ws/modeling/commands`
-- **Authentication:** HTTP Bearer token header (`Authorization: Bearer <token>`).
-- **Request Framing:** Each frame must be wrapped as a `WebSocketRequest` JSON object with `"type": "modeling_cmd_req"`, `"cmd_id": "<uuid>"`, and `"cmd": { ... }`.
-- **Response Framing:** Engine emits responses with `"resp": {"type": "modeling", "data": {"modeling_response": { ... }}}`.
-- **Required Parameters:**
-  - `make_plane` requires `"clobber": false`, `"origin"`, `"size"`, `"x_axis"`, `"y_axis"`.
-  - `set_scene_units` requires `"unit": "mm"`.
-  - `take_snapshot` returns PNG image data in `data.contents`.
+## Security and provider rules
 
----
+- Credentials are backend-only and must not appear in logs or generated artifacts.
+- The last-known-good model is preserved when generation or export fails.
+- Offline mocks and contract tests are not evidence of credentialed live-provider execution.
 
-## 2. Latency Benchmarks & Performance Metrics
+## Historical notes
 
-| Case Name | Execution Duration | Status | Notes |
-| :--- | :--- | :--- | :--- |
-| **Minimal Cube** | 2.21s | SUCCEEDED | Initial WebSocket connection handshake + execution |
-| **Simple Plate** | 1.93s | SUCCEEDED | Extruded rectangular geometry |
-| **Circular Coaxial Adapter** | 2.03s | SUCCEEDED | Two concentric circular profiles |
-| **Circular Offset Adapter** | 2.02s | SUCCEEDED | Offset circular center axes |
-| **Limited Angle Adapter** | 2.02s | SUCCEEDED | Inclined plane construction |
-| **Dissimilar Profile Adapter** | 2.11s | SUCCEEDED | Circle to rounded rectangle transition |
-
-Average live execution latency: **~2.05 seconds**.
-
----
-
-## 3. Security & Token Protection Rules
-
-- Credentials loaded exclusively from `backend/.env`.
-- Secrets redacted in all exception messages via `redact_secrets()`.
-- Explicit safety gates enforce `ENGINE_PROVIDER=zoo` / `EXPORT_PROVIDER=zoo` and `RUN_ZOO_LIVE_EXPORTS=1`.
-
----
-
-## 4. File Format API REST Protocol (`/file/conversion/{src_format}/{output_format}`)
-
-- **REST Endpoint:** `POST https://api.zoo.dev/file/conversion/{src_format}/{output_format}`
-- **Authentication:** `Authorization: Bearer <token>` header.
-- **Headers:** `User-Agent: InterfaceForge/1.0` (required to bypass Cloudflare bot protection headers), `Content-Type: application/octet-stream`.
-- **Request Payload:** Raw binary or string CAD model payload (`application/octet-stream`).
-- **Response Format:** JSON object containing `status: "completed"` and `outputs: { "<filename>": "<base64_string>" }`.
-- **Base64 Decoding:** Output payloads are base64 encoded strings; missing padding is restored prior to `base64.b64decode()`.
-
-### Live File Format API Real Geometry Benchmarks (Stage S8.1 Audit)
-
-- **Input Variant Support:** `POST /file/conversion/{src_format}/{output_format}` accepts CAD formats including `obj`, `step`, `stl`, `acis`, `catia`, `creo`, `fbx`, `gltf`, `inventor`, `nx`, `parasolid`, `ply`, `points`, `sldprt`.
-- **Payload Conversion:** Converting Wavefront OBJ (`obj`) model geometry payloads to `stl` and `step` returns full 3D CAD topologies (32-128 triangles for STL, 332-1292 entities for STEP).
-
-| Test Case | Format | Latency | Output Size | Facets / Entities | Hash (short) | Geometry Status |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Simple Plate** | STL | 1.28s | 4,843 B | 32 facets | `a1e7bde4218d` | **VALID REAL GEOMETRY** |
-| **Simple Plate** | STEP | 1.16s | 15,524 B | 332 entities | `36113b4096d7` | **VALID REAL GEOMETRY** |
-| **Circular Coaxial Adapter** | STL | 1.20s | 21,185 B | 128 facets | `9790095122d7` | **VALID REAL GEOMETRY** |
-| **Circular Coaxial Adapter** | STEP | 1.42s | 62,332 B | 1,292 entities | `3733f8466e65` | **VALID REAL GEOMETRY** |
-| **Circular Offset Adapter** | STL | 1.14s | 21,196 B | 128 facets | `137e88be57b1` | **VALID REAL GEOMETRY** |
-| **Circular Offset Adapter** | STEP | 1.33s | 62,419 B | 1,292 entities | `a7ed551d2e85` | **VALID REAL GEOMETRY** |
-| **Limited-Angle Adapter** | STL | 1.15s | 22,907 B | 128 facets | `20bff4ee9d30` | **VALID REAL GEOMETRY** |
-| **Limited-Angle Adapter** | STEP | 1.32s | 64,402 B | 1,292 entities | `f8fefb8a3826` | **VALID REAL GEOMETRY** |
-
-Average live conversion latency: **~1.25 seconds**.
-
----
-
-## 5. Zoo Engine WebSocket Loft & Boolean Subtraction Schema (Stage S8.4)
-
-In Stage S8.4, native B-Rep geometry construction over WebSocket (`wss://api.zoo.dev/ws/modeling/commands`) was updated to execute native `loft` and `boolean_subtract` commands:
-
-1. **Loft Command Schema:**
-   ```json
-   {
-     "type": "loft",
-     "section_ids": ["<path_uuid_a>", "<path_uuid_b>"],
-     "v_degree": 1,
-     "bez_approximate_rational": false,
-     "tolerance": 0.001
-   }
-   ```
-   - **Response Payload:** `{"resp": {"type": "modeling", "data": {"modeling_response": {"type": "loft", "data": {"solid_id": "<solid_uuid>"}}}}}`.
-
-2. **Boolean Subtraction Command Schema:**
-   ```json
-   {
-     "type": "boolean_subtract",
-     "target_ids": ["<outer_solid_uuid>"],
-     "tool_ids": ["<inner_void_solid_uuid>"],
-     "tolerance": 0.001
-   }
-   ```
-   - **Response Payload:** `{"resp": {"type": "modeling", "data": {"modeling_response": {"type": "boolean_subtract", "data": {}}}}}`.
-
-
-## 6. 2026-07-29 Live Export Blocker: Boolean Subtraction Export
-
-During the Day 1 AM P0 golden path proof, InterfaceForge successfully analyzed, calibrated, approved, compiled KCL, and generated a current live Zoo model for a circle-to-rounded-rectangle adapter. The model revision stored a live Zoo model id and matching KCL hash.
-
-Live STL and STEP export then failed during the Zoo-native WebSocket export construction after `loft` and `boolean_subtract` with the normalized error:
-
-```text
-IF-EXPORT-001: Zoo-native export failed for 'stl'/'step': ZOO_ENGINE_ERROR: The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue
-```
-
-KCL export succeeded from the stored KCL artifact. STL/STEP were not replaced with mock or local geometry output for proof evidence.
-
-
----
-
-## 7. 2026-07-29 Authoritative KCL Export Route Diagnostic
-
-Official Zoo documentation describes KCL execution/export through the `zoo-kcl` Python package and the `zoo kcl export` CLI. The safest InterfaceForge export architecture is to export from the exact stored KCL for the current model revision and verify the KCL SHA-256 against the revision hash before writing STL/STEP artifacts.
-
-Local diagnostic results in the current backend environment:
-
-```text
-zoo_token_configured=False
-kcl_package=False
-zoo --version -> command not found
-pip install zoo-kcl -> available releases require Python >=3.11
-```
-
-Because the backend currently declares Python >=3.10,<3.11, live KCL-native STL/STEP export cannot be proven in this venv without a runtime/tooling change. No local OBJ fallback or second WebSocket reconstruction is acceptable proof for live export.
-
-## 6. Historical KCL 1.x Syntax Failure (Superseded)
-
-- Zoo KCL identifiers use lowerCamelCase (`sketchOuter0`, `outerSurface`, and `adapterModel`) for Zoo compatibility.
-- The 2026-08-02 failure was observed on an artifact generated with deprecated sketch-v1 syntax and is superseded by the KCL 2.0 compiler migration.
-- Do not treat that artifact as evidence of a current Boolean defect. Revalidate any Boolean claim against the current KCL 2.0 artifact and a credentialed live Zoo run.
-### 2026-08-02 - P0 Zoo KCL Solid Loft Boolean Rejection
-
-- **Status:** Historical / superseded; not confirmed against the current KCL 2.0 generator.
-- **Reproduction:** Execute the generated solid KCL containing `outerSolid = loft([...])`, `innerCutter = loft([...])`, and `adapterModel = subtract([outerSolid], tools = [innerCutter])`.
-- **Observed error:** `The Zoo engine cannot handle this 3D subtraction yet. Please report this as an issue`.
-- **Historical impact:** The old artifact displayed capped geometry because the deprecated KCL syntax failed before the intended hollow result could be trusted.
-- **Evidence:** Downloaded `interfaceforge_adapter_rev1 (5).kcl`; failure reported at the `outerSolid`/solid loft execution path and boolean stage. Local parser/mock execution is not evidence of live B-rep success.
-- **Current status:** The generator now emits KCL 2.0 sketch-solve syntax. Live Boolean behavior remains UNPROVEN until tested with that current artifact.
-## 8. KCL 2.0 Generation Standard
-
-This is a mandatory generator rule for all future KCL output:
-
-- Emit KCL 2.0 with `@settings(defaultLengthUnit = mm, kclVersion = 2.0)`.
-- Use sketch-solve blocks: `sketch(on = ...)`, solver `line`, `coincident`, and `region` where a region is required.
-- Do not emit deprecated sketch-v1 commands: `startSketchOn`, `startProfile`, piped `line`, or `close`.
-- Do not emit unused parameter assignments. Preserve design facts as comments or use them in actual geometry expressions.
-- Use typed plane constants such as `XY`, not quoted plane names.
-- Use the current solid API signatures and omit deprecated options such as `legacyMethod`.
-- Every compiler change must include a generated-KCL assertion that deprecated tokens are absent and a parser/execution validation when the Zoo KCL runtime is available.
-
-The authoritative reference is the current [Zoo KCL standard library](https://zoo.dev/docs/kcl-std) and its [solver module](https://zoo.dev/docs/kcl-std/modules/std-solver). The generated artifact must remain deterministic, reviewable, and valid for the configured Zoo runtime.
+Older stage export benchmarks and Boolean-blocker notes are superseded by the current KCL 2.0 solid-body path. They are not evidence for the current submission and are intentionally omitted from this active note.
