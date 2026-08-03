@@ -141,7 +141,7 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
   // preview request.
   const runValidation = useCallback(async () => {
     if (!project?.project_id) return;
-    const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.angle_deg}_${connection.extension_a_mm}_${connection.extension_b_mm}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
+    const currentGeoKey = `${connection.mode}_${connection.length_mm}_${connection.offset_x_mm}_${connection.offset_y_mm}_${connection.extension_a_mm}_${connection.extension_b_mm}_${manufacturing.wall_thickness_mm}_${manufacturing.clearance_a_mm}_${manufacturing.clearance_b_mm}_${fitModeA}_${fitModeB}`;
     prevGeoKeyRef.current = currentGeoKey;
 
     // The preview plan is returned with validation. Show an explicit loading
@@ -200,9 +200,6 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       if (mode === 'coaxial') {
         updated.offset_x_mm = 0.0;
         updated.offset_y_mm = 0.0;
-        updated.angle_deg = 0.0;
-      } else if (mode === 'offset') {
-        updated.angle_deg = 0.0;
       }
       return updated;
     });
@@ -236,7 +233,6 @@ export const ConnectionConfigPage: React.FC<ConnectionConfigPageProps> = ({
       length_mm: rec.length_mm ?? 40.0,
       offset_x_mm: rec.offset_x_mm ?? 0.0,
       offset_y_mm: rec.offset_y_mm ?? 0.0,
-      angle_deg: rec.angle_deg ?? 0.0,
       extension_a_mm: rec.extension_a_mm ?? 0.0,
       extension_b_mm: rec.extension_b_mm ?? 0.0,
     }));

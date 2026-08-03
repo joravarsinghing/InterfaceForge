@@ -25,7 +25,6 @@ ALLOWED_REVISION_FIELDS: Set[str] = {
     "connection.length_mm",
     "connection.offset_x_mm",
     "connection.offset_y_mm",
-    "connection.angle_deg",
     "manufacturing.wall_thickness_mm",
     "manufacturing.clearance_a_mm",
     "manufacturing.clearance_b_mm",
@@ -36,7 +35,6 @@ FIELD_UNITS: Dict[str, str] = {
     "connection.length_mm": "mm",
     "connection.offset_x_mm": "mm",
     "connection.offset_y_mm": "mm",
-    "connection.angle_deg": "deg",
     "manufacturing.wall_thickness_mm": "mm",
     "manufacturing.clearance_a_mm": "mm",
     "manufacturing.clearance_b_mm": "mm",
@@ -108,7 +106,7 @@ class MockAgentProvider(AgentProvider):
                         message="Field modification is outside allowed revision scope.",
                         field="profile",
                         recovery_steps=[
-                            "Only connection length, offsets, angle, wall thickness, "
+                            "Only connection length, offsets, wall thickness, "
                             "and tolerances can be revised."
                         ],
                     )
@@ -226,32 +224,12 @@ class MockAgentProvider(AgentProvider):
                 provider_used="mock",
             )
 
-        # Case 4: "Tilt it to 20 degrees."
-        if "tilt" in prompt_lower or "degree" in prompt_lower or "angle" in prompt_lower:
-            m = re.search(r"(\d+(\.\d+)?)", prompt_lower)
-            val = float(m.group(1)) if m else 20.0
-            curr = project.connection.angle_deg
-            return AgentProposalResult(
-                changes=[
-                    ParameterChange(
-                        field="connection.angle_deg",
-                        current_value=curr,
-                        proposed_value=val,
-                        unit="deg",
-                        reason=f"Set adapter inclination angle to {val:.1f}°.",
-                    )
-                ],
-                summary=f"Set connection angle from {curr:.1f}° to {val:.1f}°.",
-                is_valid=True,
-                provider_used="mock",
-            )
-
         # Case 7: Ambiguous Request ("Make it stronger", etc.)
         return AgentProposalResult(
             changes=[],
             summary=(
                 "Request is ambiguous. Please specify a target parameter "
-                "(e.g. wall thickness, length, offsets, or angle)."
+                "(e.g. wall thickness, length, offsets, or tolerances)."
             ),
             is_valid=True,
             provider_used="mock",
@@ -297,7 +275,6 @@ class ZooAgentProvider(AgentProvider):
             "   - connection.length_mm\n"
             "   - connection.offset_x_mm\n"
             "   - connection.offset_y_mm\n"
-            "   - connection.angle_deg\n"
             "   - manufacturing.wall_thickness_mm\n"
             "   - manufacturing.clearance_a_mm\n"
             "   - manufacturing.clearance_b_mm\n"
@@ -316,7 +293,6 @@ class ZooAgentProvider(AgentProvider):
             f"- connection.length_mm = {conn.length_mm}\n"
             f"- connection.offset_x_mm = {conn.offset_x_mm}\n"
             f"- connection.offset_y_mm = {conn.offset_y_mm}\n"
-            f"- connection.angle_deg = {conn.angle_deg}\n"
             f"- manufacturing.wall_thickness_mm = {mfg.wall_thickness_mm}\n"
             f"- manufacturing.clearance_a_mm = {mfg.clearance_a_mm}\n"
             f"- manufacturing.clearance_b_mm = {mfg.clearance_b_mm}\n\n"

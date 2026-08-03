@@ -93,3 +93,4 @@ thresh_*.png
 
 # Local AI agent tools and downloaded skills
 .agent/
+.pytest_codex_shell/

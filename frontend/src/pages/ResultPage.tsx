@@ -402,7 +402,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
           <span>-</span> Safe Model Revisions (Zoo Agent API)
         </h2>
         <p style={{ fontSize: '0.88rem', color: '#c9d1d9', marginTop: 0, marginBottom: '1rem' }}>
-          Request natural-language adjustments to transition length, lateral offsets, angle inclination, wall thickness, or tolerances.
+          Request natural-language adjustments to transition length, lateral offsets, wall thickness, or tolerances.
           The AI proposes validated changes, which are only applied to the model after your explicit confirmation.
         </p>
 

@@ -149,7 +149,7 @@ class AgentService:
                         message=f"Field '{field}' is outside allowed revision parameter scope.",
                         field=field,
                         recovery_steps=[
-                            "Only connection length, offsets, angle, wall thickness, "
+                            "Only connection length, offsets, wall thickness, "
                             "and tolerances can be revised."
                         ],
                     )
@@ -212,7 +212,7 @@ class AgentService:
                 continue
 
             # Unit check and normalization
-            unit = "mm" if "angle" not in field else "deg"
+            unit = "mm"
             validated_changes.append(
                 ParameterChange(
                     field=field,
@@ -348,8 +348,6 @@ class AgentService:
             return project.connection.offset_x_mm
         elif field == "connection.offset_y_mm":
             return project.connection.offset_y_mm
-        elif field == "connection.angle_deg":
-            return project.connection.angle_deg
         elif field == "manufacturing.wall_thickness_mm":
             return project.manufacturing.wall_thickness_mm
         elif field == "manufacturing.clearance_a_mm":
@@ -393,10 +391,8 @@ class AgentService:
             elif c.field.startswith("manufacturing."):
                 mfg_dict[field_name] = value
 
-        # Automatically infer connection mode based on revised parameters
-        if abs(float(conn_dict.get("angle_deg", 0.0))) > 1e-6:
-            conn_dict["mode"] = "angled"
-        elif (
+        # Automatically infer the supported connection mode from lateral offsets
+        if (
             abs(float(conn_dict.get("offset_x_mm", 0.0))) > 1e-6
             or abs(float(conn_dict.get("offset_y_mm", 0.0))) > 1e-6
         ):

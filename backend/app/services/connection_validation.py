@@ -89,15 +89,15 @@ def validate_connection_and_manufacturing(
         )
 
     # 2. Supported connection mode check
-    supported_modes = {ConnectionMode.COAXIAL, ConnectionMode.OFFSET, ConnectionMode.ANGLED}
+    supported_modes = {ConnectionMode.COAXIAL, ConnectionMode.OFFSET}
     if connection.mode not in supported_modes:
-        msg = f"Unsupported connection mode '{connection.mode}'. Must be coaxial/offset/angled."
+        msg = f"Unsupported connection mode '{connection.mode}'. Must be coaxial or offset."
         errors.append(
             ValidationIssue(
                 id="IF-CONN-002",
                 message=msg,
                 field="mode",
-                recovery_steps=["Select a supported connection mode: coaxial, offset, or angled."],
+                recovery_steps=["Select a supported connection mode: coaxial or offset."],
             )
         )
 
@@ -214,38 +214,7 @@ def validate_connection_and_manufacturing(
                 )
             )
 
-    # 6. Angle check (0.0 to 45.0 degrees)
-    if not math.isfinite(connection.angle_deg):
-        errors.append(
-            ValidationIssue(
-                id="IF-CONN-004",
-                message="Angle must be a finite numerical value in degrees.",
-                field="angle_deg",
-                recovery_steps=["Enter a numerical angle in degrees between 0Â° and 45Â°."],
-            )
-        )
-    else:
-        abs_angle = abs(connection.angle_deg)
-        if abs_angle > 45.0:
-            errors.append(
-                ValidationIssue(
-                    id="IF-CONN-004",
-                    message=f"Angle ({abs_angle:.1f}Â°) exceeds maximum MVP limit of 45.0Â°.",
-                    field="angle_deg",
-                    recovery_steps=["Reduce connection angle to 45.0Â° or less."],
-                )
-            )
-        elif abs_angle > 30.0:
-            warnings.append(
-                ValidationIssue(
-                    id="IF-CONN-W003",
-                    message=f"Angle ({abs_angle:.1f}Â°) > 30.0Â°. Overhang supports required.",
-                    field="angle_deg",
-                    recovery_steps=["Keep angle under 30.0Â° if supportless printing is preferred."],
-                )
-            )
-
-    # Mode-specific parameter rules
+    # 6. Mode-specific parameter rules
     if connection.mode == ConnectionMode.COAXIAL:
         if connection.offset_x_mm != 0.0 or connection.offset_y_mm != 0.0:
             errors.append(
@@ -256,26 +225,6 @@ def validate_connection_and_manufacturing(
                     recovery_steps=["Reset X and Y offsets to 0 mm, or switch to Offset mode."],
                 )
             )
-        if connection.angle_deg != 0.0:
-            errors.append(
-                ValidationIssue(
-                    id="IF-CONN-005",
-                    message="Angle must be 0Â° for Coaxial connection mode.",
-                    field="angle_deg",
-                    recovery_steps=["Reset angle to 0Â°, or switch to Angled connection mode."],
-                )
-            )
-    elif connection.mode == ConnectionMode.OFFSET:
-        if connection.angle_deg != 0.0:
-            errors.append(
-                ValidationIssue(
-                    id="IF-CONN-005",
-                    message="Angle must be 0Â° for Offset connection mode.",
-                    field="angle_deg",
-                    recovery_steps=["Reset angle to 0Â°, or switch to Angled connection mode."],
-                )
-            )
-
     # 7. Offset-to-length ratio check
     if (
         math.isfinite(connection.offset_x_mm)
