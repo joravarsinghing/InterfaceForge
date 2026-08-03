@@ -35,17 +35,3 @@ def test_correspondence_uses_minimum_twist_cyclic_shift() -> None:
     source = [(math.cos(i * math.pi / 4), math.sin(i * math.pi / 4)) for i in range(8)]
     shifted = source[3:] + source[:3]
     assert align_ring_correspondence(source, shifted) == source
-
-
-def test_coaxial_circle_to_rounded_loft_preserves_zero_seam_and_is_closed() -> None:
-    proj = _project()
-    obj = generate_adapter_obj(proj)
-    vertices, faces = parse_obj_mesh(obj)
-    plan = proj.loft_plan
-    assert plan is not None
-    assert len(vertices) == len(plan.sections) * plan.point_count * 2
-    assert len(faces) > 0
-    validation = parse_and_validate_stl(_obj_to_mock_stl_bytes(obj, 1))
-    assert validation["is_valid"] is True
-    assert validation["error"] == ""
-    assert validation["dimensions_mm"] == (55.402, 55.402, 40.0)

@@ -117,7 +117,7 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 | Parameter | Condition / Boundary | Error ID | Description |
 | :--- | :--- | :--- | :--- |
 | **Prerequisites** | `!interface_a.approved \|\| !interface_b.approved` | **`IF-CONN-001`** | Both Interface A and Interface B must be approved first. |
-| **Mode** | `mode not in {coaxial, offset, angled}` | **`IF-CONN-002`** | Connection mode must be coaxial, offset, or angled. |
+| **Mode** | `mode not in {coaxial, offset}` | **`IF-CONN-002`** | Connection mode must be coaxial or offset. |
 | **Length** | `length_mm <= 0` or non-finite | **`IF-CONN-003`** | Transition length must be positive and finite (> 0 mm). |
 | **Angle** | `abs(angle_deg) > 45.0` | **`IF-CONN-004`** | Angle exceeds maximum MVP limit of 45.0°. |
 | **Mode Angle** | `mode in {coaxial, offset} && angle_deg != 0` | **`IF-CONN-005`** | Angle must be 0° for coaxial and offset modes. |

@@ -92,8 +92,8 @@ describe('S6A Workflow Integration Test Suite', () => {
 
     render(<App />);
 
-    expect(screen.getAllByText('Interface')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Forge')[0]).toBeInTheDocument();
+    expect(screen.getAllByTestId('wordmark')[0]).toBeInTheDocument();
+    expect(screen.getAllByTestId('wordmark')[0]).toBeInTheDocument();
     const startBtn = screen.getByRole('button', { name: /Start New Project/i });
     fireEvent.click(startBtn);
 

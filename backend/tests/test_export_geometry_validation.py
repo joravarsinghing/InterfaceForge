@@ -105,13 +105,6 @@ def test_repeated_hash_detection_and_cross_model_uniqueness():
     p3.connection.offset_x_mm = 15.0
     cases.append(p3)
 
-    # Case 4: Limited Angle Adapter
-    p4 = Project(project_id="case_4_angled", project_token="tok_4", current_schema_revision=1)
-    p4.interface_a.profile_type = ProfileType.CIRCLE
-    p4.interface_b.profile_type = ProfileType.CIRCLE
-    p4.connection.mode = ConnectionMode.ANGLED
-    p4.connection.angle_deg = 10.0
-    cases.append(p4)
 
     hashes = []
     objs = []
@@ -121,8 +114,8 @@ def test_repeated_hash_detection_and_cross_model_uniqueness():
         hashes.append(h)
         objs.append(obj_content)
 
-    # Assert all 4 hashes are strictly unique
-    assert len(set(hashes)) == 4, f"Hashes must be distinct! Got: {hashes}"
+    # Assert all active connection-mode cases are strictly unique.
+    assert len(set(hashes)) == 3, f"Hashes must be distinct! Got: {hashes}"
 
 
 @pytest.mark.asyncio

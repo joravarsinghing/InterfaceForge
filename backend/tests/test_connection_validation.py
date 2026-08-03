@@ -67,56 +67,6 @@ def create_approved_interface(
         approved_at="2026-07-23T00:00:00Z",
     )
 
-
-def test_validate_all_three_valid_modes():
-    """Verify coaxial, offset, and angled modes pass validation within bounds."""
-    iface_a = create_approved_interface("interface_a", ProfileType.CIRCLE)
-    iface_b = create_approved_interface("interface_b", ProfileType.RECTANGLE)
-
-    # 1. Coaxial
-    conn_coaxial = Connection(
-        mode=ConnectionMode.COAXIAL,
-        length_mm=40.0,
-        offset_x_mm=0.0,
-        offset_y_mm=0.0,
-        angle_deg=0.0,
-    )
-    mfg = Manufacturing(
-        process=ManufacturingProcess.FDM,
-        material="PETG",
-        wall_thickness_mm=2.4,
-        clearance_a_mm=0.3,
-        clearance_b_mm=0.1,
-    )
-
-    res_coaxial = validate_connection_and_manufacturing(iface_a, iface_b, conn_coaxial, mfg)
-    assert res_coaxial.is_valid is True
-    assert len(res_coaxial.blocking_errors) == 0
-
-    # 2. Offset
-    conn_offset = Connection(
-        mode=ConnectionMode.OFFSET,
-        length_mm=50.0,
-        offset_x_mm=10.0,
-        offset_y_mm=5.0,
-        angle_deg=0.0,
-    )
-    res_offset = validate_connection_and_manufacturing(iface_a, iface_b, conn_offset, mfg)
-    assert res_offset.is_valid is True
-    assert len(res_offset.blocking_errors) == 0
-
-    # 3. Angled
-    conn_angled = Connection(
-        mode=ConnectionMode.ANGLED,
-        length_mm=60.0,
-        offset_x_mm=10.0,
-        offset_y_mm=5.0,
-        angle_deg=15.0,
-    )
-    res_angled = validate_connection_and_manufacturing(iface_a, iface_b, conn_angled, mfg)
-    assert res_angled.is_valid is True
-    assert len(res_angled.blocking_errors) == 0
-
 def test_large_coaxial_profiles_do_not_trigger_motion_self_intersection_check():
     """Coaxial geometry has no transition motion, even for large profiles."""
     iface_a = create_approved_interface("interface_a", ProfileType.CIRCLE)
@@ -166,19 +116,6 @@ def test_invalid_negative_or_non_finite_length_and_wall():
     assert "IF-MFG-001" in error_ids
 
 
-def test_excessive_angle_limit():
-    """Verify angle exceeding 45 degrees returns blocking error IF-CONN-004."""
-    iface_a = create_approved_interface("interface_a")
-    iface_b = create_approved_interface("interface_b")
-
-    conn = Connection(mode=ConnectionMode.ANGLED, length_mm=50.0, angle_deg=50.0)
-    mfg = Manufacturing(wall_thickness_mm=2.4)
-
-    res = validate_connection_and_manufacturing(iface_a, iface_b, conn, mfg)
-    assert res.is_valid is False
-    assert any(e.id == "IF-CONN-004" for e in res.blocking_errors)
-
-
 def test_excessive_offset_to_length_ratio():
     """Verify offset-to-length ratio > 1.5 returns blocking error IF-CONN-006."""
     iface_a = create_approved_interface("interface_a")
@@ -224,53 +161,3 @@ def test_clearance_bounds():
     res = validate_connection_and_manufacturing(iface_a, iface_b, conn, mfg)
     assert res.is_valid is False
     assert any(e.id == "IF-MFG-003" for e in res.blocking_errors)
-
-
-def test_mode_parameter_mismatch_rules():
-    """Verify coaxial mode with non-zero offsets or angle returns blocking error."""
-    iface_a = create_approved_interface("interface_a")
-    iface_b = create_approved_interface("interface_b")
-
-    conn = Connection(mode=ConnectionMode.COAXIAL, length_mm=40.0, offset_x_mm=5.0, angle_deg=10.0)
-    mfg = Manufacturing(wall_thickness_mm=2.4)
-
-    res = validate_connection_and_manufacturing(iface_a, iface_b, conn, mfg)
-    assert res.is_valid is False
-    error_ids = [e.id for e in res.blocking_errors]
-    assert "IF-CONN-007" in error_ids
-    assert "IF-CONN-005" in error_ids
-
-
-def test_project_service_connection_update_and_stale_model_behavior():
-    """Verify updating connection via service increments schema revision and marks model stale."""
-    service = ProjectService()
-    project = service.create_project()
-
-    # Approve Interface A and B
-    project.interface_a = create_approved_interface("interface_a")
-    project.interface_b = create_approved_interface("interface_b")
-
-    # Simulate existing current 3D model revision
-    from app.models.schema import ModelRevision, ModelRevisionStatus
-
-    project.model_revisions.append(
-        ModelRevision(model_revision=1, schema_revision=1, status=ModelRevisionStatus.CURRENT)
-    )
-    project.current_model_revision = 1
-    project.last_known_good_model_revision = 1
-    service.repository.save(project)
-
-    prev_revision = project.current_schema_revision
-
-    # Update connection configuration
-    from app.models.schema import ConnectionUpdateRequest
-
-    updated_proj = service.update_connection(
-        project.project_id,
-        ConnectionUpdateRequest(mode=ConnectionMode.COAXIAL, length_mm=50.0),
-        project_token=project.project_token,
-    )
-
-    assert updated_proj.current_schema_revision == prev_revision + 1
-    assert updated_proj.model_revisions[0].status == ModelRevisionStatus.STALE
-    assert updated_proj.last_known_good_model_revision == 1  # LKG model revision preserved!

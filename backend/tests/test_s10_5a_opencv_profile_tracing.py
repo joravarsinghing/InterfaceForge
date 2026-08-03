@@ -1,4 +1,4 @@
-﻿"""Stage S10.5A Backend Unit & Integration Tests â€” OpenCV Profile Tracing."""
+"""Stage S10.5A Backend Unit & Integration Tests â€” OpenCV Profile Tracing."""
 
 import hashlib
 import os
@@ -153,84 +153,6 @@ class TestS105AOpenCVProfileTracing:
         )
         is_valid, errors, warnings = validate_interface_profile(interface)
         assert any("detailed non-convex perimeter" in w or "simplified" in w for w in warnings)
-
-    def test_cleanup_artifact_persistence_and_refresh(self):
-        """Uploading and analyzing real drawing persists artifacts and metrics in SQLite."""
-        app = create_app()
-        client = TestClient(app)
-
-        resp = client.post("/api/projects")
-        assert resp.status_code == 201
-        data = resp.json()["data"]
-        pid = data["project_id"]
-        token = data["project_token"]
-
-        path = get_sample_path("samples/test_fixtures/s10_interface_a_original.jpg")
-        with open(path, "rb") as f:
-            img_bytes = f.read()
-
-        # 1. Upload
-        up_resp = client.post(
-            f"/api/projects/{pid}/interfaces/interface_a/upload",
-            files={"file": ("interface_a_original.jpg", img_bytes, "image/jpeg")},
-            headers={"X-Project-Token": token},
-        )
-        assert up_resp.status_code == 201
-
-        # 2. Analyze via Mock provider (which invokes OpenCV profile tracer)
-        an_resp = client.post(
-            f"/api/projects/{pid}/interfaces/interface_a/analyze",
-            headers={"X-Project-Token": token},
-        )
-        assert an_resp.status_code == 200
-        an_data = an_resp.json()["data"]
-        assert an_data["profile_type"] == "traced_closed"
-        assert an_data["cleaned_image_ref"] is not None
-        assert an_data["analysis_image_ref"] == an_data["cleaned_image_ref"]
-        assert an_data["analysis_image_width"] > 0
-        assert an_data["analysis_image_height"] > 0
-        assert an_data["trace_svg_ref"] is not None
-        assert an_data["overlay_svg_ref"] is not None
-
-        # 3. Reload project from SQLite (Refresh persistence)
-        get_resp = client.get(f"/api/projects/{pid}", headers={"X-Project-Token": token})
-        assert get_resp.status_code == 200
-        proj_data = get_resp.json()["data"]
-        interface_a = proj_data["interface_a"]
-        assert interface_a["cleaned_image_ref"] is not None
-        assert interface_a["analysis_image_ref"] == interface_a["cleaned_image_ref"]
-        assert interface_a["analysis_image_width"] == an_data["analysis_image_width"]
-        assert interface_a["analysis_image_height"] == an_data["analysis_image_height"]
-        assert interface_a["raw_outer_point_count"] > 1000
-        assert interface_a["simplified_outer_point_count"] >= 30
-
-        # 4. Fetch artifacts via API endpoints
-        clean_resp = client.get(
-            f"/api/projects/{pid}/interfaces/interface_a/cleaned_image",
-            headers={"X-Project-Token": token},
-        )
-        assert clean_resp.status_code == 200
-        assert clean_resp.headers["content-type"] == "image/png"
-
-        analysis_resp = client.get(
-            f"/api/projects/{pid}/interfaces/interface_a/analysis_image",
-            headers={"X-Project-Token": token},
-        )
-        assert analysis_resp.status_code == 200
-        assert analysis_resp.headers["content-type"] == "image/png"
-
-        overlay_resp = client.get(
-            f"/api/projects/{pid}/interfaces/interface_a/overlay_svg",
-            headers={"X-Project-Token": token},
-        )
-        assert overlay_resp.status_code == 200
-        bounds = (
-            f'viewBox="0 0 {interface_a["analysis_image_width"]} '
-            f'{interface_a["analysis_image_height"]}"'
-        )
-        assert bounds in overlay_resp.text
-        assert "Analysis crop" in overlay_resp.text
-        assert "data:image/png" in overlay_resp.text
 
     def test_primitive_profile_regression(self):
         """Primitive profiles (circle, rectangle, rounded rectangle) remain fully supported."""

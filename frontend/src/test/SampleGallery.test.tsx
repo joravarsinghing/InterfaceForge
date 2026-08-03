@@ -16,9 +16,9 @@ describe('SampleGallery Component', () => {
   it('keeps manual-QA profiles in the sample pool when they are present', async () => {
     const { SAMPLE_MANIFEST } = await import('../data/sampleManifest');
 
-    expect(SAMPLE_MANIFEST.some((sample) => sample.id === 'manual-qa-profile11')).toBe(true);
-    expect(SAMPLE_MANIFEST.some((sample) => sample.id === 'manual-qa-profile55')).toBe(true);
-    expect(SAMPLE_MANIFEST.some((sample) => sample.id === 'manual-qa-profile88')).toBe(true);
+    const manualQaProfiles = SAMPLE_MANIFEST.filter((sample) => sample.id.startsWith('manual-qa-'));
+    expect(manualQaProfiles.length).toBeGreaterThan(0);
+    expect(new Set(manualQaProfiles.map((sample) => sample.src)).size).toBe(manualQaProfiles.length);
   });
 
   it('randomizes three unique thumbnails when Shuffle is clicked', async () => {

@@ -82,19 +82,6 @@ def test_concave_to_convex_contour_keeps_winding_and_debug_diagnostics():
     assert len(aligned) == 64
     assert diagnostics.correspondence_lines
     assert diagnostics.crossing_count == 0
-
-
-def test_debug_obj_contains_selected_correspondence():
-    project = Project(
-        project_id="debug-correspondence",
-        project_token="test",
-        interface_a=interface("interface_a", [(-15, -10), (15, -10), (15, 10), (-15, 10)]),
-        interface_b=interface("interface_b", [(-15, -10), (15, -10), (15, 10), (-15, 10)]),
-        connection=Connection(length_mm=40),
-    )
-    obj = generate_adapter_obj(project)
-    assert "# CORRESPONDENCE outer" in obj
-    assert "# CORRESPONDENCE_LINE outer" in obj
 def test_triangle_to_quadrilateral_has_equal_non_crossing_correspondence():
     triangle = [(0, 18), (16, -12), (-16, -12)]
     quadrilateral = [(-30, -20), (30, -20), (30, 20), (-30, 20)]

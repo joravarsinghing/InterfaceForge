@@ -68,7 +68,7 @@ Describes an adapter port interface (Interface A or Interface B).
 ### 2.3 Connection & Manufacturing (Stage S4C)
 Defines spatial alignment relationship and 3D printing manufacturing rules.
 
-- **Connection Modes:** `coaxial`, `offset`, `angled`
+- **Connection Modes:** `coaxial`, `offset`
 - **Connection Parameters:** `length_mm` (> 0), `offset_x_mm`, `offset_y_mm`, `angle_deg` ([0.0, 45.0])
 - **Manufacturing Parameters:** `process` (`fdm`, `sla`, `cnc`), `material`, `wall_thickness_mm` (>= 0.4 mm), `clearance_a_mm` ([0.0, 5.0]), `clearance_b_mm` ([0.0, 5.0])
 

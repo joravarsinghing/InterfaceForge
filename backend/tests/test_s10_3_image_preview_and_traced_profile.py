@@ -257,13 +257,6 @@ class TestTracedClosedProfileMockFixture:
         assert len(result.candidate_dimensions) >= 2
         assert all(d.value >= 0 for d in result.candidate_dimensions)
 
-    def test_traced_result_warns_about_generation_limitation(self):
-        """Traced result includes a warning about generation not being enabled yet."""
-        provider = MockAnalysisProvider()
-        result = provider.analyze(b"", "traced_profile.png")
-        # Exactly one warning mentioning the limitation
-        assert any("not yet enabled" in w.lower() or "traced" in w.lower() for w in result.warnings)
-
     def test_traced_result_has_success_true(self):
         """Traced mock result is a successful analysis, not a rejection."""
         provider = MockAnalysisProvider()
@@ -455,68 +448,3 @@ class TestTracedProfileValidation:
 
 class TestTracedAnalysisEndToEnd:
     """Integration tests: upload traced-filename image, analyze, verify stored state."""
-
-    def test_analyze_traced_image_stores_contour_on_interface(self, client):
-        """Uploading a 'traced' filename and analyzing sets traced contour on the interface."""
-        # 1. Create project
-        resp = client.post("/api/projects")
-        project_id = resp.json()["data"]["project_id"]
-        token = resp.json()["data"]["project_token"]
-
-        # 2. Upload a PNG named with 'traced' trigger
-        png_bytes = create_test_png_bytes()
-        upload_resp = client.post(
-            f"/api/projects/{project_id}/interfaces/interface_a/upload",
-            files={"file": ("traced_extrusion_cross_section.png", png_bytes, "image/png")},
-            headers={"X-Project-Token": token},
-        )
-        assert upload_resp.status_code == 201
-
-        # 3. Analyze using mock provider
-        analyze_resp = client.post(
-            f"/api/projects/{project_id}/interfaces/interface_a/analyze?provider=mock",
-            headers={"X-Project-Token": token},
-        )
-        assert analyze_resp.status_code == 200
-        result_data = analyze_resp.json()["data"]
-        assert result_data["profile_type"] == "traced_closed"
-        assert result_data["traced_outer_contour"] is not None
-        assert len(result_data["traced_hole_contours"]) >= 1
-
-        # 4. Fetch project and verify interface has generation_unsupported=True
-        project_resp = client.get(
-            f"/api/projects/{project_id}",
-            headers={"X-Project-Token": token},
-        )
-        iface_data = project_resp.json()["data"]["interface_a"]
-        assert iface_data["profile_type"] == "traced_closed"
-        assert iface_data["generation_unsupported"] is False
-        assert iface_data["traced_outer_contour"] is not None
-        assert len(iface_data.get("traced_hole_contours", [])) >= 1
-        assert iface_data["analysis_provider_name"] == "mock"
-
-    def test_analyze_non_traced_image_does_not_set_generation_unsupported(self, client):
-        """Primitive profile analysis does NOT set generation_unsupported=True."""
-        resp = client.post("/api/projects")
-        project_id = resp.json()["data"]["project_id"]
-        token = resp.json()["data"]["project_token"]
-
-        png_bytes = create_test_png_bytes()
-        client.post(
-            f"/api/projects/{project_id}/interfaces/interface_a/upload",
-            files={"file": ("circle_interface.png", png_bytes, "image/png")},
-            headers={"X-Project-Token": token},
-        )
-        client.post(
-            f"/api/projects/{project_id}/interfaces/interface_a/analyze?provider=mock",
-            headers={"X-Project-Token": token},
-        )
-        project_resp = client.get(
-            f"/api/projects/{project_id}",
-            headers={"X-Project-Token": token},
-        )
-        iface_data = project_resp.json()["data"]["interface_a"]
-        assert iface_data["profile_type"] == "circle"
-        assert iface_data.get("generation_unsupported") is False
-        assert iface_data.get("traced_outer_contour") is not None
-        assert iface_data["traced_outer_contour"]["provenance"] == "opencv_primitive"

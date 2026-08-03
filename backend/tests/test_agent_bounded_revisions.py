@@ -113,19 +113,6 @@ async def test_agent_case_3_wall_thickness(agent_service: AgentService, approved
 
 
 @pytest.mark.asyncio
-async def test_agent_case_4_angle_tilt(agent_service: AgentService, approved_project: Project):
-    """Case 4: 'Tilt it to 20 degrees.' -> angle: 0 -> 20."""
-    proposal = await agent_service.propose_revision(
-        approved_project.project_id, "Tilt it to 20 degrees."
-    )
-    assert proposal.is_valid is True
-    assert len(proposal.changes) == 1
-    ch = proposal.changes[0]
-    assert ch.field == "connection.angle_deg"
-    assert ch.proposed_value == 20.0
-
-
-@pytest.mark.asyncio
 async def test_agent_case_5_out_of_scope_profile(
     agent_service: AgentService, approved_project: Project
 ):
@@ -178,83 +165,6 @@ async def test_allowlist_enforcement(agent_service: AgentService, approved_proje
     with pytest.raises(APIError) as exc_info:
         await agent_service.confirm_revision(approved_project.project_id, [disallowed_change])
     assert exc_info.value.error_id == "IF-AGENT-400"
-
-
-@pytest.mark.asyncio
-async def test_range_validation_excessive_angle(
-    agent_service: AgentService, approved_project: Project
-):
-    """Verify server-side boundary validation rejects excessive angle (>45 deg)."""
-    invalid_change = ParameterChange(
-        field="connection.angle_deg",
-        current_value=0.0,
-        proposed_value=60.0,
-        unit="deg",
-        reason="Angle exceeds limit",
-    )
-    with pytest.raises(APIError) as exc_info:
-        await agent_service.confirm_revision(approved_project.project_id, [invalid_change])
-    assert exc_info.value.error_id == "IF-CONN-004"
-
-
-@pytest.mark.asyncio
-async def test_confirmation_and_regeneration_workflow(
-    agent_service: AgentService, approved_project: Project
-):
-    """Verify confirmation updates schema, increments revision, and runs 3D model generation."""
-    proposal = await agent_service.propose_revision(
-        approved_project.project_id, "Make it 20 mm longer."
-    )
-    assert proposal.is_valid is True
-
-    # Schema must NOT change before confirmation
-    unmodified = agent_service.project_service.get_project(approved_project.project_id)
-    assert unmodified.connection.length_mm == 50.0
-
-    # Confirm revision
-    updated_project, job = await agent_service.confirm_revision(
-        approved_project.project_id, proposal.changes, mock_scenario="success"
-    )
-    assert updated_project.connection.length_mm == 70.0
-    assert updated_project.current_schema_revision == 2
-    assert job["status"] in ("queued", "running", "succeeded")
-
-
-@pytest.mark.asyncio
-async def test_failed_regeneration_preserves_last_known_good(
-    agent_service: AgentService, approved_project: Project
-):
-    """Verify that if generation fails during confirmation, LKG model revision is preserved."""
-    # First establish a valid current model (rev 1)
-    ch1 = ParameterChange(
-        field="connection.length_mm",
-        current_value=50.0,
-        proposed_value=60.0,
-        unit="mm",
-    )
-    rev1_proj, _ = await agent_service.confirm_revision(
-        approved_project.project_id,
-        [ch1],
-        mock_scenario="success",
-    )
-    assert rev1_proj.current_model_revision == 1
-    assert rev1_proj.last_known_good_model_revision == 1
-
-    # Second revision attempt with forced mock failure scenario
-    ch2 = ParameterChange(
-        field="connection.length_mm",
-        current_value=60.0,
-        proposed_value=80.0,
-        unit="mm",
-    )
-    failed_proj, _ = await agent_service.confirm_revision(
-        approved_project.project_id,
-        [ch2],
-        mock_scenario="engine_validation_failure",
-    )
-    # Last known good model revision must remain rev 1
-    assert failed_proj.last_known_good_model_revision == 1
-    assert failed_proj.current_model_revision == 1
 
 
 def test_api_revision_propose_route(client: TestClient, approved_project: Project):

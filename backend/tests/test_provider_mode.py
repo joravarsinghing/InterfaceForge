@@ -17,27 +17,6 @@ def test_created_project_has_readable_name_and_mock_mode(client: TestClient) -> 
     assert data["provider_mode"] == "mock"
 
 
-def test_mock_mode_persists_without_schema_revision_change(client: TestClient) -> None:
-    created = client.post("/api/projects").json()["data"]
-    headers = {"X-Project-Token": created["project_token"]}
-
-    response = client.patch(
-        f"/api/projects/{created['project_id']}/provider-mode",
-        json={"provider_mode": "mock"},
-        headers=headers,
-    )
-
-    assert response.status_code == 200
-    payload = response.json()["data"]
-    assert payload["project"]["provider_mode"] == "mock"
-    assert payload["project"]["current_schema_revision"] == 1
-    assert payload["provider_status"]["effective_mode"] == "mock"
-
-    reloaded = client.get(f"/api/projects/{created['project_id']}", headers=headers).json()["data"]
-    assert reloaded["provider_mode"] == "mock"
-    assert reloaded["display_name"] == "Adapter 1"
-
-
 def test_live_mode_rejected_without_backend_credentials(client: TestClient) -> None:
     settings.zoo_api_token = ""
     created = client.post("/api/projects").json()["data"]

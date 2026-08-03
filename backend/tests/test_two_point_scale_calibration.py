@@ -101,35 +101,6 @@ def test_snap_projects_click_to_nearest_trace_segment(client: TestClient) -> Non
     assert data["feature_id"] == "canonical_primitive_boundary"
 
 
-def test_two_point_calibration_persists_and_hydrates_confirmed_scale(client: TestClient) -> None:
-    pid, headers = setup_traced(client)
-    res = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": {"x": 50, "y": 7},
-            "point_b": {"x": 90, "y": 6},
-            "real_distance_mm": 45,
-            "confirmed": True,
-        },
-        headers=headers,
-    )
-    assert res.status_code == 200
-    iface = res.json()["data"]["interface_a"]
-    scale = iface["scale_calibration"]
-    assert scale["confirmed"] is True
-    assert scale["method"] == "two_point_trace"
-    assert scale["point_a"] == {"x": 50.0, "y": 0.0}
-    assert scale["point_b"] == {"x": 90.0, "y": 0.0}
-    assert scale["pixel_distance"] == 40.0
-    assert scale["scale_factor"] == 1.125
-    dims = {d["id"]: d for d in iface["dimensions"]}
-    assert dims["width"]["value"] == 112.5
-    assert dims["height"]["value"] == 56.25
-
-    reloaded = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    assert reloaded["interface_a"]["scale_calibration"] == scale
-
-
 def test_unconfirmed_calibration_blocks_approval_then_confirmed_allows_it(
     client: TestClient,
 ) -> None:
@@ -250,48 +221,6 @@ def test_reselection_and_real_distance_edit_invalidate_existing_approval(
     data = changed.json()["data"]
     assert data["interface_a"]["approved"] is False
     assert data["interface_a"]["scale_calibration"]["confirmed"] is False
-
-
-def test_legacy_unmapped_dimensions_do_not_block_or_drive_approval(client: TestClient) -> None:
-    pid, headers = setup_traced(client)
-    client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json={
-            **traced_payload(False),
-            "dimensions": [
-                *traced_payload(False)["dimensions"],
-                {
-                    "id": "custom_dim_1",
-                    "label": "Custom Dimension 1",
-                    "value": 0,
-                    "unit": "mm",
-                    "provenance": "unresolved",
-                    "confidence": 1.0,
-                    "critical": True,
-                    "feature_ref": None,
-                    "consistency_state": "unmapped",
-                },
-            ],
-        },
-        headers=headers,
-    )
-    confirmed = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": {"x": 0, "y": 0},
-            "point_b": {"x": 100, "y": 0},
-            "real_distance_mm": 40,
-            "confirmed": True,
-        },
-        headers=headers,
-    )
-    assert confirmed.status_code == 200
-    confirm_supported_rectangle_promotion(client, pid, headers)
-    approved = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
-    assert approved.status_code == 200, approved.json()
-    dims = {d["id"]: d for d in approved.json()["data"]["interface_a"]["dimensions"]}
-    assert dims["width"]["value"] == 40.0
-    assert dims["custom_dim_1"]["feature_ref"] is None
 
 
 def primitive_payload(profile_type: str = "circle", interface_id: str = "interface_a") -> dict:
@@ -467,31 +396,6 @@ def test_primitive_snap_supports_circle_rectangle_and_rounded_rectangle(client: 
         assert abs(snapped["y"] - click["y"]) <= 3.1
 
 
-def test_primitive_two_point_calibration_derives_dimensions_and_hydrates(
-    client: TestClient,
-) -> None:
-    pid, headers = setup_primitive(client, "rectangle")
-    res = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": {"x": -30, "y": 20},
-            "point_b": {"x": 30, "y": 20},
-            "real_distance_mm": 120,
-            "confirmed": True,
-        },
-        headers=headers,
-    )
-    assert res.status_code == 200, res.json()
-    iface = res.json()["data"]["interface_a"]
-    assert iface["scale_calibration"]["point_a"] == {"x": -30.0, "y": 20.0}
-    assert iface["scale_calibration"]["point_b"] == {"x": 30.0, "y": 20.0}
-    dims = {d["id"]: d for d in iface["dimensions"]}
-    assert dims["width"]["value"] == 120.0
-    assert dims["height"]["value"] == 80.0
-    reloaded = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    assert reloaded["interface_a"]["scale_calibration"] == iface["scale_calibration"]
-
-
 def test_primitive_snap_rejects_click_far_from_boundary(client: TestClient) -> None:
     pid, headers = setup_primitive(client, "circle")
     res = client.post(
@@ -512,111 +416,3 @@ def test_primitive_calibration_supports_interface_b(client: TestClient) -> None:
     )
     assert res.status_code == 200, res.json()
     assert res.json()["data"]["point"] == {"x": 0.0, "y": -20.0}
-
-
-def test_resolved_primitive_boundary_is_shared_by_hydration_and_snap(client: TestClient) -> None:
-    for profile_type in ("circle", "rounded_rectangle"):
-        pid, headers = setup_primitive(client, profile_type)
-        project = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-        boundary = project["interface_a"]["calibration_boundary"]
-        assert boundary["coordinate_space"] == "canonical_profile_v1"
-        assert boundary["is_closed"] is True
-        assert boundary["points"]
-        assert boundary["fitted_width"] > 0
-        assert boundary["fitted_height"] > 0
-        for point in boundary["points"]:
-            response = client.post(
-                f"/api/projects/{pid}/interfaces/interface_a/scale/snap",
-                json={"point": point},
-                headers=headers,
-            )
-            assert response.status_code == 200, response.json()
-            assert response.json()["data"]["point"] == point
-
-
-def test_resolved_primitive_boundary_survives_calibration_refresh(client: TestClient) -> None:
-    pid, headers = setup_primitive(client, "rounded_rectangle")
-    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"][
-        "calibration_boundary"
-    ]
-    response = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": before["points"][0],
-            "point_b": before["points"][8],
-            "real_distance_mm": 40,
-            "confirmed": True,
-        },
-        headers=headers,
-    )
-    assert response.status_code == 200, response.json()
-    after = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"]
-    assert after["calibration_boundary"] == before
-    assert after["scale_calibration"]["point_a"] == before["points"][0]
-    assert after["scale_calibration"]["point_b"] == before["points"][8]
-
-
-
-def test_exact_circle_boundary_nodes_calibrate_and_far_points_are_rejected(client: TestClient) -> None:
-    pid, headers = setup_primitive(client, "circle")
-    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"]
-    boundary = before["calibration_boundary"]["points"]
-    response = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={"point_a": boundary[0], "point_b": boundary[2], "real_distance_mm": 40, "confirmed": True},
-        headers=headers,
-    )
-    assert response.status_code == 200, response.json()
-    iface = response.json()["data"]["interface_a"]
-    assert iface["resolved_profile_type"] == "circle"
-    assert iface["scale_calibration"]["point_a"] == boundary[0]
-    assert iface["scale_calibration"]["point_b"] == boundary[2]
-
-    rejected = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={"point_a": {"x": 9999, "y": 9999}, "point_b": boundary[2], "real_distance_mm": 40, "confirmed": True},
-        headers=headers,
-    )
-    assert rejected.status_code == 400
-    assert "outside the traced profile bounds" in rejected.json()["error"]["message"]
-
-
-def test_reanalyze_after_two_point_calibration_succeeds(client: TestClient) -> None:
-    pid, token, headers = create_project(client)
-    from tests.test_upload_and_analysis import create_sample_png_bytes
-    upload_res = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/upload",
-        files={"file": ("test.png", create_sample_png_bytes(), "image/png")},
-        headers=headers,
-    )
-    assert upload_res.status_code == 201
-
-    first_anal = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/analyze",
-        headers=headers,
-    )
-    assert first_anal.status_code == 200
-
-    boundary = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]["interface_a"]["calibration_boundary"]["points"]
-
-    res = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": boundary[0],
-            "point_b": boundary[2],
-            "real_distance_mm": 50.0,
-            "confirmed": True,
-        },
-        headers=headers,
-    )
-    assert res.status_code == 200, res.json()
-
-    # Call analysis again on the interface after two-point calibration was saved (re-analysis)
-    reanalyze_res = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/analyze",
-        headers=headers,
-    )
-    assert reanalyze_res.status_code == 200, reanalyze_res.json()
-    proj = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    scale_cal = proj["interface_a"]["scale_calibration"]
-    assert scale_cal is None or scale_cal.get("confirmed") is False

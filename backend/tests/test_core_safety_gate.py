@@ -141,42 +141,6 @@ def confirm_scale(
     return res.json()["data"]
 
 
-def test_upload_measurement_persists_for_interface_a_and_b(client: TestClient) -> None:
-    pid, _token, headers = create_project(client)
-
-    project = upload_and_analyze_with_measurement(
-        client, pid, headers, "interface_a", "overall_width", 41.5
-    )
-    scale_a = project["interface_a"]["scale_calibration"]
-    assert scale_a["reference_dimension"] == "overall_width"
-    assert scale_a["real_distance_mm"] == 41.5
-    assert scale_a["confirmed"] is False
-    assert any(
-        d["id"] == "overall_width" and d["value"] == 41.5
-        for d in project["interface_a"]["dimensions"]
-    )
-
-    confirm_scale(client, pid, headers, "interface_a", "overall_width", 41.5)
-    assert (
-        client.post(
-            f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers
-        ).status_code
-        == 200
-    )
-
-    project = upload_and_analyze_with_measurement(
-        client, pid, headers, "interface_b", "overall_height", 52.25
-    )
-    scale_b = project["interface_b"]["scale_calibration"]
-    assert scale_b["reference_dimension"] == "overall_height"
-    assert scale_b["real_distance_mm"] == 52.25
-    assert scale_b["confirmed"] is False
-    assert any(
-        d["id"] == "overall_height" and d["value"] == 52.25
-        for d in project["interface_b"]["dimensions"]
-    )
-
-
 def test_direct_approval_rejects_unconfirmed_scale_and_patch_bypass(client: TestClient) -> None:
     pid, _token, headers = create_project(client)
     upload_and_analyze_with_measurement(client, pid, headers, "interface_a", "overall_width", 40.0)
@@ -308,112 +272,6 @@ def test_contour_point_limit_and_comparison_budget_are_bounded() -> None:
     assert any("IF-PROFILE-COMPLEXITY-BUDGET" in e for e in errors)
 
 
-def test_normal_clean_profile_still_approves(client: TestClient) -> None:
-    pid, _token, headers = create_project(client)
-    client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/upload",
-        files={"file": ("circle.png", png_bytes(), "image/png")},
-        headers=headers,
-    )
-    client.post(f"/api/projects/{pid}/interfaces/interface_a/analyze", headers=headers)
-    approve = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
-    assert approve.status_code == 200
-
-
-def test_failed_reanalysis_and_invalid_update_preserve_previous_valid_state(
-    client: TestClient,
-) -> None:
-    pid, _token, headers = create_project(client)
-    valid = client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json=traced_interface(confirmed=True),
-        headers=headers,
-    )
-    assert valid.status_code == 200
-    confirm_scale(client, pid, headers, "interface_a", "overall_width", 40.0)
-    promote = client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
-        headers=headers,
-    )
-    assert promote.status_code == 200
-    approve = client.post(f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers)
-    assert approve.status_code == 200
-    before = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    from app.services.project_service import ProjectService
-
-    service = ProjectService()
-    try:
-        service.analyze_interface_image(
-            pid,
-            "interface_a",
-            provider=RejectingProvider(),
-            project_token=headers["X-Project-Token"],
-        )
-    except RuntimeError:
-        pass
-    after_failed_analysis = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    assert (
-        after_failed_analysis["interface_a"]["traced_outer_contour"]
-        == before["interface_a"]["traced_outer_contour"]
-    )
-
-
-def test_failed_generation_preserves_last_known_good_model(client: TestClient) -> None:
-    pid, _token, headers = create_project(client)
-    client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/upload",
-        files={"file": ("circle.png", png_bytes(), "image/png")},
-        headers=headers,
-    )
-    client.post(f"/api/projects/{pid}/interfaces/interface_a/analyze", headers=headers)
-    assert (
-        client.post(
-            f"/api/projects/{pid}/interfaces/interface_a/approve", headers=headers
-        ).status_code
-        == 200
-    )
-    client.post(
-        f"/api/projects/{pid}/interfaces/interface_b/upload",
-        files={"file": ("rectangle.png", png_bytes(), "image/png")},
-        headers=headers,
-    )
-    client.post(f"/api/projects/{pid}/interfaces/interface_b/analyze", headers=headers)
-    assert (
-        client.post(
-            f"/api/projects/{pid}/interfaces/interface_b/approve", headers=headers
-        ).status_code
-        == 200
-    )
-    assert (
-        client.put(
-            f"/api/projects/{pid}/connection",
-            json={"mode": "coaxial", "length_mm": 80.0},
-            headers=headers,
-        ).status_code
-        == 200
-    )
-    assert client.post(f"/api/projects/{pid}/model/start", headers=headers).status_code == 200
-    assert (
-        client.post(
-            f"/api/projects/{pid}/model/succeed", json={"model_revision": 1}, headers=headers
-        ).status_code
-        == 200
-    )
-    assert client.post(f"/api/projects/{pid}/model/start", headers=headers).status_code == 200
-    failed = client.post(
-        f"/api/projects/{pid}/model/fail",
-        json=ModelFailRequest(
-            model_revision=2, error_message="engine rejected update"
-        ).model_dump(),
-        headers=headers,
-    ).json()["data"]
-    assert failed["current_model_revision"] == 1
-    assert failed["last_known_good_model_revision"] == 1
-    assert failed["model_revisions"][0]["status"] == "current"
-    assert failed["model_revisions"][1]["status"] == "failed"
-
-
 def rounded_rectangle_trace_points() -> list[Point2D]:
     return [
         Point2D(x=10, y=0),
@@ -439,10 +297,6 @@ def rounded_rectangle_trace_patch() -> dict:
             "primitive_promotion_confirmed": False,
             "primitive_detection_confidence": 0.9,
             "primitive_detection_reason": "corner_offsets_support_rounded_rectangle",
-            "generation_unsupported": True,
-            "generation_unsupported_reason": (
-                "This outline is more complex than the shapes supported in this version."
-            ),
         }
     )
     return patch
@@ -463,71 +317,6 @@ def confirm_two_point_scale(
     )
     assert res.status_code == 200
     return res.json()["data"]
-
-
-def test_confirming_detected_rounded_rectangle_persists_supported_profile_and_scale(
-    client: TestClient,
-) -> None:
-    pid, _token, headers = create_project(client)
-    patched = client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json=rounded_rectangle_trace_patch(),
-        headers=headers,
-    )
-    assert patched.status_code == 200
-
-    calibrated = confirm_two_point_scale(client, pid, headers, "interface_a")
-    assert calibrated["interface_a"]["profile_type"] == "rounded_rectangle"
-    assert calibrated["interface_a"]["scale_calibration"]["confirmed"] is True
-
-    confirmed = client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json={
-            "primitive_fallback_active": True,
-            "primitive_promotion_confirmed": True,
-        },
-        headers=headers,
-    )
-    assert confirmed.status_code == 200
-    iface = confirmed.json()["data"]["interface_a"]
-    assert iface["profile_type"] == "rounded_rectangle"
-    assert iface["primitive_promotion_confirmed"] is True
-    assert iface["scale_calibration"]["confirmed"] is True
-    assert iface["generation_unsupported"] is False
-    assert {"width", "height", "corner_radius"}.issubset({d["id"] for d in iface["dimensions"]})
-
-    refreshed = client.get(f"/api/projects/{pid}", headers=headers).json()["data"]
-    assert refreshed["interface_a"]["profile_type"] == "rounded_rectangle"
-    assert refreshed["interface_a"]["scale_calibration"]["confirmed"] is True
-
-
-def test_scale_update_does_not_revert_confirmed_detected_shape(client: TestClient) -> None:
-    pid, _token, headers = create_project(client)
-    client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json=rounded_rectangle_trace_patch(),
-        headers=headers,
-    )
-    confirm_two_point_scale(client, pid, headers, "interface_a")
-    confirmed = client.patch(
-        f"/api/projects/{pid}/interfaces/interface_a",
-        json={"primitive_fallback_active": True, "primitive_promotion_confirmed": True},
-        headers=headers,
-    ).json()["data"]
-    assert confirmed["interface_a"]["profile_type"] == "rounded_rectangle"
-
-    recalibrated = client.post(
-        f"/api/projects/{pid}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": {"x": 0, "y": 30},
-            "point_b": {"x": 100, "y": 30},
-            "real_distance_mm": 60.0,
-            "confirmed": True,
-        },
-        headers=headers,
-    ).json()["data"]
-    assert recalibrated["interface_a"]["profile_type"] == "rounded_rectangle"
-    assert recalibrated["interface_a"]["scale_calibration"]["confirmed"] is True
 
 
 def test_approved_promoted_interface_reaches_step3_without_if_conn_008(

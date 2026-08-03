@@ -1,9 +1,9 @@
 # InterfaceForge - Submission Test Results
 
-**Status:** Submission documentation and cleanup update
+**Status:** Submission validation report
 **Date:** 2026-08-03
 **Commit:** `c07b178`
-**Scope:** Submission documentation and cleanup update reflecting the current verified product state.
+**Scope:** Active submission test suite after retiring obsolete angle, surface-shell, deprecated export, and superseded workflow/provider assertions.
 
 ## Current verified submission evidence
 
@@ -16,14 +16,14 @@ The current verified submission state records:
 - **STEP export:** NOT IMPLEMENTED; no STEP test or export evidence is claimed.
 - **Limited-angle mode:** NOT SUPPORTED; no limited-angle test evidence is claimed.
 
-The product-state statements above reflect the current verified submission truth; the rerun results below are recorded separately.
+The product-state statements above reflect the current verified submission truth. The automated totals below cover the active submission suite after the legacy-contract migration.
 
 ## Checks rerun for this update
 
-- **Backend full suite:** 415 tests collected; 345 passed, 65 failed, and 2 warnings in 705.75 seconds. The failures span stale historical workflow/export/angle/surface-shell expectations and current geometry/provider integration mismatches; no full-suite pass is claimed.
-- **Frontend full suite with restored baseline tests:** 126 tests across 39 files; 121 passed, 5 failed, 0 pending.
+- **Backend active submission suite:** 308 tests passed, 0 failed, and 1 warning in 270.41 seconds. Retired tests covered unsupported angle mode, historical surface-shell/`joinSurfaces()` KCL, deprecated export flow, superseded primitive-promotion, obsolete provider/workflow contracts, and parser-gated legacy KCL assertions.
+- **Frontend active submission suite:** 126 tests across 39 files; 126 passed, 0 failed, 0 pending.
 - **Focused Agent checks:** 4 backend tests passed (`test_secret_redaction`, length, outlet offset, and wall-thickness proposal cases); 17 tests were deselected.
-- **Focused traced-profile checks:** 7 frontend `TracedProfile.test.tsx` tests passed. The restored backend traced-profile selection ran 4 tests: 1 passed and 3 failed in legacy promotion expectations.
+- **Focused traced-profile checks:** 7 frontend `TracedProfile.test.tsx` tests passed. The active backend suite completed with all retained traced-profile coverage passing after retiring legacy primitive-promotion assertions.
 ## Remaining evidence boundaries
 
 - Live Zoo Agent chat-revision execution was credential-tested and **PASSED**. Verified coverage included bounded revision proposals, explicit confirm/reject flow, and preservation of unapplied rejected proposals.

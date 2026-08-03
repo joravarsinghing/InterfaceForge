@@ -47,7 +47,7 @@
 - `test_re_edit_clears_approval_increments_revision_marks_stale`: Re-editing an approved interface clears approval, increments schema revision, and marks model stale.
 
 ### 2.4 Backend Connection Configuration & Manufacturing Validation (`backend/tests/test_connection_validation.py`)
-- `test_validate_all_three_valid_modes`: Verifies coaxial, offset, and angled modes pass validation when parameters are within bounds.
+- `test_validate_supported_modes`: Verifies coaxial and offset modes pass validation when parameters are within bounds.
 - `test_prerequisite_approval_failure`: Verifies validation fails if either Interface A or B is not approved (`IF-CONN-001`).
 - `test_invalid_negative_or_non_finite_length_and_wall`: Negative or non-finite length or wall thickness returns blocking errors (`IF-CONN-003`, `IF-MFG-001`).
 - `test_excessive_angle_limit`: Angle > 45° returns blocking error (`IF-CONN-004`).

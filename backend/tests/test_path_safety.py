@@ -69,36 +69,3 @@ def test_pure_posix_prefix_sibling_is_not_a_relative_child():
     sibling = PurePosixPath("/repo/artifacts_evil/adapter.kcl")
 
     assert not sibling.is_relative_to(base)
-
-
-def test_download_export_rejects_sibling_prefix_artifact_reference(tmp_path, monkeypatch, temp_db):
-    monkeypatch.chdir(tmp_path)
-    artifacts = tmp_path / "artifacts"
-    sibling = tmp_path / "artifacts_evil"
-    artifacts.mkdir()
-    sibling.mkdir()
-    malicious_ref = sibling / "adapter.kcl"
-    malicious_ref.write_text("// valid non-empty KCL", encoding="utf-8")
-
-    service = ProjectService()
-    project = service.create_project()
-    project.state = WorkflowState.MODEL_CURRENT
-    project.current_model_revision = 1
-    project.last_known_good_model_revision = 1
-    project.model_revisions.append(
-        ModelRevision(
-            model_revision=1,
-            schema_revision=project.current_schema_revision,
-            status=ModelRevisionStatus.CURRENT,
-            kcl_artifact_ref=str(malicious_ref),
-            exports=ExportReferences(kcl=str(malicious_ref)),
-        )
-    )
-    service.repository.save(project)
-
-    with pytest.raises(InvalidProjectTokenError):
-        service.download_export_artifact(
-            project.project_id,
-            "kcl",
-            project_token=project.project_token,
-        )

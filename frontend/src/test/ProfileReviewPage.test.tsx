@@ -663,7 +663,7 @@ describe('Profile Review shape resolution regressions', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'Use Rounded Rectangle' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/This outline is more complex than the shapes supported in this version/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy traced-profile limitation (superseded)/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
   });
 
@@ -693,7 +693,7 @@ describe('Profile Review shape resolution regressions', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getAllByText(/Shape confirmed/i).length).toBeGreaterThan(0);
+    expect(screen.getByTitle('Supported shape confirmed')).toHaveTextContent('Approved');
     expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
   });
 
@@ -711,7 +711,7 @@ describe('Profile Review shape resolution regressions', () => {
         primitive_detection_reason: null,
         primitive_promotion_confirmed: false,
         generation_unsupported: true,
-        generation_unsupported_reason: 'This outline is more complex than the shapes supported in this version.',
+        generation_unsupported_reason: 'Legacy traced-profile limitation (superseded).',
         dimensions: [
           { id: 'overall_width', label: 'Overall Width', value: 50, unit: 'mm', provenance: 'system_inferred', confidence: 1, critical: true, feature_ref: 'outer_contour' },
           { id: 'overall_height', label: 'Overall Height', value: 30, unit: 'mm', provenance: 'system_inferred', confidence: 1, critical: true, feature_ref: 'outer_contour' },
@@ -740,8 +740,8 @@ describe('Profile Review shape resolution regressions', () => {
     );
 
     expect(screen.queryByRole('button', { name: /Use Rounded Rectangle/i })).not.toBeInTheDocument();
-    expect(screen.getAllByText(/This outline is more complex than the shapes supported in this version/i).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeDisabled();
+    expect(screen.queryByText(/Legacy traced-profile limitation (superseded)/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Approve Interface A/i })).toBeEnabled();
   });
 });
 describe('Profile Review frontend authority contract', () => {

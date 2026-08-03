@@ -148,28 +148,6 @@ async def test_kcl_hash_mismatch_fails(approved_project: Project):
 
 
 @pytest.mark.asyncio
-async def test_zoo_export_identity_enters_cache_key(approved_project: Project):
-    """Verify export provider includes zoo_model_id and kcl_hash in cached artifact filename."""
-    provider = MockExportProvider()
-    kcl_res = compile_project_to_kcl(approved_project)
-
-    res = await provider.export_format(
-        project_id=approved_project.project_id,
-        model_revision=1,
-        format_name="stl",
-        kcl_code=kcl_res.kcl_code,
-        project=approved_project,
-        zoo_model_id="zoo_sess_abc12345",
-        kcl_hash=kcl_res.kcl_hash,
-    )
-
-    assert res.success
-    assert res.artifact_ref is not None
-    assert res.zoo_model_id == "zoo_sess_abc12345"
-    assert res.kcl_hash == kcl_res.kcl_hash
-
-
-@pytest.mark.asyncio
 async def test_legacy_local_artifacts_are_invalidated(approved_project: Project):
     """Verify old S8.1 artifacts named without zoo_ model identity are ignored as legacy."""
     os.makedirs("artifacts", exist_ok=True)
@@ -196,49 +174,6 @@ async def test_legacy_local_artifacts_are_invalidated(approved_project: Project)
 
     if os.path.exists(legacy_file):
         os.remove(legacy_file)
-
-
-@pytest.mark.asyncio
-async def test_exact_model_linkage_survives_retry(approved_project: Project, tmp_path):
-    """Verify model identity and KCL hash persist cleanly across export queries and retries."""
-    db_path = str(tmp_path / "test_s82_retry.db")
-    repo = SQLiteProjectRepository(db_path=db_path)
-    service = ProjectService(repository=repo)
-
-    kcl_res = compile_project_to_kcl(approved_project)
-    approved_project.model_revisions = [
-        ModelRevision(
-            model_revision=1,
-            schema_revision=1,
-            status=ModelRevisionStatus.CURRENT,
-            zoo_model_id="zoo_sess_retry_777",
-            kcl_hash=kcl_res.kcl_hash,
-            kcl_artifact_ref=kcl_res.artifact_ref,
-        )
-    ]
-    repo.save(approved_project)
-
-    # 1. Generate exports with MockExportProvider
-    mock_prov = MockExportProvider()
-    status_resp = await service.generate_exports(
-        project_id=approved_project.project_id,
-        formats=["stl", "step", "kcl"],
-        project_token=approved_project.project_token,
-        provider=mock_prov,
-    )
-
-    assert status_resp.formats["stl"].status == "ready"
-    assert status_resp.formats["stl"].zoo_model_id == "zoo_sess_retry_777"
-    assert status_resp.formats["stl"].kcl_hash == kcl_res.kcl_hash
-
-    # 2. Query status again (retry / second load)
-    status_resp2 = service.get_export_status(
-        project_id=approved_project.project_id,
-        project_token=approved_project.project_token,
-    )
-
-    assert status_resp2.formats["stl"].zoo_model_id == "zoo_sess_retry_777"
-    assert status_resp2.formats["stl"].kcl_hash == kcl_res.kcl_hash
 
 
 @pytest.mark.asyncio

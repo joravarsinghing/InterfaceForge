@@ -52,8 +52,7 @@ describe('InterfaceForge Frontend Application Shell (S6A.5 UI Stabilization)', (
     render(<App />);
 
     expect(screen.getByText('Skip to main content')).toBeInTheDocument();
-    expect(screen.getAllByText('Interface')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Forge')[0]).toBeInTheDocument();
+    expect(screen.getAllByTestId('wordmark')[0]).toHaveTextContent('INTERFACEFORGE');
     expect(
       screen.getByRole('heading', { level: 1, name: /Two interfaces in\. One adapter out\./i })
     ).toBeInTheDocument();

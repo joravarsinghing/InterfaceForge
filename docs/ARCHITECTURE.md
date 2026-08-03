@@ -85,7 +85,7 @@ Per **ADR-001** and **ADR-002**, Stage S5A introduces a dedicated, deterministic
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ KCL Compiler (`app/services/kcl_compiler.py`)                           │
-│ - Supported profiles: circle, rectangle, rounded_rectangle              │
+│ - Supported profiles: circle, rectangle, rounded_rectangle, and approved traced_closed              │
 │ - Supported connection modes: coaxial, offset, angled (<= 45°)           │
 │ - Output: Deterministic KCL string with explicit mm units & comments     │
 │ - SHA-256 Hash computation & version metadata (v1.0.0)                  │

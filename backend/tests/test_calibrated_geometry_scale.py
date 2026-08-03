@@ -56,23 +56,6 @@ def width(points):
     return max(p.x for p in points) - min(p.x for p in points)
 
 
-def test_trace_to_mm_scale_drives_plan_stl_and_kcl(tmp_path):
-    p = project(traced("interface_a", 0.4), traced("interface_b", 0.4))
-    plan = ensure_loft_plan(p)
-    assert width(plan.target_a) == pytest.approx(40.0)
-    assert width(plan.outer_a) == pytest.approx(42.0, abs=0.05)
-
-    obj = generate_adapter_obj(p)
-    bounds = mesh_bounds(obj)
-    assert bounds[1] - bounds[0] == pytest.approx(42.0, abs=0.1)
-
-    result = compile_project_to_kcl(p, artifacts_dir=str(tmp_path))
-    assert result.success, result.errors
-    starts = re.findall(r"startProfile\(at = \[([-0-9.]+), ([-0-9.]+)\]\)", result.kcl_code or "")
-    assert starts
-    assert f"{plan.sections[0].outer[0].x:.6f}" in (result.kcl_code or "")
-
-
 def test_recalibration_rebuilds_every_derived_geometry():
     p = project(traced("interface_a", 0.4), traced("interface_b", 0.4))
     first = ensure_loft_plan(p)

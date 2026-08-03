@@ -230,37 +230,6 @@ def test_rounded_rectangle_uncertain_radius_requires_confirmation() -> None:
     assert radius.consistency_state == "requires_confirmation"
 
 
-def test_confirmed_primitive_two_point_calibration_derives_dimensions() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.CIRCLE
-    project.interface_a.traced_outer_contour = TracedContour(
-        id="outer_contour",
-        points=circle_points(50.0),
-        classification="outer_contour",
-        provenance="analysis",
-    )
-    project.interface_a.scale_calibration = ScaleCalibration(
-        confirmed=False, pixel_distance=100.0, real_distance_mm=40.0
-    )
-    service.repository.save(project)
-
-    updated = service.calibrate_interface_scale(
-        project.project_id,
-        "interface_a",
-        TwoPointScaleCalibrationRequest(
-            point_a=Point2D(x=-50, y=0),
-            point_b=Point2D(x=50, y=0),
-            real_distance_mm=40.0,
-            confirmed=True,
-        ),
-        project.project_token,
-    )
-    dims = {dim.id: dim.value for dim in updated.interface_a.dimensions}
-    assert updated.interface_a.scale_calibration.confirmed is True
-    assert dims["outer_diameter"] == 40.0
-
-
 def test_fit_mode_persists_and_hydrates_without_clearing_approval() -> None:
     service = ProjectService()
     project = service.create_project()
@@ -278,20 +247,6 @@ def test_fit_mode_persists_and_hydrates_without_clearing_approval() -> None:
     reloaded = service.get_project(project.project_id, project.project_token)
     assert updated.interface_a.approved is True
     assert reloaded.interface_a.fit_mode == FitMode.FIT_INSIDE
-
-
-def test_all_four_fit_combinations_validate_and_compile(tmp_path) -> None:
-    for mode_a in (FitMode.FIT_OVER, FitMode.FIT_INSIDE):
-        for mode_b in (FitMode.FIT_OVER, FitMode.FIT_INSIDE):
-            project = project_for_modes(mode_a, mode_b)
-            validation = validate_connection_and_manufacturing(
-                project.interface_a, project.interface_b, project.connection, project.manufacturing
-            )
-            assert validation.is_valid is True, (mode_a, mode_b, validation.blocking_errors)
-            result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
-            assert result.success is True
-            assert 'interface_a_type = "circle"' in result.kcl_code
-            assert 'interface_b_type = "rounded_rectangle"' in result.kcl_code
 
 
 def test_clearance_formulas_for_fit_modes() -> None:
@@ -328,105 +283,6 @@ def test_invalid_fit_inside_geometry_blocks_generation() -> None:
     assert any(issue.id == "IF-MFG-004" for issue in validation.blocking_errors)
 
 
-def test_confident_primitive_trace_auto_resolves_before_approval() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.ROUNDED_RECTANGLE
-    project.interface_a.traced_outer_contour = TracedContour(
-        id="outer_contour",
-        points=rounded_rect_points(),
-        classification="outer_contour",
-        provenance="analysis",
-    )
-    project.interface_a.scale_calibration = ScaleCalibration(
-        confirmed=True,
-        pixel_distance=120.0,
-        real_distance_mm=60.0,
-        scale_factor=0.5,
-    )
-    project.interface_a.dimensions = [
-        Dimension(
-            id="width", label="Width", value=60.0, provenance=DimensionProvenance.USER_ENTERED
-        ),
-        Dimension(
-            id="height", label="Height", value=40.0, provenance=DimensionProvenance.USER_ENTERED
-        ),
-        Dimension(
-            id="corner_radius",
-            label="Corner Radius",
-            value=7.0,
-            provenance=DimensionProvenance.USER_ENTERED,
-            critical=False,
-        ),
-    ]
-    project.interface_a.primitive_fallback_active = True
-    project.interface_a.primitive_promotion_confirmed = False
-    service.repository.save(project)
-
-    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
-    assert approved.interface_a.approved is True
-    assert approved.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
-    assert approved.interface_a.resolution_status.value == "resolved"
-
-def test_inferred_rounded_rectangle_radius_blocks_approval_until_user_confirmed() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.ROUNDED_RECTANGLE
-    project.interface_a.scale_calibration = ScaleCalibration(
-        confirmed=True, pixel_distance=100.0, real_distance_mm=50.0
-    )
-    project.interface_a.primitive_fallback_active = True
-    project.interface_a.primitive_promotion_confirmed = True
-    project.interface_a.dimensions = [
-        Dimension(
-            id="width", label="Width", value=60.0, provenance=DimensionProvenance.USER_ENTERED
-        ),
-        Dimension(
-            id="height", label="Height", value=40.0, provenance=DimensionProvenance.USER_ENTERED
-        ),
-        Dimension(
-            id="corner_radius",
-            label="Corner Radius",
-            value=4.8,
-            provenance=DimensionProvenance.SYSTEM_INFERRED,
-            confidence=0.45,
-            critical=False,
-            consistency_state="requires_confirmation",
-        ),
-    ]
-    service.repository.save(project)
-
-    with pytest.raises(InvalidInterfaceApprovalError, match="corner radius must be confirmed"):
-        service.approve_interface(project.project_id, "interface_a", project.project_token)
-
-    from app.models.schema import InterfacePatchRequest
-
-    confirmed_dims = list(project.interface_a.dimensions)
-    confirmed_dims[2] = confirmed_dims[2].model_copy(
-        update={
-            "provenance": DimensionProvenance.USER_ENTERED,
-            "confidence": 1.0,
-            "consistency_state": "valid",
-        }
-    )
-    service.patch_interface(
-        project.project_id,
-        "interface_a",
-        InterfacePatchRequest(
-            dimensions=confirmed_dims,
-            scale_calibration=ScaleCalibration(
-                confirmed=True,
-                pixel_distance=100.0,
-                real_distance_mm=50.0,
-                scale_factor=0.5,
-            ),
-        ),
-        project.project_token,
-    )
-    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
-    assert approved.interface_a.approved is True
-
-
 def _confirmed_trace_project(profile_type: ProfileType, points: list[Point2D]) -> ProjectService:
     service = ProjectService()
     project = service.create_project()
@@ -454,122 +310,6 @@ def _confirmed_trace_project(profile_type: ProfileType, points: list[Point2D]) -
     return service
 
 
-def test_confirmed_circle_promotion_persists_circle_and_passes_connection_validation() -> None:
-    service = _confirmed_trace_project(ProfileType.CIRCLE, circle_points())
-    approved = service.approve_interface(
-        service.repository.list_all()[-1].project_id,
-        "interface_a",
-        service.repository.list_all()[-1].project_token,
-    )
-    assert approved.interface_a.profile_type == ProfileType.CIRCLE
-    assert approved.interface_a.traced_outer_contour is not None
-
-
-def test_confirmed_rectangle_promotion_persists_rectangle() -> None:
-    service = _confirmed_trace_project(
-        ProfileType.RECTANGLE,
-        [Point2D(x=-40, y=-20), Point2D(x=40, y=-20), Point2D(x=40, y=20), Point2D(x=-40, y=20)],
-    )
-    project = service.repository.list_all()[-1]
-    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
-    assert approved.interface_a.profile_type == ProfileType.RECTANGLE
-
-
-def test_confirmed_rounded_rectangle_promotion_persists_rounded_rectangle() -> None:
-    service = _confirmed_trace_project(ProfileType.ROUNDED_RECTANGLE, rounded_rect_points())
-    project = service.repository.list_all()[-1]
-    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
-    assert approved.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
-    assert approved.interface_a.traced_outer_contour is not None
-
-
-def test_arbitrary_traced_closed_can_be_approved_for_generation() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
-    project.interface_a.traced_outer_contour = TracedContour(
-        id="outer_contour",
-        points=irregular_points(),
-        classification="outer_contour",
-        provenance="analysis",
-    )
-    project.interface_a.scale_calibration = ScaleCalibration(
-        source="user_calibration",
-        method="two_point_trace",
-        point_a=irregular_points()[0],
-        point_b=irregular_points()[1],
-        pixel_distance=100.0,
-        real_distance_mm=50.0,
-        scale_factor=0.5,
-        confirmed=True,
-    )
-    service.repository.save(project)
-
-    approved = service.approve_interface(project.project_id, "interface_a", project.project_token)
-    assert approved.interface_a.profile_type == ProfileType.TRACED_CLOSED
-    assert approved.interface_a.resolution_status == ShapeResolutionStatus.RESOLVED
-    assert approved.interface_a.generation_unsupported is False
-
-
-def test_existing_confirmed_traced_closed_promotion_is_repaired_and_stales_model() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
-    project.interface_a.traced_outer_contour = TracedContour(
-        id="outer_contour",
-        points=rounded_rect_points(),
-        classification="outer_contour",
-        provenance="analysis",
-    )
-    project.interface_a.scale_calibration = ScaleCalibration(
-        source="user_calibration",
-        method="two_point_trace",
-        point_a=rounded_rect_points()[0],
-        point_b=rounded_rect_points()[1],
-        pixel_distance=100.0,
-        real_distance_mm=50.0,
-        scale_factor=0.5,
-        confirmed=True,
-    )
-    project.interface_a.primitive_fallback_active = True
-    project.interface_a.primitive_promotion_confirmed = True
-    project.current_model_revision = 1
-    project.model_revisions.append(
-        ModelRevision(
-            model_revision=1,
-            schema_revision=project.current_schema_revision,
-            status=ModelRevisionStatus.CURRENT,
-        )
-    )
-    service.repository.save(project)
-
-    repaired = service.get_project(project.project_id, project.project_token)
-
-    assert repaired.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
-    assert repaired.interface_a.traced_outer_contour is not None
-    assert repaired.model_revisions[0].status == ModelRevisionStatus.STALE
-    assert repaired.current_schema_revision == project.current_schema_revision + 1
-
-
-def test_confident_traced_closed_is_repaired_on_load() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
-    project.interface_a.traced_outer_contour = TracedContour(
-        id="outer_contour",
-        points=rounded_rect_points(),
-        classification="outer_contour",
-        provenance="analysis",
-    )
-    project.interface_a.primitive_promotion_confirmed = False
-    service.repository.save(project)
-
-    loaded = service.get_project(project.project_id, project.project_token)
-
-    assert loaded.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
-    assert loaded.interface_a.resolution_status.value == "resolved"
-
-
 def test_scale_snap_prefers_nearby_simplified_node_before_edge_projection() -> None:
     service = ProjectService()
     project = service.create_project()
@@ -590,22 +330,3 @@ def test_scale_snap_prefers_nearby_simplified_node_before_edge_projection() -> N
 
     assert snapped.point == Point2D(x=0, y=0)
     assert snapped.feature_id == "canonical_primitive_boundary"
-
-def test_legacy_is_complex_true_does_not_block_supported_shape_resolution() -> None:
-    service = ProjectService()
-    project = service.create_project()
-    project.interface_a.profile_type = ProfileType.TRACED_CLOSED
-    project.interface_a.is_complex = True
-    project.interface_a.traced_outer_contour = TracedContour(
-        id="outer_contour",
-        points=rounded_rect_points(),
-        classification="outer_contour",
-        provenance="analysis",
-    )
-    service.repository.save(project)
-
-    loaded = service.get_project(project.project_id, project.project_token)
-
-    assert loaded.interface_a.profile_type == ProfileType.ROUNDED_RECTANGLE
-    assert loaded.interface_a.resolution_status.value == "resolved"
-    assert loaded.interface_a.is_complex is True

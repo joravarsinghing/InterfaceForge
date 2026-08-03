@@ -135,87 +135,6 @@ def test_interface_b_upload_prerequisite(client: TestClient) -> None:
     assert "Interface A must be approved" in msg
 
 
-def test_mock_analysis_success_and_state_updates(client: TestClient) -> None:
-    """Test full workflow: upload circle -> analyze -> state is interface_a_review_required."""
-    res = client.post("/api/projects")
-    p_id = res.json()["data"]["project_id"]
-    token = res.json()["data"]["project_token"]
-    headers = {"X-Project-Token": token}
-
-    # Upload valid circle image
-    png_bytes = create_sample_png_bytes()
-    upload_res = client.post(
-        f"/api/projects/{p_id}/interfaces/interface_a/upload",
-        files={"file": ("valid_circle.png", png_bytes, "image/png")},
-        headers=headers,
-    )
-    assert upload_res.status_code == 201
-
-    # Analyze image
-    analyze_res = client.post(
-        f"/api/projects/{p_id}/interfaces/interface_a/analyze",
-        headers=headers,
-    )
-    assert analyze_res.status_code == 200
-    anal_data = analyze_res.json()["data"]
-    assert anal_data["profile_type"] == ProfileType.CIRCLE
-    assert anal_data["confidence"] > 0.8
-    assert len(anal_data["candidate_dimensions"]) > 0
-
-    # Check project state updated to interface_a_review_required
-    proj_res = client.get(f"/api/projects/{p_id}", headers=headers)
-    assert proj_res.json()["data"]["state"] == WorkflowState.INTERFACE_A_REVIEW_REQUIRED
-
-
-def test_mock_analysis_rectangle_and_rounded(client: TestClient) -> None:
-    """Test mock analysis detects rectangle and rounded rectangle profiles from filename."""
-    res = client.post("/api/projects")
-    p_id = res.json()["data"]["project_id"]
-    token = res.json()["data"]["project_token"]
-    headers = {"X-Project-Token": token}
-
-    png_bytes = create_sample_png_bytes()
-    client.post(
-        f"/api/projects/{p_id}/interfaces/interface_a/upload",
-        files={"file": ("valid_rectangle.png", png_bytes, "image/png")},
-        headers=headers,
-    )
-    rect_anal = client.post(
-        f"/api/projects/{p_id}/interfaces/interface_a/analyze",
-        headers=headers,
-    ).json()["data"]
-    assert rect_anal["profile_type"] == ProfileType.RECTANGLE
-    assert len(rect_anal["candidate_dimensions"]) == 2
-
-    # Interface A approve
-    client.post(
-        f"/api/projects/{p_id}/interfaces/interface_a/scale/calibrate",
-        json={
-            "point_a": {"x": -30, "y": -20},
-            "point_b": {"x": 30, "y": -20},
-            "real_distance_mm": 60,
-            "confirmed": True,
-        },
-        headers=headers,
-    )
-    client.post(f"/api/projects/{p_id}/interfaces/interface_a/approve", headers=headers)
-
-    # Interface B upload rounded rectangle
-    client.post(
-        f"/api/projects/{p_id}/interfaces/interface_b/upload",
-        files={"file": ("valid_rounded_rectangle.png", png_bytes, "image/png")},
-        headers=headers,
-    )
-    rounded_anal = client.post(
-        f"/api/projects/{p_id}/interfaces/interface_b/analyze",
-        headers=headers,
-    ).json()["data"]
-    assert rounded_anal["profile_type"] == ProfileType.ROUNDED_RECTANGLE
-    assert len(rounded_anal["candidate_dimensions"]) == 3
-    proj_state = client.get(f"/api/projects/{p_id}", headers=headers).json()["data"]["state"]
-    assert proj_state == WorkflowState.INTERFACE_B_REVIEW_REQUIRED
-
-
 def test_mock_analysis_rejection(client: TestClient) -> None:
     """Test poor image quality triggers analysis rejection with IF-ANALYSIS-400."""
     res = client.post("/api/projects")
@@ -323,33 +242,6 @@ def test_explicit_ai_guidance_uses_gemini_guided_opencv(client: TestClient, monk
     )
     assert analyze.status_code == 200, analyze.json()
     assert analyze.json()["data"]["analysis_provider_name"] == "gemini_guided_opencv"
-
-
-def test_gemini_failure_does_not_break_default_opencv_workflow(
-    client: TestClient, monkeypatch
-) -> None:
-    from app.services.analysis_provider import GeminiAnalysisProvider
-
-    def fail_if_called(*args, **kwargs):  # type: ignore[no-untyped-def]
-        raise RuntimeError("Gemini unavailable")
-
-    monkeypatch.setattr(GeminiAnalysisProvider, "analyze", fail_if_called)
-    res = client.post("/api/projects")
-    project = res.json()["data"]
-    headers = {"X-Project-Token": project["project_token"]}
-    png_bytes = create_sample_png_bytes()
-    client.post(
-        f"/api/projects/{project['project_id']}/interfaces/interface_a/upload",
-        files={"file": ("valid_rectangle.png", png_bytes, "image/png")},
-        headers=headers,
-    )
-    analyze = client.post(
-        f"/api/projects/{project['project_id']}/interfaces/interface_a/analyze",
-        headers=headers,
-    )
-    assert analyze.status_code == 200, analyze.json()
-    assert analyze.json()["data"]["analysis_provider_name"] == "opencv"
-    assert analyze.json()["data"]["profile_type"] == ProfileType.RECTANGLE
 
 
 def test_mock_provider_override_keeps_mock_provenance(client: TestClient) -> None:

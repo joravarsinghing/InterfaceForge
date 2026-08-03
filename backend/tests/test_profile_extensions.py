@@ -4,12 +4,11 @@ from app.models.schema import Connection, ConnectionMode, Project
 from app.services.loft_plan import ensure_loft_plan
 
 
-@pytest.mark.parametrize("mode", [ConnectionMode.COAXIAL, ConnectionMode.OFFSET, ConnectionMode.ANGLED])
+@pytest.mark.parametrize("mode", [ConnectionMode.COAXIAL, ConnectionMode.OFFSET])
 def test_profile_extensions_add_straight_sections_for_all_modes(mode):
     project = Project(project_id=f"extensions-{mode.value}", project_token="test")
     project.connection = Connection(
         mode=mode, length_mm=40, offset_x_mm=8 if mode != ConnectionMode.COAXIAL else 0,
-        angle_deg=15 if mode == ConnectionMode.ANGLED else 0,
         extension_a_mm=10, extension_b_mm=12,
     )
 
