@@ -11,7 +11,7 @@
 - STEP export is not implemented and is out of scope.
 - Limited-angle mode is not supported.
 - Zoo Agent proposals remain bounded by server-side validation and require explicit user confirmation.
-- Live Zoo Agent execution is unproven until credential-tested.
+- Live Zoo Agent chat-revision execution was credential-tested and PASSED, including bounded proposals and explicit confirmation/rejection flow.
 
 ## Security and provider rules
 

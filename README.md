@@ -372,8 +372,8 @@ The submission build supports primitive profiles for final adapter generation.
   </tr>
   <tr>
     <td><strong>Arbitrary traced closed profile</strong></td>
-    <td>Experimental</td>
-    <td>Not supported in the submission build</td>
+    <td>Supported</td>
+    <td>Supported</td>
   </tr>
 </table>
 
@@ -459,7 +459,7 @@ They can introduce:
 * additional closed regions;
 * incorrect contour selection.
 
-Dimensioned drawings and arbitrary traced profiles remain experimental in the submission build.
+Dimensioned drawings remain experimental and require manual review. Approved arbitrary traced closed profiles are supported for final adapter generation.
 
 ---
 
@@ -697,7 +697,7 @@ Live Zoo verification requires valid credentials and should remain separate from
 * Source images must already preserve their proportions.
 * Two-point calibration establishes scale but does not correct perspective distortion.
 * Circle, rectangle, and rounded rectangle are supported for final adapter generation.
-* Arbitrary traced closed profiles remain experimental and cannot generate final adapters in the submission build.
+* Arbitrary traced closed profiles are supported for final adapter generation after approval.
 * Dimensioned engineering drawings may introduce false geometry.
 * Annotation-heavy drawings are outside the reliable submission workflow.
 * Threads, mounting holes, countersinks, dovetails, undercuts, and multi-depth interfaces are outside the current scope.

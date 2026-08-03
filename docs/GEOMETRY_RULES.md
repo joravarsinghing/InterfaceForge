@@ -123,7 +123,7 @@ Per **ADR-001** and **ADR-012**, connection parameters (transition length, later
 | **Mode Angle** | `mode in {coaxial, offset} && angle_deg != 0` | **`IF-CONN-005`** | Angle must be 0° for coaxial and offset modes. |
 | **Offset Ratio** | $\frac{\sqrt{\text{offset\_x}^2 + \text{offset\_y}^2}}{\text{length\_mm}} > 1.5$ | **`IF-CONN-006`** | Lateral offset relative to length exceeds 1.5 ratio limit. |
 | **Mode Offset** | `mode == coaxial && (offset_x != 0 \|\| offset_y != 0)` | **`IF-CONN-007`** | X/Y offsets must be 0 mm for coaxial mode. |
-| **Profile Scope**| `profile_type == traced_closed` | **`IF-CONN-008`** | Unsupported profile geometry combination. |
+| **Profile Scope**| `profile_type == traced_closed` | **`IF-CONN-008`** | Approved traced closed profiles are supported for final generation after validation and approval. |
 | **Self-Intersection**| $\text{total\_span} > 1.8 \cdot \text{length\_mm} + \min(D_A, D_B)$ | **`IF-CONN-009`** | Loft self-intersection risk due to excessive angle/offset. |
 | **Wall Thickness**| `wall_thickness_mm <= 0` or non-finite | **`IF-MFG-001`** | Wall thickness must be positive and finite (> 0 mm). |
 | **Min Printable Wall**| `wall_thickness_mm < 0.4` | **`IF-MFG-002`** | Wall thickness below absolute printable limit (0.4 mm). |

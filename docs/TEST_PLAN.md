@@ -62,7 +62,7 @@
 - `test_rectangular_coaxial_compilation`: Validates rectangle to rounded rectangle transition emits correct width, height, corner radius, and tangential arcs.
 - `test_circular_offset_compilation`: Validates offset mode emits lateral translation parameters.
 - `test_angled_compilation`: Validates angled mode emits inclined top plane construction.
-- `test_invalid_unsupported_profile`: Profile type `traced_closed` fails pre-flight compilation with `IF-KCL-001`.
+- `test_arbitrary_closed_profiles_compile_to_polyline_sketches`: Approved `traced_closed` profiles compile for final generation through the deterministic KCL path.
 - `test_non_finite_input`: Non-finite numbers fail compilation with `IF-KCL-002`.
 - `test_unapproved_prerequisites_fail`: Unapproved interfaces fail compilation with `IF-KCL-003`.
 - `test_repeated_identical_compilation_is_deterministic`: Repeated compilation of identical schema produces byte-for-byte identical KCL output and hash.

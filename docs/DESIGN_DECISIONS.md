@@ -89,7 +89,7 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 - **ADR-008:** Purpose-built UX replaces manual Zoo Design Studio editing.
 - **ADR-009:** Backend owns all privileged external API calls and credentials.
 - **ADR-010:** MVP modular monolith structure.
-- **ADR-012:** Geometry scope is strictly constrained to supported families and modes.
+- **ADR-012:** Geometry scope includes circle, rectangle, rounded rectangle, and approved `traced_closed` profiles; supported connection modes are coaxial and offset.
 - **ADR-013:** Standardized error envelopes with stable error IDs.
 - **ADR-014:** Accessibility baseline is enforced before visual polish.
 

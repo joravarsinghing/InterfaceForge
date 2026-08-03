@@ -51,7 +51,7 @@ Container representing an adapter session, versioning metadata, and workflow sta
 ### 2.2 Interface
 Describes an adapter port interface (Interface A or Interface B).
 
-- **Supported Profile Types:** `circle`, `rectangle`, `rounded_rectangle`, `traced_closed` (Stage S10.3 foundation)
+- **Supported Profile Types:** `circle`, `rectangle`, `rounded_rectangle`, `traced_closed` (approved traced profiles are in scope for final generation)
 - **Validation:** `is_closed`, `self_intersects`, `warnings`
 - **Approval:** `approved`, `approved_at`
 - **Provenance & Traced Profile Metadata (Stage S10.3 & S10.4):**
@@ -62,8 +62,8 @@ Describes an adapter port interface (Interface A or Interface B).
   - `verification_status`: Status string (`exact_trace_ready` | `trace_requires_correction` | `simplified_envelope_only` | `unsupported_insufficient_image`)
   - `primitive_fallback_active`: Boolean flag indicating if user selected primitive envelope fallback
   - `primitive_fallback_label`: Mandated label string: `"Simplified envelope — not the exact cross-section"`
-  - `generation_unsupported`: Boolean flag (`true` when downstream 3D KCL generation for arbitrary traced profiles is not yet enabled)
-  - `generation_unsupported_reason`: User-facing explanation of the generation limitation
+  - `generation_unsupported`: Legacy compatibility flag; false for approved `traced_closed` profiles in the current generation path
+  - `generation_unsupported_reason`: Legacy compatibility explanation; current approved traced profiles may generate final adapters
 
 ### 2.3 Connection & Manufacturing (Stage S4C)
 Defines spatial alignment relationship and 3D printing manufacturing rules.

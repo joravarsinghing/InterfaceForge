@@ -5,7 +5,7 @@
 **Date:** July 23, 2026  
 **Primary Author:** Antigravity AI  
 
-> **Historical / Superseded:** This stage report records its historical state and outcomes; it is not the current submission capability contract. Current truth: KCL 2.0 solid-body generation works; supported outputs are STL and KCL; STEP is planned but not implemented; supported connection modes are coaxial and offset; angle-based connections are unsupported; historical surface-shell, `joinSurfaces()`, Boolean-blocker, and deprecated-KCL notes are superseded; live Zoo Agent execution remains unproven unless credential-tested.
+> **Historical / Superseded:** This stage report records its historical state and outcomes; it is not the current submission capability contract. Current truth: KCL 2.0 solid-body generation works; supported outputs are STL and KCL; STEP is planned but not implemented; supported connection modes are coaxial and offset; angle-based connections are unsupported; historical surface-shell, `joinSurfaces()`, Boolean-blocker, and deprecated-KCL notes are superseded; credentialed live Zoo Agent chat-revision execution is verified and passed.
 
 ---
 
