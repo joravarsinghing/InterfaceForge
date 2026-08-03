@@ -106,12 +106,12 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     expect(screen.getByText(/Interface B:/i)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Coaxial/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Parallel Offset/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Limited Angle/i })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Limited Angle/i })).not.toBeInTheDocument();
     expect(screen.getAllByText('Fit over the outside').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Fit inside the opening').length).toBeGreaterThan(0);
   });
 
-  it('switches mode and updates active fields for Offset and Angled modes', async () => {
+  it('switches mode and updates active fields for Offset mode', async () => {
     vi.mocked(api.validateConnectionConfig).mockResolvedValue({
       is_valid: true,
       blocking_errors: [],
@@ -135,10 +135,7 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
     expect(screen.getByLabelText(/Y Offset/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Transition Angle/i)).not.toBeInTheDocument();
 
-    // Select Angled Mode
-    fireEvent.click(screen.getByRole('radio', { name: /Limited Angle/i }));
-    expect(screen.getByLabelText(/X Offset/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Transition Angle/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Transition Angle/i)).not.toBeInTheDocument();
   });
 
   it('updates the shared preview from draft connection values before save', async () => {
@@ -231,6 +228,55 @@ describe('ConnectionConfigPage Component (Stage S4C)', () => {
       );
       expect(onProjectUpdate).toHaveBeenCalled();
     });
+  });
+
+  it('shows an inline warning and disables generation when tolerance is outside its range', () => {
+    vi.mocked(api.validateConnectionConfig).mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: { length_mm: 10, wall_thickness_mm: 2.4 },
+    });
+
+    render(
+      <BrowserRouter>
+        <ConnectionConfigPage project={{
+          ...mockApprovedProject,
+          manufacturing: { ...mockApprovedProject.manufacturing, clearance_a_mm: 6 },
+        }} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText('Tolerance A must be between 0 and 5 mm.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Generate Model/i })).toBeDisabled();
+  });
+
+  it('switches action colors between generated and edited states', () => {
+    vi.mocked(api.validateConnectionConfig).mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: { length_mm: 10, wall_thickness_mm: 2.4 },
+    });
+
+    render(
+      <BrowserRouter>
+        <ConnectionConfigPage project={{
+          ...mockApprovedProject,
+          state: 'model_current',
+          current_model_revision: 1,
+        }} />
+      </BrowserRouter>
+    );
+
+    const generateButton = screen.getByRole('button', { name: /Generate Model/i });
+    const proceedButton = screen.getByRole('button', { name: /Proceed to Step 4/i });
+    expect(generateButton).toHaveStyle({ background: '#0d1117' });
+    expect(proceedButton).toHaveStyle({ background: '#3fb950' });
+
+    fireEvent.change(screen.getByLabelText(/Transition Length/i), { target: { value: '70' } });
+    expect(generateButton).toHaveStyle({ background: '#3fb950' });
+    expect(proceedButton).toHaveStyle({ background: '#0d1117' });
   });
 
   it('disables save button and displays error when transition length is changed to 0', async () => {

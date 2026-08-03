@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project, ModelRevision, AgentProposalResult } from '../types/schema';
 import { GeometryPreview } from '../components/GeometryPreview';
@@ -32,6 +32,15 @@ interface ResultPageProps {
   onProjectUpdate?: (updated: Project) => void;
   onRestartProject?: () => void;
 }
+
+const SAFE_REVISION_COMMANDS = [
+  { label: 'Height', prompt: 'Set transition height to ' },
+  { label: 'Wall thickness', prompt: 'Set wall thickness to ' },
+  { label: 'X offset', prompt: 'Set outlet X offset to ' },
+  { label: 'Y offset', prompt: 'Set outlet Y offset to ' },
+  { label: 'Tolerance A', prompt: 'Set Interface A tolerance to ' },
+  { label: 'Tolerance B', prompt: 'Set Interface B tolerance to ' },
+] as const;
 
 export const ResultPage: React.FC<ResultPageProps> = ({
   project,
@@ -68,6 +77,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
 
   // Model Revision Panel State (Stage S9 Bounded Zoo Agent Revisions)
   const [revisionPrompt, setRevisionPrompt] = useState('');
+  const revisionInputRef = useRef<HTMLInputElement>(null);
   const [isProposing, setIsProposing] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [proposal, setProposal] = useState<AgentProposalResult | null>(null);
@@ -135,10 +145,19 @@ export const ResultPage: React.FC<ResultPageProps> = ({
     setTimeout(() => setCopiedKcl(false), 2000);
   };
 
-  const handleDownloadKcl = () => {
-    if (isPipelineBusy || exportStatus?.formats.kcl?.status !== 'ready') return;
-    window.open(getExportDownloadUrl(project.project_id, 'kcl', project.project_token), '_blank', 'noopener,noreferrer');
+  const insertRevisionCommand = (prompt: string) => {
+    setRevisionPrompt((current) => {
+      const nextPrompt = !current.trim()
+        ? prompt
+        : current + (current.endsWith(' ') ? '' : ' ') + prompt;
+      window.setTimeout(() => {
+        revisionInputRef.current?.focus();
+        revisionInputRef.current?.setSelectionRange(nextPrompt.length, nextPrompt.length);
+      }, 0);
+      return nextPrompt;
+    });
   };
+
 
   const refreshExportStatus = async () => {
     const status = await fetchExportStatus(project.project_id, project.project_token);
@@ -383,7 +402,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
           <span>-</span> Safe Model Revisions (Zoo Agent API)
         </h2>
         <p style={{ fontSize: '0.88rem', color: '#c9d1d9', marginTop: 0, marginBottom: '1rem' }}>
-          Request natural-language adjustments to transition length, lateral offsets, angle inclination, wall thickness, or clearances.
+          Request natural-language adjustments to transition length, lateral offsets, angle inclination, wall thickness, or tolerances.
           The AI proposes validated changes, which are only applied to the model after your explicit confirmation.
         </p>
 
@@ -392,6 +411,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             type="text"
             className="input-field"
             value={revisionPrompt}
+            ref={revisionInputRef}
             onChange={(e) => setRevisionPrompt(e.target.value)}
             placeholder="e.g. 'Make it 20 mm longer', 'Move outlet 10 mm right and 5 mm up', 'Increase wall thickness to 3 mm'"
             disabled={isProposing || isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running'}
@@ -401,11 +421,27 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             type="submit"
             className="btn btn-primary"
             disabled={isProposing || isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running' || !revisionPrompt.trim()}
-            style={{ background: '#00e676', color: '#0d1117', border: 'none', fontWeight: 'bold', minWidth: '160px' }}
+            style={{ background: revisionPrompt.trim() ? '#00e676' : '#0d1117', color: revisionPrompt.trim() ? '#0d1117' : '#00e676', border: '1px solid #00e676', fontWeight: 'bold', minWidth: '160px' }}
           >
             {isProposing ? 'Analyzing Prompt...' : 'Propose Revision'}
           </button>
         </form>
+
+        <div aria-label="Safe revision command templates" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <span style={{ color: '#8b949e', fontSize: '0.82rem' }}>Insert a command:</span>
+          {SAFE_REVISION_COMMANDS.map((command) => (
+            <button
+              key={command.label}
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => insertRevisionCommand(command.prompt)}
+              disabled={isProposing || isConfirming || regenerationJob?.status === 'queued' || regenerationJob?.status === 'running'}
+              title={`Insert: ${command.prompt}`}
+            >
+              {command.label}
+            </button>
+          ))}
+        </div>
 
         {isProposing && (
           <div className="agent-thinking-progress" role="status" aria-live="polite">
@@ -547,10 +583,6 @@ export const ResultPage: React.FC<ResultPageProps> = ({
               volumeCm3={previewMetadata?.volume_cm3 ?? activeRev?.volume_cm3}
               className="step5-geometry-preview"
             />
-
-            <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(22, 27, 34, 0.85)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #30363d', fontSize: '0.75rem', color: '#8b949e' }}>
-              Mock Render Canvas
-            </div>
           </div>
 
           <div className="preview-metadata-grid" style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
@@ -600,7 +632,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             <div style={{ background: '#0d1117', padding: '0.75rem', borderRadius: '6px', border: '1px solid #21262d' }}>
               <strong style={{ color: '#d29922', display: 'block', marginBottom: '0.25rem' }}>Connection Parameters:</strong>
               <div style={{ color: '#c9d1d9' }}>
-                Mode: <strong>{conn.mode}</strong> | Length: <strong>{conn.length_mm} mm</strong> | Offsets: X={conn.offset_x_mm}mm, Y={conn.offset_y_mm}mm | Angle: {conn.angle_deg} deg
+                Mode: <strong>{conn.mode}</strong> | Length: <strong>{conn.length_mm} mm</strong> | Offsets: X={conn.offset_x_mm}mm, Y={conn.offset_y_mm}mm
               </div>
             </div>
 
@@ -608,7 +640,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             <div style={{ background: '#0d1117', padding: '0.75rem', borderRadius: '6px', border: '1px solid #21262d' }}>
               <strong style={{ color: '#a371f7', display: 'block', marginBottom: '0.25rem' }}>Fabrication Settings:</strong>
               <div style={{ color: '#c9d1d9' }}>
-                Process: <strong>{mfg.process.toUpperCase()}</strong> | Material: <strong>{mfg.material}</strong> | Wall: {mfg.wall_thickness_mm} mm | Clearances: A={mfg.clearance_a_mm}mm, B={mfg.clearance_b_mm}mm
+                Process: <strong>{mfg.process.toUpperCase()}</strong> | Wall: {mfg.wall_thickness_mm} mm | Tolerances: A={mfg.clearance_a_mm}mm, B={mfg.clearance_b_mm}mm
               </div>
             </div>
           </div>
@@ -646,9 +678,6 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyKcl}>
               {copiedKcl ? ' Copied!' : 'Copy KCL'}
-            </button>
-            <button type="button" className={`btn btn-secondary btn-sm${isPipelineBusy ? ' export-action-button-pipeline-busy' : ''}`} disabled={isPipelineBusy} onClick={handleDownloadKcl} style={{ opacity: isPipelineBusy ? 0.5 : 1 }}>
-              Download .kcl
             </button>
             <a
               href="https://zoo.dev/design-studio/download"

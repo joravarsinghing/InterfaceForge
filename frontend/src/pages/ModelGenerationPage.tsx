@@ -217,6 +217,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
   const isJobSucceeded = activeJob?.status === 'succeeded';
   const isJobFailed = activeJob?.status === 'failed';
   const isJobCancelled = activeJob?.status === 'cancelled';
+  const isModelGenerated = project.state === 'model_current' || isJobSucceeded || canProceedToReview;
 
   const stagesList = [
     { key: 'validating', label: 'Validating' },
@@ -310,24 +311,30 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
           </div>
         )}
 
-        <div className="compile-action-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+        <div className="compile-action-row" style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
           <button
             type="button"
-            className="btn btn-secondary"
+            className={`btn btn-secondary ${isModelGenerated ? 'step4-generated-button' : ''}`}
             disabled={!isReadyToCompile || compileState.loading}
             onClick={handleCompileKcl}
           >
-            {compileState.loading ? 'Compiling KCL...' : 'Compile KCL Code'}
+            {compileState.loading ? 'Compiling KCL...' : 'Inspect KCL Code (optional)'}
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-large"
+            className={`btn btn-primary btn-large ${isModelGenerated ? 'step4-generated-button' : ''}`}
             disabled={!isReadyToCompile || isJobActive || jobState.loading}
             onClick={handleStartGeneration}
           >
             {jobState.loading ? 'Launching Generation...' : ' Start 3D Generation'}
           </button>
         </div>
+        {(compileState.loading || jobState.loading) && (
+          <div className="step4-action-loading" data-testid="step4-action-loading" role="status" aria-live="polite">
+            <span className="step4-spinner" aria-hidden="true" />
+            {compileState.loading ? 'Generating KCL code. Please wait...' : 'Starting 3D model generation. Please wait...'}
+          </div>
+        )}
       </section>
 
       {/* Compiler Artifact Output Panel */}
@@ -364,19 +371,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             <pre className="kcl-code-block" tabIndex={0} aria-label="KCL Source Code Preview">
               <code>{compileState.result.preview_snippet || compileState.result.kcl_code}</code>
             </pre>
-          </div>
-
-          <div className="kcl-card-footer">
-            <a
-              href="https://zoo.dev/design-studio/download"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-primary"
-            >
-              Download Zoo Design Studio | Zoo
-            </a>
-          </div>
-        </section>
+          </div></section>
       )}
 
       {/* Staged Generation Progress Panel */}
@@ -396,7 +391,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             {isJobActive && (
               <div className="generation-loading-header" aria-live="polite">
                 <div>
-                  <span className="generation-loading-label">Zoo Engine generation progress</span>
+                  <span className="generation-loading-label"><span className="step4-spinner step4-spinner-inline" aria-hidden="true" /> Zoo Engine generation progress</span>
                   <strong className="generation-loading-percent">{Math.round(activeJob.progress_percent)}%</strong>
                 </div>
                 <div className="generation-loading-dialogue" role="status">
@@ -552,14 +547,14 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
 
       {/* Footer Navigation */}
       <div className="navigation-footer">
-        <button type="button" className="btn btn-secondary" onClick={() => navigate('/step3')}>
+        <button type="button" className={`btn btn-secondary ${isModelGenerated ? 'step4-generated-button' : ''}`} onClick={() => navigate('/step3')}>
             Back to Connection Config
         </button>
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-secondary step4-proceed-button"
           onClick={() => navigate('/step5')}
-          disabled={!isJobSucceeded && !canProceedToReview}
+          disabled={!isModelGenerated}
         >
           Proceed to Review &amp; Export (Step 5)
         </button>

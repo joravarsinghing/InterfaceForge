@@ -45,9 +45,9 @@ def validate_connection_and_manufacturing(
     errors: List[ValidationIssue] = []
     warnings: List[ValidationIssue] = []
     recommended: Dict[str, float] = {
-        "length_mm": 40.0,
+        "length_mm": 10.0,
         "wall_thickness_mm": 2.4,
-        "clearance_a_mm": 0.3,
+        "clearance_a_mm": 0.1,
         "clearance_b_mm": 0.1,
         "offset_x_mm": 0.0,
         "offset_y_mm": 0.0,
@@ -192,8 +192,8 @@ def validate_connection_and_manufacturing(
 
     # 5. Clearance bounds check (0.0 mm to 5.0 mm)
     for clr_field, clr_val, clr_label in [
-        ("clearance_a_mm", manufacturing.clearance_a_mm, "Clearance A"),
-        ("clearance_b_mm", manufacturing.clearance_b_mm, "Clearance B"),
+        ("clearance_a_mm", manufacturing.clearance_a_mm, "Tolerance A"),
+        ("clearance_b_mm", manufacturing.clearance_b_mm, "Tolerance B"),
     ]:
         if not math.isfinite(clr_val) or clr_val < 0.0 or clr_val > 5.0:
             errors.append(
@@ -201,7 +201,7 @@ def validate_connection_and_manufacturing(
                     id="IF-MFG-003",
                     message=f"{clr_label} must be a finite value between 0.0 mm and 5.0 mm.",
                     field=clr_field,
-                    recovery_steps=["Set clearance between 0.0 mm and 5.0 mm."],
+                    recovery_steps=["Set tolerance between 0.0 mm and 5.0 mm."],
                 )
             )
         elif clr_val < 0.1:
@@ -210,7 +210,7 @@ def validate_connection_and_manufacturing(
                     id="IF-MFG-W003",
                     message=f"{clr_label} is below 0.1 mm, which may result in tight interference.",
                     field=clr_field,
-                    recovery_steps=["Increase clearance to 0.2 mm - 0.4 mm for slip-fit."],
+                    recovery_steps=["Increase tolerance to 0.2 mm - 0.4 mm for slip-fit."],
                 )
             )
 
@@ -330,9 +330,9 @@ def validate_connection_and_manufacturing(
             errors.append(
                 ValidationIssue(
                     id="IF-MFG-005",
-                    message=f"{iface_name} fit intent and clearance collapse the adapter outer boundary.",
+                    message=f"{iface_name} fit intent and tolerance collapse the adapter outer boundary.",
                     field=field,
-                    recovery_steps=["Reduce clearance or choose Fit over the outside for this interface."],
+                    recovery_steps=["Reduce tolerance or choose Fit over the outside for this interface."],
                 )
             )
         if inner_size.width <= 0 or inner_size.height <= 0:
@@ -341,7 +341,7 @@ def validate_connection_and_manufacturing(
                     id="IF-MFG-004",
                     message=f"{iface_name} wall thickness closes the adapter passage.",
                     field="wall_thickness_mm",
-                    recovery_steps=["Reduce wall thickness or clearance so the inner boundary remains positive."],
+                    recovery_steps=["Reduce wall thickness or tolerance so the inner boundary remains positive."],
                 )
             )
         if iface.profile_type == ProfileType.ROUNDED_RECTANGLE and outer_size.corner_radius > min(outer_size.width, outer_size.height) / 2.0:
@@ -350,7 +350,7 @@ def validate_connection_and_manufacturing(
                     id="IF-MFG-006",
                     message=f"{iface_name} rounded-rectangle radius is larger than the fitted boundary can support.",
                     field=field,
-                    recovery_steps=["Reduce clearance or corner radius before generation."],
+                    recovery_steps=["Reduce tolerance or corner radius before generation."],
                 )
             )
 

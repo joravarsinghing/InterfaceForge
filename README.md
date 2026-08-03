@@ -64,7 +64,7 @@ InterfaceForge guides the user through:
 - uploading each clean profile;
 - calibrating it using two selected points and a known real-world distance;
 - reviewing and approving the detected geometry;
-- configuring adapter length, wall thickness, clearances, offsets, and angle;
+- configuring adapter length, wall thickness, clearances, offsets, and interface extensions;
 - compiling deterministic KCL;
 - generating the model through Zoo Engine;
 - revising approved parameters through Zoo Agent;
@@ -201,14 +201,13 @@ Available parameters include:
 - Interface A clearance;
 - Interface B clearance;
 - X and Y offset;
-- limited transition angle;
 - Interface A vertical extension;
 - Interface B vertical extension;
 - manufacturing-related constraints.
 
 InterfaceForge validates these parameters before generation.
 
-The two vertical extension parameters add straight fit sections above each approved profile. They are available in all three connection modes and default to `0 mm`, preserving a direct loft when no extension is needed. When configured, the transition begins after the Interface A extension and ends before the Interface B extension; the extensions remain vertical even for limited-angle connections. The live preview, persisted loft plan, deterministic KCL, and final STL and STEP outputs all use the same values.
+The two vertical extension parameters add straight fit sections above each approved profile. They are available in both connection modes and default to `0 mm`, preserving a direct loft when no extension is needed. When configured, the transition begins after the Interface A extension and ends before the Interface B extension; the extensions remain straight and aligned with their respective approved interface profiles. The live preview, persisted loft plan, deterministic KCL, and final STL and STEP outputs all use the same values.
 
 <div align="center">
 
@@ -232,10 +231,6 @@ Supported connection modes include:
   <tr>
     <td><strong>Offset</strong></td>
     <td>The second interface is displaced in X and/or Y.</td>
-  </tr>
-  <tr>
-    <td><strong>Limited-angle</strong></td>
-    <td>The adapter transitions between interfaces using a controlled angle.</td>
   </tr>
 </table>
 
@@ -560,7 +555,7 @@ Learn more at [zoo.dev](https://zoo.dev/) and in the project’s [API usage guid
 * Two-point scale calibration.
 * Explicit profile review and approval.
 * Circle, rectangle, and rounded-rectangle generation.
-* Coaxial, offset, and limited-angle connections.
+* Coaxial and offset connections.
 * Wall-thickness and clearance validation.
 * Deterministic KCL compilation.
 * Live Zoo Engine generation.

@@ -109,7 +109,7 @@ class MockAgentProvider(AgentProvider):
                         field="profile",
                         recovery_steps=[
                             "Only connection length, offsets, angle, wall thickness, "
-                            "and clearances can be revised."
+                            "and tolerances can be revised."
                         ],
                     )
                 ],

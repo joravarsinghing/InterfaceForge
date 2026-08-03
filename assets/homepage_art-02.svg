@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="5cm" height="3cm" viewBox="0 0 141.73 85.04">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 141.7 85">
+  <!-- Generator: Adobe Illustrator 29.2.1, SVG Export Plug-In . SVG Version: 2.1.0 Build 116)  -->
   <defs>
     <style>
-      .cls-1 {
-        fill: #c7ffe0;
+      .st0 {
+        fill: #8ff;
+        opacity: .2;
       }
 
-      .cls-2 {
+      .st1 {
         fill: lime;
       }
     </style>
   </defs>
-  <rect class="cls-1" x="42.77" y="14.5" width="57" height="57" rx="9.26" ry="9.26"/>
-  <path class="cls-2" d="M90.51,15c4.83,0,8.76,3.93,8.76,8.76v38.49c0,4.83-3.93,8.76-8.76,8.76h-38.49c-4.83,0-8.76-3.93-8.76-8.76V23.76c0-4.83,3.93-8.76,8.76-8.76h38.49M90.51,14h-38.49c-5.37,0-9.76,4.39-9.76,9.76v38.49c0,5.37,4.39,9.76,9.76,9.76h38.49c5.37,0,9.76-4.39,9.76-9.76V23.76c0-5.37-4.39-9.76-9.76-9.76h0Z"/>
+  <rect class="st0" x="42.8" y="14.5" width="57" height="57" rx="9.3" ry="9.3"/>
+  <path class="st1" d="M90.5,15c4.8,0,8.8,3.9,8.8,8.8v38.5c0,4.8-3.9,8.8-8.8,8.8h-38.5c-4.8,0-8.8-3.9-8.8-8.8V23.8c0-4.8,3.9-8.8,8.8-8.8h38.5M90.5,14h-38.5c-5.4,0-9.8,4.4-9.8,9.8v38.5c0,5.4,4.4,9.8,9.8,9.8h38.5c5.4,0,9.8-4.4,9.8-9.8V23.8c0-5.4-4.4-9.8-9.8-9.8h0Z"/>
 </svg>

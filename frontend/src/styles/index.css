@@ -2548,3 +2548,74 @@ html, body {
   border-color: var(--status-amber);
   color: var(--status-amber);
 }
+
+
+/* Step 3 numeric controls: prevent accidental wheel edits and keep spinner controls easy to use. */
+input[type='number'] {
+  padding-right: 2.5rem;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  width: 1.25rem;
+  height: 1.75rem;
+}
+
+.step4-action-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.step4-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--accent-neon-green);
+  border-radius: 50%;
+  animation: step4-spin 0.8s linear infinite;
+}
+
+.step4-spinner-inline {
+  width: 0.8rem;
+  height: 0.8rem;
+  vertical-align: -0.12rem;
+}
+
+@keyframes step4-spin {
+  to { transform: rotate(360deg); }
+}
+
+.step4-generated-button,
+.step4-generated-button:hover:not(:disabled),
+.step4-generated-button:disabled {
+  background: #0d1117 !important;
+  color: var(--accent-neon-green) !important;
+  border-color: var(--accent-neon-green) !important;
+  box-shadow: none !important;
+}
+
+.step4-proceed-button {
+  background: var(--accent-neon-green);
+  color: #050b07;
+  border: 1px solid var(--accent-neon-green);
+  box-shadow: 0 4px 14px rgba(0, 230, 118, 0.3);
+}
+
+.step4-proceed-button:disabled {
+  background: var(--bg-surface-elevated) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+  opacity: 1;
+}

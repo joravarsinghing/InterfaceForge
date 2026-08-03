@@ -291,7 +291,7 @@ class Connection(BaseModel):
     """Connection relationship definition."""
 
     mode: ConnectionMode = ConnectionMode.COAXIAL
-    length_mm: float = 0.0
+    length_mm: float = 10.0
     offset_x_mm: float = 0.0
     offset_y_mm: float = 0.0
     angle_deg: float = 0.0
@@ -305,7 +305,7 @@ class Manufacturing(BaseModel):
     process: ManufacturingProcess = ManufacturingProcess.FDM
     material: str = "PETG"
     wall_thickness_mm: float = 2.4
-    clearance_a_mm: float = 0.3
+    clearance_a_mm: float = 0.1
     clearance_b_mm: float = 0.1
 
 

@@ -188,7 +188,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <img src={workflowArt03} alt="" className="workflow-step-art" />
             </div>
             <h3>Choose Connection</h3>
-            <p>Select coaxial, offset, or limited-angle parametric relationship.</p>
+            <p>Select a coaxial or offset parametric relationship.</p>
           </div>
           <div className="workflow-card">
             <div className="workflow-card-top">

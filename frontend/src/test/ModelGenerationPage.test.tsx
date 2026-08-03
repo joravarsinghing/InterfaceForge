@@ -121,6 +121,7 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     });
 
     expect(screen.getByRole('button', { name: /Start 3D Generation/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Proceed to Review & Export/i })).toBeDisabled();
   });
 
   it('hides mock controls in live mode', async () => {
@@ -166,6 +167,64 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     expect(screen.getByText(/While Zoo is thinking:/i)).toBeInTheDocument();
     expect(screen.getByText(/AI-native CAD platform/i)).toBeInTheDocument();
   });
+  it('shows a loading animation while KCL generation is pending', async () => {
+    vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+    let resolveCompile: ((value: any) => void) | undefined;
+    vi.spyOn(api, 'compileKcl').mockReturnValue(new Promise((resolve) => { resolveCompile = resolve; }));
+
+    render(
+      <BrowserRouter>
+        <ModelGenerationPage project={mockProject} />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Inspect KCL Code \(optional\)/i })).not.toBeDisabled();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Inspect KCL Code \(optional\)/i }));
+    });
+
+    expect(screen.getByTestId('step4-action-loading')).toHaveTextContent(/Generating KCL code. Please wait/i);
+    await act(async () => {
+      resolveCompile?.({ success: false, errors: [], warnings: [] });
+    });
+  });
+
+  it('shows a loading animation while 3D generation is starting', async () => {
+    vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+    let resolveGeneration: ((value: GenerationJob) => void) | undefined;
+    vi.spyOn(api, 'startGeneration').mockReturnValue(new Promise((resolve) => { resolveGeneration = resolve; }));
+
+    render(
+      <BrowserRouter>
+        <ModelGenerationPage project={mockProject} />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Start 3D Generation/i })).not.toBeDisabled();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Start 3D Generation/i }));
+    });
+
+    expect(screen.getByTestId('step4-action-loading')).toHaveTextContent(/Starting 3D model generation. Please wait/i);
+    await act(async () => {
+      resolveGeneration?.(mockRunningJob);
+    });
+  });
+
   it('triggers 3D generation and renders staged progress and preview metadata', async () => {
     vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
       is_valid: true,
@@ -194,9 +253,11 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     expect(screen.getAllByText(/SUCCEEDED/i)[0]).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: /Generated 3D Adapter Preview/i })).toBeInTheDocument();
     expect(screen.getByText(/34.52 cm3/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start 3D Generation/i })).toHaveClass('step4-generated-button');
+    expect(screen.getByRole('button', { name: /Proceed to Review & Export/i })).not.toBeDisabled();
   });
 
-  it('renders Download Zoo Design Studio hyperlink button in Generated KCL Artifact section after compilation', async () => {
+  it('does not render the removed Zoo Design Studio download link after compilation', async () => {
     vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
       is_valid: true,
       blocking_errors: [],
@@ -223,17 +284,14 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Compile KCL Code/i })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: /Inspect KCL Code \(optional\)/i })).not.toBeDisabled();
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Compile KCL Code/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Inspect KCL Code \(optional\)/i }));
     });
 
-    const downloadLink = screen.getByRole('link', { name: /Download Zoo Design Studio \| Zoo/i });
-    expect(downloadLink).toBeInTheDocument();
-    expect(downloadLink).toHaveAttribute('href', 'https://zoo.dev/design-studio/download');
-    expect(downloadLink).toHaveAttribute('target', '_blank');
+    expect(screen.queryByRole('link', { name: /Download Zoo Design Studio \| Zoo/i })).not.toBeInTheDocument();
   });
 
   it('handles service failure state, recovery steps, and retry trigger', async () => {

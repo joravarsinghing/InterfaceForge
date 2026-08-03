@@ -326,18 +326,6 @@ export const TracedProfileSvgViewer: React.FC<TracedProfileSvgViewerProps> = ({
           )}
         </g>
 
-        {!isOverlay && (
-          <g transform={`translate(8, ${actualH - 24})`}>
-            <rect x={0} y={0} width={12} height={4} fill="#00e5ff" rx={1} />
-            <text x={16} y={5} fill="#8b949e" fontSize={9}>Outer boundary</text>
-            <rect x={100} y={0} width={12} height={4} fill="#00e676" rx={1} />
-            <text x={116} y={5} fill="#8b949e" fontSize={9}>Included opening</text>
-            <rect x={180} y={0} width={10} height={4} fill="#ff9100" rx={1} />
-            <text x={194} y={5} fill="#8b949e" fontSize={8}>Ignored region</text>
-            <rect x={255} y={0} width={10} height={4} fill="#d500f9" rx={1} />
-            <text x={269} y={5} fill="#8b949e" fontSize={8}>Uncertain contour</text>
-          </g>
-        )}
       </svg>
     </div>
   );

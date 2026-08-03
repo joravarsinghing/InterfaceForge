@@ -1,4 +1,4 @@
-﻿import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { TracedProfileSvgViewer } from '../components/TracedProfileSvgViewer';
 import type { TracedContour } from '../types/schema';
@@ -35,14 +35,17 @@ describe('TracedProfileSvgViewer Component (Stage S10.4)', () => {
     point_count: 4,
   };
 
-  it('renders SVG with outer contour polygon and legend', () => {
+  it('renders SVG with outer contour polygon without the legend labels', () => {
     render(<TracedProfileSvgViewer outerContour={mockOuter} width={300} height={280} />);
     const svgEl = screen.getByRole('img', { name: /Traced closed profile SVG/i });
     expect(svgEl).toBeInTheDocument();
-    expect(screen.getByText('Outer boundary')).toBeInTheDocument();
+    expect(screen.queryByText('Outer boundary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Included opening')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ignored region')).not.toBeInTheDocument();
+    expect(screen.queryByText('Uncertain contour')).not.toBeInTheDocument();
   });
 
-  it('renders SVG with inner hole and included opening legend', () => {
+  it('renders SVG with inner hole without the legend labels', () => {
     render(
       <TracedProfileSvgViewer
         outerContour={mockOuter}
@@ -51,7 +54,7 @@ describe('TracedProfileSvgViewer Component (Stage S10.4)', () => {
         height={280}
       />
     );
-    expect(screen.getByText(/Included opening/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Included opening/i)).not.toBeInTheDocument();
   });
 
 

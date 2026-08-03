@@ -33,7 +33,7 @@ export const Connection2DViewer: React.FC<Connection2DViewerProps> = ({
   const dimA = getOuterDim(interfaceA);
   const dimB = getOuterDim(interfaceB);
 
-  const length = Math.max(10, Math.min(connection.length_mm || 40, 300));
+  const length = Math.max(10, Math.min(connection.length_mm || 10, 300));
   const offsetX = connection.offset_x_mm || 0;
   const angle = connection.angle_deg || 0;
   const wall = Math.max(0.4, manufacturing.wall_thickness_mm || 2.4);
@@ -144,7 +144,7 @@ export const Connection2DViewer: React.FC<Connection2DViewerProps> = ({
         {/* Interface A Base Bar (Bottom) */}
         <line x1={aLeftX - 10} y1={aY} x2={aRightX + 10} y2={aY} stroke="#3fb950" strokeWidth="4" />
         <text x={aRightX + 15} y={aY + 4} fill="#3fb950" fontSize="11" fontWeight="bold">
-          Interface A ({dimA.toFixed(1)}mm) [Clr: {manufacturing.clearance_a_mm}mm]
+          Interface A ({dimA.toFixed(1)}mm) [Tol: {manufacturing.clearance_a_mm}mm]
         </text>
 
         {/* Interface B Top Bar */}
@@ -163,7 +163,7 @@ export const Connection2DViewer: React.FC<Connection2DViewerProps> = ({
           fontSize="11"
           fontWeight="bold"
         >
-          Interface B ({dimB.toFixed(1)}mm) [Clr: {manufacturing.clearance_b_mm}mm]
+          Interface B ({dimB.toFixed(1)}mm) [Tol: {manufacturing.clearance_b_mm}mm]
         </text>
 
         {/* Transition Length Callout */}
