@@ -29,7 +29,7 @@ It covers the primary unauthenticated maker/workshop user. The PRD explicitly ex
 2. **Session persistence:** Local project persistence is optional in the PRD. Unless implemented, leaving or refreshing the page may discard progress. This is marked `TBD` where relevant.
 3. **Profile extraction:** The PRD requires image/sketch upload and editable SVG extraction but does not define whether users can manually draw a profile from scratch. Manual drawing is therefore not assumed.
 4. **3D viewer:** The PRD requires a final 3D preview but does not specify whether it is interactive geometry, streamed rendering, snapshots, or GLB. User-facing flow language remains viewer-neutral.
-5. **Export source:** The PRD requires STL and KCL; STEP is planned but not implemented, but the exact API path for each remains `TBD`.
+5. **Export source:** The workflow exports supported STL and KCL artifacts. STEP is planned but not implemented for this submission.
 
 ---
 

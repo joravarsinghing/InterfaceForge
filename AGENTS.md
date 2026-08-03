@@ -58,7 +58,7 @@ Clean profile A
 -> configure connection
 -> generate through Zoo Engine
 -> optionally confirm a bounded Zoo Agent revision
--> export current STL, STEP, and KCL
+-> export current STL and KCL
 '''
 
 Product boundaries:
@@ -69,6 +69,9 @@ Product boundaries:
 - OpenCV produces deterministic traces.
 - Scale is never applied or confirmed silently.
 - Outputs are editable adapter candidates requiring inspection before manufacturing.
+- STEP export is planned but not implemented for this submission.
+- Supported connection modes are coaxial and offset; angle-based connections are unsupported for submission.
+- Live Zoo Agent execution remains unproven unless credential-tested.
 - Do not claim arbitrary photo-to-CAD, perfect drawing cleanup, automatic scale accuracy, or unconditional manufacturing readiness.
 
 ## 5. Change Discipline

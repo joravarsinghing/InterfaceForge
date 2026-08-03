@@ -4,6 +4,8 @@
 **Stage:** S8 — File Format API Export  
 **Status:** Completed & Verified  
 
+> **Historical / Superseded:** This stage report records its historical state and outcomes; it is not the current submission capability contract. Current truth: KCL 2.0 solid-body generation works; supported outputs are STL and KCL; STEP is planned but not implemented; supported connection modes are coaxial and offset; angle-based connections are unsupported; historical surface-shell, `joinSurfaces()`, Boolean-blocker, and deprecated-KCL notes are superseded; live Zoo Agent execution remains unproven unless credential-tested.
+
 ---
 
 ## 1. Executive Summary
