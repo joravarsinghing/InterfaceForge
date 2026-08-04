@@ -1,17 +1,19 @@
+
 # InterfaceForge — Technical Design
 
-**Document status:** Draft v0.1  
+**Document status:** Submission implementation record  
+**Last reviewed:** 2026-08-03  
 **Source documents:** `InterfaceForge_PRD_v0.1.md`, `user_flow.md`, `ascii_wireframes.md`  
-**Audience:** Product owner, technical lead, Codex, Antigravity/Gemini, Claude, QA agents, and any implementation agent  
-**Purpose:** Define the implementation architecture, contracts, boundaries, operational model, and non-reversible technical decisions for the Zoo API Makeathon MVP
+**Audience:** Product owner, technical lead, implementation agents, reviewers, and judges  
+**Purpose:** Describe the implemented architecture, contracts, boundaries, operational model, and important technical decisions for the Zoo API Makeathon submission.
 
 ---
 
 # Technical Design
 
-## Context
+## 1. Context
 
-InterfaceForge is a guided adapter-generation application for users who do not know CAD but can provide two interface images or sketches and a few dimensions.
+InterfaceForge is a guided adapter-generation application for users who do not know CAD but can provide two clean 2D interface profiles and known real-world measurements.
 
 The product converts:
 
@@ -22,368 +24,593 @@ Connection relationship
         +
 Manufacturing parameters
         ↓
-Validated canonical design schema
+Validated canonical project schema
         ↓
-Deterministic KCL
+Persisted LoftPlan
+        ↓
+Deterministic KCL 2.0
         ↓
 Zoo Engine execution
         ↓
-3D preview and manufacturing exports
-```
+3D preview, KCL, and STL output
+````
 
-The primary hero case is a hollow adapter connecting a vacuum hose to a CNC-router dust port. A secondary case is a simple flat camera mounting adapter.
+The primary submission scenario is a hollow dust-extraction adapter connecting:
 
-The system must prioritize:
+* a circular vacuum-hose profile;
+* a rounded-rectangle CNC dust-port profile.
 
-- accessibility over CAD flexibility;
-- deterministic geometry over unconstrained AI generation;
-- user approval over hidden inference;
-- clear recovery over silent failure;
-- documented Zoo API use over superficial integration;
-- one reliable adapter family over many unstable ones.
+The system prioritizes:
 
-The Makeathon build window is short, so the architecture must be modular enough to demonstrate depth without creating unnecessary infrastructure.
+* accessibility over unrestricted CAD flexibility;
+* deterministic geometry over unconstrained AI generation;
+* explicit user approval over hidden inference;
+* validated canonical data over direct model manipulation;
+* clear recovery over silent failure;
+* meaningful Zoo API integration;
+* one reliable adapter workflow over many unstable features.
 
 ---
 
-## Constraints
+## 2. Submission scope
+
+### Supported capabilities
+
+* Two interface profiles per project
+* Clean image upload
+* OpenCV-based profile extraction
+* Two-point scale calibration
+* User review and approval
+* Circle profiles
+* Rectangle profiles
+* Rounded-rectangle profiles
+* Approved arbitrary traced closed profiles
+* Fit-over and fit-inside intent
+* Coaxial connections
+* Parallel offset connections
+* Transition length
+* X and Y offset
+* Wall thickness
+* Interface clearances
+* Interface A and B straight extensions
+* Deterministic KCL 2.0 generation
+* Zoo Engine execution
+* Natural-language bounded parameter revisions
+* KCL export
+* Verified STL export
+* Model revision tracking
+* Last-known-good model preservation
+
+### Not implemented for submission
+
+* STEP export
+* Angle-based connections
+* Internal cavities within uploaded profiles
+* Threads
+* Mounting holes
+* Countersinks
+* Dovetails
+* Undercuts
+* Assemblies
+* Curved pipe paths
+* Certified manufacturing readiness
+* Unrestricted photograph-to-CAD reconstruction
+
+---
+
+## 3. Constraints
 
 ### Competition constraints
 
-- The project must be created from scratch during the official Makeathon window.
-- The public repository must be open source.
-- Zoo API use must be meaningful.
-- Documentation, bug reporting, technical readability, UI/UX, and creativity are judging criteria.
-- API keys and credentials must not be committed.
-- The final demo must be reproducible enough for judges to understand.
+* The project must remain open source.
+* Zoo API use must be meaningful and visible.
+* API credentials must not be committed.
+* The final workflow must be understandable and reproducible.
+* Documentation must accurately distinguish verified features from planned features.
+* The final demo video must remain within the competition time limit.
 
 ### Product constraints
 
-- No end-user authentication in MVP.
-- No billing, subscriptions, credits, or cloud project accounts.
-- Desktop-first UX.
-- Two interfaces per project.
-- Image-assisted profile extraction is required.
-- Each interface requires user review and approval.
-- Generated geometry must remain parametric.
-- The system produces KCL and STL. STEP is planned but not implemented for this submission.
-- The user must not need to operate Zoo Design Studio manually.
+* No end-user authentication.
+* No billing or subscription system.
+* Desktop-first interface.
+* Two interfaces per project.
+* Each interface requires explicit review and approval.
+* The user must not need to operate Zoo Design Studio manually.
+* The system outputs KCL and STL.
+* STEP is planned but not implemented for this submission.
 
 ### Geometry constraints
 
-- Supported profiles:
-  - circle;
-  - rectangle;
-  - rounded rectangle;
-  - validated traced closed profile.
-- Supported connection modes:
-  - coaxial;
-  - offset;
-  - Angle-based connections are not supported.
-- Arbitrary freeform solids, assemblies, curved pipe paths, and complex surfacing are out of scope.
-- Traced profiles must be normalized before lofting.
-- Geometry limits must be conservative and configurable.
+Supported profiles:
+
+* circle;
+* rectangle;
+* rounded rectangle;
+* validated traced closed profile.
+
+Supported connection modes:
+
+* coaxial;
+* parallel offset.
+
+Unsupported:
+
+* angle-based connections;
+* curved centerline paths;
+* multiple branches;
+* nested internal cavities;
+* unrestricted freeform surfacing.
+
+Traced profiles must be:
+
+* closed;
+* finite;
+* non-self-intersecting;
+* consistently wound;
+* resampled to compatible point counts;
+* reviewed by the user before approval.
 
 ### Operational constraints
 
-- Remote Zoo services may be slow or temporarily unavailable.
-- The Engine API, Agent API, and File Format API may fail independently.
-- Vision analysis may use an external service and must be treated as untrusted input.
-- Remote API behavior may change during the competition.
-- The system must preserve the last known good model after failed revisions.
-
-### Team constraints
-
-- Solo human developer supported by AI coding agents.
-- Python is the strongest implementation language.
-- Frontend experience is limited but agent-assisted.
-- The design must be readable and enforceable by multiple AI agents.
+* Render instances may restart or sleep.
+* Cloudflare Pages serves only the frontend.
+* Zoo services may be temporarily unavailable.
+* Zoo Agent and Zoo Engine may fail independently.
+* Uploaded images and provider outputs are untrusted.
+* Failed generation must not destroy the previous successful model.
 
 ---
 
-## Proposed architecture
+## 4. Deployment architecture
 
 ```text
-┌───────────────────────────────────────────────────────────────────────┐
-│ Browser Client                                                        │
-│                                                                       │
-│ React/Vite UI                                                         │
-│ - Guided workflow                                                     │
-│ - Image upload                                                        │
-│ - Editable SVG review                                                 │
-│ - Connection configuration                                            │
-│ - Result viewer                                                       │
-│ - Revision and export                                                  │
-└───────────────────────────────┬───────────────────────────────────────┘
-                                │ HTTPS / JSON / multipart
-                                ▼
-┌───────────────────────────────────────────────────────────────────────┐
-│ FastAPI Application                                                   │
-│                                                                       │
-│ API routes                                                            │
-│ Session/project service                                               │
-│ Input validation                                                      │
-│ Vision adapter                                                        │
-│ Profile normalization                                                 │
-│ Canonical schema service                                              │
-│ Geometry-rule engine                                                  │
-│ Deterministic KCL compiler                                             │
-│ Zoo Engine client                                                     │
-│ Zoo Agent client                                                      │
-│ Zoo File Format client                                                │
-│ Artifact manager                                                      │
-│ Logging / tracing                                                     │
-└─────────────┬────────────────┬───────────────────┬────────────────────┘
-              │                │                   │
-              ▼                ▼                   ▼
-┌──────────────────┐  ┌──────────────────┐  ┌─────────────────────────┐
-│ Vision provider  │  │ Zoo APIs         │  │ Temporary artifact     │
-│                  │  │                  │  │ storage                 │
-│ Image parsing    │  │ Engine           │  │                         │
-│ OCR/shape hints  │  │ Agent            │  │ Uploads                 │
-│ Structured JSON  │  │ File Format      │  │ KCL                     │
-└──────────────────┘  └──────────────────┘  │ Exports                 │
-                                            │ Logs                    │
-                                            └─────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ Cloudflare Pages                                              │
+│                                                               │
+│ React + Vite frontend                                         │
+│ - Guided workflow                                             │
+│ - Upload and calibration UI                                   │
+│ - Profile review                                              │
+│ - Connection configuration                                    │
+│ - Preview and result screens                                  │
+│ - Agent revision panel                                        │
+│ - KCL and STL download controls                               │
+└──────────────────────────────┬────────────────────────────────┘
+                               │ HTTPS
+                               │ VITE_BACKEND_URL
+                               ▼
+┌───────────────────────────────────────────────────────────────┐
+│ Render                                                        │
+│                                                               │
+│ FastAPI backend                                               │
+│ - Project/session API                                         │
+│ - SQLite persistence                                          │
+│ - Upload and artifact storage                                 │
+│ - OpenCV analysis                                             │
+│ - Profile normalization                                       │
+│ - Canonical schema management                                 │
+│ - LoftPlan generation                                         │
+│ - KCL 2.0 compiler                                            │
+│ - Zoo Engine integration                                      │
+│ - Zoo Agent integration                                       │
+│ - STL generation and validation                               │
+│ - Revision and export lineage                                 │
+└───────────────────────┬───────────────────────────────────────┘
+                        │ Server-side credentials
+                        ▼
+┌───────────────────────────────────────────────────────────────┐
+│ Zoo services                                                  │
+│                                                               │
+│ - Zoo Engine                                                  │
+│ - Zoo Agent                                                   │
+│ - KCL execution/export tooling                                │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-### Architectural style
+### Deployment rules
 
-- Single frontend application.
-- Single Python backend application.
-- Thin service wrappers around external APIs.
-- Canonical design schema as the internal source of truth.
-- Deterministic KCL generation as a compiler step.
-- Temporary local or ephemeral artifact storage.
-- No database required for MVP unless session persistence becomes necessary.
+* Zoo credentials exist only in Render environment variables.
+* The frontend never receives provider secrets.
+* `VITE_BACKEND_URL` points the Cloudflare frontend to the Render backend.
+* Render is the authoritative application backend.
+* Cloudflare Pages serves static frontend assets only.
+* Generated artifacts remain associated with project and model revisions.
 
 ---
 
-## Component responsibilities
+## 5. Architectural style
 
-### 1. Frontend application
+InterfaceForge uses:
+
+* one React frontend;
+* one FastAPI backend;
+* SQLite persistence;
+* deterministic service boundaries;
+* a canonical project schema;
+* a persisted LoftPlan as the geometry plan;
+* generated KCL as the executable CAD artifact;
+* server-side Zoo integrations;
+* explicit model and schema revision tracking.
+
+The architecture avoids:
+
+* direct browser access to Zoo credentials;
+* arbitrary Agent-generated KCL;
+* multiple competing geometry authorities;
+* export regeneration from a different schema;
+* silent fallback from live Agent behavior to Mock behavior.
+
+---
+
+## 6. Core data flow
+
+```text
+Image upload
+    ↓
+Image validation
+    ↓
+OpenCV profile extraction
+    ↓
+Profile normalization
+    ↓
+Two-point calibration
+    ↓
+User review and approval
+    ↓
+Connection and manufacturing configuration
+    ↓
+Server-side validation
+    ↓
+Canonical project update
+    ↓
+LoftPlan generation
+    ↓
+Deterministic KCL 2.0 compilation
+    ↓
+Zoo Engine execution
+    ↓
+Model revision marked current
+    ↓
+KCL and STL made available
+```
+
+For Agent revisions:
+
+```text
+Natural-language request
+    ↓
+Zoo Agent interpretation
+    ↓
+Structured bounded proposal
+    ↓
+Server-side allowlist validation
+    ↓
+Trusted arithmetic using current project values
+    ↓
+User confirmation
+    ↓
+Canonical project update
+    ↓
+Derived geometry marked stale
+    ↓
+LoftPlan rebuilt
+    ↓
+KCL regenerated
+    ↓
+Zoo Engine executes revised model
+    ↓
+New model revision and exports
+```
+
+---
+
+## 7. Component responsibilities
+
+### 7.1 Frontend application
 
 Responsible for:
 
-- guided step navigation;
-- image upload;
-- image-quality guidance;
-- source image preview;
-- SVG profile review;
-- editable dimension fields;
-- provenance and confidence indicators;
-- connection-mode selection;
-- connection parameter controls;
-- generation progress;
-- result viewer;
-- structured revision;
-- natural-language revision;
-- export selection;
-- user-facing errors and recovery.
+* guided navigation;
+* image upload;
+* calibration interaction;
+* profile review;
+* fit-intent selection;
+* connection configuration;
+* validation feedback;
+* loading and generation progress;
+* result preview;
+* Agent revision requests;
+* proposal confirmation;
+* KCL and STL download actions;
+* user-facing errors.
 
 Must not:
 
-- contain Zoo or AI secrets;
-- call privileged external APIs directly;
-- generate final KCL independently;
-- silently modify approved dimensions;
-- treat client-side validation as sufficient.
+* contain Zoo credentials;
+* generate authoritative KCL;
+* apply Agent changes without confirmation;
+* treat client validation as authoritative;
+* fabricate generation success.
 
-### 2. API layer
-
-Responsible for:
-
-- request parsing;
-- input validation;
-- response normalization;
-- route-level error mapping;
-- request IDs;
-- service orchestration;
-- preventing unauthorized field updates.
-
-### 3. Project/session service
+### 7.2 API layer
 
 Responsible for:
 
-- temporary project identity;
-- workflow state;
-- approved interfaces;
-- canonical schema versions;
-- last-known-good model;
-- stale/current artifact status;
-- short-lived project recovery where implemented.
+* route handling;
+* request parsing;
+* project-token validation;
+* Pydantic validation;
+* response envelopes;
+* error normalization;
+* service orchestration;
+* authorization checks.
 
-### 4. Vision adapter
-
-Responsible for:
-
-- sending image/sketch input to a vision-capable model;
-- requesting structured shape/dimension output;
-- returning confidence and provenance candidates;
-- rejecting malformed responses;
-- isolating provider-specific formats.
-
-Must not produce final KCL.
-
-### 5. Profile normalization service
+### 7.3 Project service
 
 Responsible for:
 
-- validating contour closure;
-- removing duplicate points;
-- smoothing noise within strict limits;
-- normalizing winding direction;
-- resampling points;
-- aligning start points;
-- detecting self-intersection;
-- classifying supported shapes;
-- producing a clean SVG-compatible profile.
+* project creation;
+* project-token validation;
+* workflow state;
+* schema revision tracking;
+* approved interface state;
+* connection and manufacturing configuration;
+* stale/current transitions;
+* model revision records;
+* last-known-good revision;
+* persistence through SQLite.
 
-### 6. Canonical schema service
-
-Responsible for:
-
-- creating and versioning the project design schema;
-- recording dimension provenance;
-- storing approval state;
-- applying validated changes;
-- comparing schema versions;
-- marking models stale.
-
-### 7. Geometry-rule engine
+### 7.4 Analysis provider
 
 Responsible for:
 
-- profile compatibility checks;
-- wall-thickness rules;
-- clearance ranges;
-- minimum length;
-- angle limits;
-- offset-to-length limits;
-- self-intersection risk;
-- traced-profile complexity limits;
-- manufacturing warnings.
+* reading uploaded profile images;
+* preprocessing;
+* contour detection;
+* primitive classification where applicable;
+* arbitrary closed contour extraction;
+* confidence and warning output;
+* trace artifact generation.
 
-### 8. KCL compiler
+OpenCV is the authoritative profile-extraction path for the controlled workflow.
 
-Responsible for:
+External vision assistance, where present, is advisory and untrusted.
 
-- converting canonical schema into deterministic KCL;
-- using tested templates/functions;
-- stable naming;
-- explicit units;
-- comments and readable structure;
-- reproducible output;
-- rejecting unsupported combinations before Zoo execution.
-
-### 9. Zoo Engine client
+### 7.5 Profile normalization
 
 Responsible for:
 
-- authentication with server-held credentials;
-- model execution;
-- snapshots or preview artifacts;
-- geometry result capture;
-- timeout/retry policy;
-- normalized engine errors.
+* contour closure;
+* duplicate-point removal;
+* winding normalization;
+* point resampling;
+* start-point alignment;
+* self-intersection detection;
+* finite coordinate validation;
+* supported complexity limits;
+* conversion to canonical millimetre coordinates.
 
-### 10. Zoo Agent client
+### 7.6 Canonical project schema
+
+Responsible for storing:
+
+* interface definitions;
+* calibration information;
+* profile geometry;
+* approval state;
+* fit intent;
+* connection configuration;
+* manufacturing parameters;
+* schema revision;
+* model revision;
+* last-known-good revision;
+* current workflow state.
+
+This schema is the application source of truth.
+
+### 7.7 LoftPlan service
+
+Responsible for producing one authoritative geometry plan from the canonical project.
+
+The LoftPlan defines:
+
+* outer profile sections;
+* inner profile sections;
+* Z positions;
+* offsets;
+* interface extensions;
+* compatible point correspondence;
+* transition geometry;
+* metadata required for preview and KCL.
+
+The preview and KCL compiler must consume the same LoftPlan.
+
+### 7.8 Geometry validation
 
 Responsible for:
 
-- converting natural-language revisions into structured parameter patches;
-- explanation and clarification;
-- enforcing JSON schema;
-- rejecting non-allowlisted modifications.
+* approved-interface prerequisites;
+* positive transition length;
+* wall-thickness validation;
+* clearance bounds;
+* offset limits;
+* fit-intent compatibility;
+* profile validity;
+* self-intersection risk;
+* extension validity;
+* manufacturing warnings.
 
-Must not directly replace full KCL.
+Angle validation is not part of the current submission because angle-based connections are unsupported.
 
-### 11. Zoo File Format client
-
-Responsible for:
-
-- export conversion;
-- STL generation or verification;
-- volume analysis where reliable;
-- per-format status and error normalization.
-
-### 12. Artifact manager
+### 7.9 KCL compiler
 
 Responsible for:
 
-- uploaded images;
-- generated SVG;
-- canonical JSON;
-- KCL source;
-- previews;
-- export files;
-- cleanup;
-- safe filenames;
-- temporary download links.
+* converting the LoftPlan into deterministic KCL 2.0;
+* emitting current supported KCL syntax;
+* generating solid outer geometry;
+* generating the inner cutter;
+* performing solid subtraction;
+* using stable variable names;
+* declaring units explicitly;
+* maintaining deterministic output;
+* producing a KCL hash;
+* rejecting invalid geometry before execution.
 
-### 13. Observability layer
+The current compiler uses KCL 2.0 solid-body generation. Historical surface-shell and `joinSurfaces()` workarounds are not part of the active design.
+
+### 7.10 Zoo Engine integration
 
 Responsible for:
 
-- structured logs;
-- request IDs;
-- API latency;
-- error IDs;
-- generation stage timing;
-- known-good fixture results;
-- sensitive-data redaction.
+* executing the generated KCL;
+* returning generation status;
+* reporting progress;
+* capturing normalized errors;
+* associating the result with the exact KCL artifact;
+* preserving the previous model after failure.
+
+Generation success must refer to execution of the actual project KCL, not placeholder modeling commands.
+
+### 7.11 Zoo Agent integration
+
+Responsible for interpreting natural-language parameter requests into structured proposals.
+
+Supported bounded fields include:
+
+* `connection.length_mm`
+* `connection.offset_x_mm`
+* `connection.offset_y_mm`
+* `manufacturing.wall_thickness_mm`
+* `manufacturing.clearance_a_mm`
+* `manufacturing.clearance_b_mm`
+
+Supported operations include:
+
+* increase;
+* decrease;
+* set.
+
+Common aliases include:
+
+* length;
+* height;
+* transition height;
+* adapter height;
+* longer;
+* shorter;
+* tolerance;
+* clearance.
+
+The Agent must not:
+
+* generate KCL;
+* modify profile contours;
+* modify provider settings;
+* bypass server validation;
+* directly apply project changes.
+
+Server-side code calculates the trusted final value using the current project state.
+
+### 7.12 Export service
+
+Responsible for:
+
+* exposing the current KCL artifact;
+* generating and validating STL;
+* associating exports with model revisions;
+* rejecting stale exports;
+* caching current-revision artifacts where safe;
+* reporting per-format status.
+
+Supported outputs:
+
+* KCL;
+* STL.
+
+STEP is not implemented for this submission.
+
+### 7.13 Artifact manager
+
+Responsible for:
+
+* uploaded images;
+* cleaned images;
+* analysis images;
+* trace SVGs;
+* overlay SVGs;
+* persisted KCL;
+* STL files;
+* artifact metadata;
+* safe filenames;
+* project-scoped access;
+* cleanup.
+
+### 7.14 Observability
+
+Responsible for:
+
+* request IDs;
+* provider selection logs;
+* generation stages;
+* durations;
+* schema revision;
+* model revision;
+* KCL hash;
+* export status;
+* normalized errors;
+* secret redaction.
+
+Tokens and raw credentials must never appear in logs.
 
 ---
 
-## Trust boundaries
+## 8. Trust boundaries
 
 ```text
 Untrusted user input
-    - uploaded images
+    - images
+    - calibration points
     - dimensions
-    - profile edits
-    - natural-language prompts
-        │
-        ▼
+    - connection values
+    - Agent prompts
+        ↓
 Application validation boundary
-        │
-        ├── Vision model output: untrusted
-        ├── Agent API output: untrusted
-        └── External API errors/results: validated before use
-        │
-        ▼
-Canonical schema boundary
-        │
-        ▼
+        ↓
+Canonical project schema
+        ↓
+LoftPlan
+        ↓
 Deterministic KCL compiler
-        │
-        ▼
-Zoo execution boundary
-        │
-        ▼
-Validated artifacts
+        ↓
+Zoo execution
+        ↓
+Validated KCL and STL artifacts
 ```
 
 ### Trust rules
 
-- User inputs are untrusted.
-- Vision output is advisory until validated and user-approved.
-- Agent output is never directly executable.
-- KCL is generated only from validated canonical data.
-- External export artifacts must be checked for expected format and non-zero size.
-- API keys remain server-side.
-- User-uploaded files never become code paths or executable filenames.
-- Model success does not imply manufacturability certification.
+* User input is untrusted.
+* Image-analysis output is untrusted until reviewed.
+* Profile approval is explicit.
+* Agent output is always untrusted.
+* Agent proposals are never directly executable.
+* KCL is generated only from validated canonical data.
+* Export artifacts must be validated.
+* API credentials remain server-side.
+* Generation success does not imply certified manufacturability.
 
 ---
 
-## Data model
+## 9. Data model
 
-### Project
+### 9.1 Project
 
 ```json
 {
   "project_id": "uuid",
+  "project_token": "secret-project-token",
   "schema_version": "0.1",
   "state": "interfaces_approved",
   "created_at": "ISO-8601",
@@ -392,32 +619,39 @@ Validated artifacts
   "interface_b": {},
   "connection": {},
   "manufacturing": {},
+  "loft_plan": {},
   "current_schema_revision": 3,
   "current_model_revision": 2,
-  "last_known_good_model_revision": 2
+  "last_known_good_model_revision": 2,
+  "model_revisions": []
 }
 ```
 
-### Interface definition
+### 9.2 Interface definition
 
 ```json
 {
   "id": "interface_a",
   "source_image_ref": "artifact-id",
-  "profile_type": "circle",
+  "profile_type": "custom_closed",
   "profile_points": [],
-  "center": {"x": 0.0, "y": 0.0},
-  "dimensions": [
-    {
-      "id": "outer_diameter",
-      "label": "Outer diameter",
-      "value": 34.5,
-      "unit": "mm",
-      "provenance": "user_entered",
-      "confidence": 1.0,
-      "critical": true
-    }
-  ],
+  "center": {
+    "x": 0.0,
+    "y": 0.0
+  },
+  "fit_mode": "fit_over",
+  "scale_calibration": {
+    "point_a": {
+      "x": 10.0,
+      "y": 15.0
+    },
+    "point_b": {
+      "x": 110.0,
+      "y": 15.0
+    },
+    "known_distance_mm": 60.0,
+    "confirmed": true
+  },
   "validation": {
     "is_closed": true,
     "self_intersects": false,
@@ -428,19 +662,23 @@ Validated artifacts
 }
 ```
 
-### Connection definition
+### 9.3 Connection definition
 
 ```json
 {
   "mode": "offset",
-  "length_mm": 110.0,
-  "offset_x_mm": 20.0,
+  "length_mm": 50.0,
+  "offset_x_mm": 10.0,
   "offset_y_mm": 0.0,
-  "angle_deg": 0.0
+  "angle_deg": 0.0,
+  "extension_a_mm": 12.0,
+  "extension_b_mm": 12.0
 }
 ```
 
-### Manufacturing definition
+`angle_deg` may remain in the persisted schema for backward compatibility, but submission workflows require it to remain `0.0`.
+
+### 9.4 Manufacturing definition
 
 ```json
 {
@@ -452,7 +690,7 @@ Validated artifacts
 }
 ```
 
-### Model revision
+### 9.5 Model revision
 
 ```json
 {
@@ -460,27 +698,49 @@ Validated artifacts
   "schema_revision": 3,
   "status": "current",
   "kcl_artifact_ref": "artifact-id",
+  "kcl_hash": "sha256",
   "preview_artifact_ref": "artifact-id",
   "exports": {
-    "stl": "artifact-id",
-    "step": "artifact-id"
+    "stl": "artifact-id"
   },
-  "volume_cm3": 42.8,
   "warnings": [],
   "generated_at": "ISO-8601"
 }
 ```
 
-### Error record
+### 9.6 Agent proposal
+
+```json
+{
+  "changes": [
+    {
+      "field": "connection.length_mm",
+      "operation": "decrease",
+      "amount": 3.0,
+      "current_value": 50.0,
+      "proposed_value": 47.0,
+      "unit": "mm",
+      "reason": "Decrease transition height by 3 mm."
+    }
+  ],
+  "summary": "Decrease transition height from 50 mm to 47 mm.",
+  "is_valid": true,
+  "provider_used": "zoo"
+}
+```
+
+### 9.7 Error record
 
 ```json
 {
   "error_id": "IF-ENGINE-004",
   "request_id": "uuid",
   "category": "engine",
-  "user_message": "The adapter could not be generated at the selected angle.",
-  "recommended_action": "Increase transition length or reduce angle.",
-  "technical_message": "redacted technical detail",
+  "message": "The adapter could not be generated.",
+  "recovery_steps": [
+    "Review the connection parameters.",
+    "Retry model generation."
+  ],
   "retryable": true,
   "timestamp": "ISO-8601"
 }
@@ -488,274 +748,490 @@ Validated artifacts
 
 ---
 
-## API contracts
+## 10. Implemented API design
 
-All API responses should use a consistent envelope.
-
-### Success envelope
+API responses use:
 
 ```json
 {
-  "ok": true,
-  "request_id": "uuid",
+  "success": true,
   "data": {}
 }
 ```
 
-### Error envelope
+Errors use the application error model with:
 
-```json
-{
-  "ok": false,
-  "request_id": "uuid",
-  "error": {
-    "id": "IF-PROFILE-004",
-    "category": "profile_validation",
-    "message": "The detected contour crosses itself.",
-    "recommended_action": "Edit the profile or upload a clearer image.",
-    "retryable": false,
-    "field_errors": []
-  }
-}
+* error ID;
+* message;
+* recovery steps;
+* HTTP status;
+* safe technical context.
+
+### Core project routes
+
+```text
+POST   /api/projects
+GET    /api/projects/{project_id}
+PATCH  /api/projects/{project_id}
 ```
 
-### Core endpoints
+### Provider routes
 
-#### `POST /api/projects`
-
-Creates a temporary project.
-
-Response:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "project_id": "uuid",
-    "state": "new"
-  }
-}
+```text
+GET    /api/projects/provider-mode
+PATCH  /api/projects/provider-mode
+GET    /api/projects/{project_id}/provider-mode
+PATCH  /api/projects/{project_id}/provider-mode
 ```
 
-#### `POST /api/projects/{project_id}/interfaces/{interface_id}/upload`
+### Interface routes
 
-Multipart upload for Interface A or B.
-
-Returns:
-
-- artifact reference;
-- basic file metadata;
-- analysis job or immediate processing status.
-
-#### `POST /api/projects/{project_id}/interfaces/{interface_id}/analyze`
-
-Requests profile extraction.
-
-Response:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "profile_type": "rounded_rectangle",
-    "profile_points": [],
-    "dimensions": [],
-    "confidence": 0.82,
-    "warnings": []
-  }
-}
+```text
+POST   /api/projects/{project_id}/interfaces/{interface_id}/upload
+POST   /api/projects/{project_id}/interfaces/{interface_id}/analyze
+PATCH  /api/projects/{project_id}/interfaces/{interface_id}
+POST   /api/projects/{project_id}/interfaces/{interface_id}/approve
 ```
 
-#### `PATCH /api/projects/{project_id}/interfaces/{interface_id}`
+### Calibration routes
 
-Updates dimensions/profile selection.
+```text
+POST   /api/projects/{project_id}/interfaces/{interface_id}/scale/snap
+POST   /api/projects/{project_id}/interfaces/{interface_id}/scale/calibrate
+DELETE /api/projects/{project_id}/interfaces/{interface_id}/scale/calibration
+```
 
-Only allowlisted fields may be modified.
+### Artifact routes
 
-#### `POST /api/projects/{project_id}/interfaces/{interface_id}/approve`
+```text
+GET /api/projects/{project_id}/interfaces/{interface_id}/image
+GET /api/projects/{project_id}/interfaces/{interface_id}/cleaned_image
+GET /api/projects/{project_id}/interfaces/{interface_id}/analysis_image
+GET /api/projects/{project_id}/interfaces/{interface_id}/trace_svg
+GET /api/projects/{project_id}/interfaces/{interface_id}/overlay_svg
+```
 
-Approves a validated interface.
+### Connection and validation routes
 
-Must reject unresolved critical values.
+```text
+PUT  /api/projects/{project_id}/connection
+POST /api/projects/{project_id}/connection/validate
+```
 
-#### `PUT /api/projects/{project_id}/connection`
+Exact route names should remain synchronized with the implementation.
 
-Stores and validates connection configuration.
+### KCL routes
 
-#### `POST /api/projects/{project_id}/generate`
+```text
+GET  /api/projects/{project_id}/kcl/readiness
+POST /api/projects/{project_id}/kcl/compile
+GET  /api/projects/{project_id}/kcl
+```
 
-Creates a new schema/model revision and starts generation.
+### Generation routes
 
-May return synchronous completion or job status depending on final implementation.
+```text
+POST /api/projects/{project_id}/generation
+GET  /api/projects/{project_id}/generation/{job_id}
+```
 
-#### `GET /api/projects/{project_id}/generation/{job_id}`
+### Revision routes
 
-Returns staged generation status.
+```text
+POST /api/projects/{project_id}/revision/propose
+POST /api/projects/{project_id}/revision/confirm
+```
 
-#### `POST /api/projects/{project_id}/revisions/interpret`
+### Export routes
 
-Converts natural language into a proposed parameter patch.
-
-#### `POST /api/projects/{project_id}/revisions/apply`
-
-Validates and applies an approved patch.
-
-#### `POST /api/projects/{project_id}/exports`
-
-Requests selected formats.
-
-#### `GET /api/projects/{project_id}/artifacts/{artifact_id}`
-
-Returns a short-lived download or file response.
+```text
+GET  /api/projects/{project_id}/exports/status
+POST /api/projects/{project_id}/exports
+POST /api/projects/{project_id}/exports/{format}/retry
+GET  /api/projects/{project_id}/exports/{format}/download
+```
 
 ### Contract rules
 
-- All units in backend contracts are explicit.
-- API never accepts raw KCL from the browser.
-- Profile approval requires server-side validation.
-- Agent output is not exposed as executable code.
-- Export requests require current model state.
-- Stale model exports return a conflict error.
+* Project routes require the project token where applicable.
+* Raw KCL is never accepted from the browser.
+* Profile approval requires server-side validation.
+* Agent output cannot bypass the allowlist.
+* Revision confirmation marks derived geometry stale.
+* Export requests require a current successful model.
+* Stale model exports are rejected.
+* STEP requests are unsupported.
 
 ---
 
-## Authentication and authorization
+## 11. Authentication and authorization
 
 ### End-user authentication
 
-No end-user authentication in MVP.
+No user account system is implemented.
 
-Projects are temporary and identified by an unguessable project/session token.
+Projects are protected using:
+
+* project ID;
+* unguessable project token.
 
 ### Backend authorization
 
-- Zoo and vision credentials are stored only on the server.
-- The frontend never receives provider secrets.
-- A project token may be required for access to project-specific routes.
-- Artifact download links should be short-lived or scoped to the session.
-- Direct object references must be validated against the active project.
+* Zoo credentials are stored in Render environment variables.
+* The frontend never receives Zoo tokens.
+* Project-scoped routes validate the project token.
+* Artifact access is scoped to the project.
+* Invalid tokens produce a structured authorization error.
 
-### Service credentials
+### Secret handling
 
-- Environment variables or deployment-secret manager.
-- Separate keys where providers support them.
-- Keys must be redacted from logs and exception output.
-- `.env.example` contains names only.
-
-### Authorization failure behavior
-
-- Users are never redirected to login.
-- Invalid project token returns a project-expired or unavailable message.
-- Invalid provider credentials surface as service unavailability.
+* `.env` files are not committed.
+* `.env.example` contains variable names only.
+* Logs redact credentials.
+* Provider failures never expose tokens in responses.
 
 ---
 
-## Validation strategy
+## 12. Validation strategy
 
 Validation occurs in layers.
 
-### 1. Client validation
+### 12.1 Client validation
 
-Used for fast feedback:
+Used for immediate feedback:
 
-- required fields;
-- numeric format;
-- obvious bounds;
-- file type and size;
-- step prerequisites.
+* required fields;
+* numeric input;
+* file type;
+* file size;
+* obvious parameter bounds;
+* workflow prerequisites.
 
-Client validation is never authoritative.
+Client validation is not authoritative.
 
-### 2. API schema validation
+### 12.2 API validation
 
-Pydantic models enforce:
+Pydantic validates:
 
-- types;
-- units;
-- enums;
-- ranges;
-- required properties;
-- version compatibility.
+* data types;
+* enums;
+* ranges;
+* required fields;
+* finite numbers;
+* request structure.
 
-### 3. Profile validation
-
-Checks:
-
-- closure;
-- duplicate points;
-- self-intersection;
-- supported complexity;
-- valid scale;
-- minimum dimensions;
-- shape-specific requirements.
-
-### 4. Design-rule validation
+### 12.3 Image validation
 
 Checks:
 
-- approved profiles;
-- connection compatibility;
-- wall thickness;
-- clearance;
-- angle;
-- offset;
-- minimum length;
-- manufacturing constraints.
+* supported file type;
+* valid image bytes;
+* safe filename;
+* readable dimensions;
+* non-empty upload.
 
-### 5. Agent patch validation
+### 12.4 Profile validation
 
 Checks:
 
-- JSON schema;
-- allowlisted paths;
-- no profile approval bypass;
-- no unit ambiguity;
-- no out-of-range values;
-- no hidden destructive change.
+* closure;
+* duplicate points;
+* self-intersection;
+* minimum dimensions;
+* valid scale;
+* finite coordinates;
+* supported complexity;
+* usable contour area.
 
-### 6. KCL preflight
+### 12.5 Connection validation
 
 Checks:
 
-- required template exists;
-- stable variable names;
-- explicit units;
-- finite values;
-- supported topology;
-- no empty profile.
+* both interfaces approved;
+* positive transition length;
+* valid offset;
+* wall thickness;
+* clearance ranges;
+* extension ranges;
+* compatible profile geometry.
 
-### 7. Post-generation validation
+### 12.6 Agent validation
 
-Where supported:
+Checks:
 
-- non-empty model;
-- expected body count;
-- expected bounding range;
-- export artifact exists;
-- export artifact size > 0;
-- model volume is plausible.
+* valid structured response;
+* allowed field;
+* valid operation;
+* finite numeric amount;
+* trusted current value;
+* resulting value within bounds;
+* no duplicate field changes;
+* no profile or provider modifications.
+
+### 12.7 KCL preflight
+
+Checks:
+
+* valid LoftPlan;
+* compatible section point counts;
+* finite coordinates;
+* valid Z ordering;
+* valid KCL 2.0 syntax construction;
+* required solid operations;
+* deterministic output;
+* valid KCL hash.
+
+### 12.8 Post-generation validation
+
+Checks where available:
+
+* generation completed successfully;
+* KCL artifact exists;
+* generated model revision matches the schema revision;
+* STL is non-empty;
+* STL has valid facets;
+* STL bounding dimensions are plausible;
+* STL topology is suitable for the supported workflow.
 
 ---
 
-## Error model
+## 13. KCL generation design
 
-### Error categories
+The current KCL compiler targets current KCL 2.0 standards.
 
-- `INPUT`
-- `IMAGE`
-- `PROFILE`
-- `DIMENSION`
-- `DESIGN_RULE`
-- `KCL`
-- `ENGINE`
-- `AGENT`
-- `FILE_FORMAT`
-- `EXPORT`
-- `SESSION`
-- `NETWORK`
-- `INTERNAL`
+The generated model contains:
 
-### Error ID format
+1. outer profile sketches;
+2. inner profile sketches;
+3. outer solid loft;
+4. inner cutter loft;
+5. solid subtraction;
+6. one resulting hollow adapter body.
+
+Conceptually:
+
+```kcl
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+outer_solid = loft(
+  [...],
+  vDegree = 1,
+  baseCurveIndex = 0,
+  bodyType = SOLID
+)
+
+inner_cutter = loft(
+  [...],
+  vDegree = 1,
+  baseCurveIndex = 0,
+  bodyType = SOLID
+)
+
+adapter_model = subtract(
+  [outer_solid],
+  tools = [inner_cutter]
+)
+```
+
+The exact emitted syntax is controlled by the current compiler and tests.
+
+### KCL design rules
+
+* KCL must use current KCL 2.0 syntax.
+* Variable names must be deterministic.
+* Outer and inner profiles must use compatible point correspondence.
+* Extensions must be represented consistently.
+* The inner cutter may extend slightly beyond the end planes to ensure a through-hole.
+* Surface-shell generation is not the active path.
+* `joinSurfaces()` is not the current adapter construction.
+* Generated KCL must be persisted before execution.
+* Execution and export must use the same KCL artifact and revision lineage.
+
+---
+
+## 14. Model and artifact lineage
+
+The required lineage is:
+
+```text
+Canonical schema revision
+        ↓
+LoftPlan
+        ↓
+KCL bytes
+        ↓
+KCL SHA-256 hash
+        ↓
+Zoo execution
+        ↓
+Model revision
+        ↓
+STL artifact
+```
+
+Required invariants:
+
+* one schema revision maps to one authoritative LoftPlan;
+* one LoftPlan maps to deterministic KCL;
+* the executed KCL matches the persisted KCL;
+* the model revision records the KCL hash;
+* exports belong to the exact model revision;
+* stale revisions cannot produce current exports;
+* failed revisions preserve the previous successful model.
+
+---
+
+## 15. Agent revision design
+
+The Agent is used for language interpretation, not CAD authorship.
+
+Examples:
+
+```text
+Increase length by 3 mm.
+Decrease height by 3 mm.
+Make it 5 mm shorter.
+Set wall thickness to 3 mm.
+Move the outlet 10 mm right.
+Increase Interface A tolerance by 0.2 mm.
+```
+
+The backend converts the proposal into trusted arithmetic.
+
+Example:
+
+```text
+Current transition length: 50 mm
+User request: decrease height by 3 mm
+Agent operation: decrease
+Agent amount: 3 mm
+Backend result: 47 mm
+```
+
+The Agent must never independently decide the trusted current value.
+
+### Confirmation flow
+
+```text
+Propose revision
+    ↓
+Validate proposal
+    ↓
+Display old and new values
+    ↓
+User confirms
+    ↓
+Canonical project changes
+    ↓
+LoftPlan invalidated
+    ↓
+Project marked stale
+    ↓
+New generation starts
+    ↓
+New model revision becomes current
+```
+
+---
+
+## 16. State management
+
+### Frontend state
+
+Frontend state includes:
+
+* current route;
+* active project;
+* project token;
+* unsaved form values;
+* upload state;
+* calibration state;
+* validation results;
+* generation progress;
+* revision proposal;
+* export status.
+
+### Backend state
+
+The backend uses SQLite for persistent project state.
+
+Stored data includes:
+
+* project records;
+* interface state;
+* canonical configuration;
+* revisions;
+* model status;
+* artifact references.
+
+Artifacts are stored separately and referenced by project records.
+
+### State invariants
+
+* Interface approval is explicit.
+* Editing approved inputs increments schema revision.
+* Editing geometry inputs invalidates the current model.
+* Successful generation creates a model revision.
+* Failed generation does not replace the last-known-good model.
+* Exports correspond to the current model revision.
+
+---
+
+## 17. Background generation
+
+Generation jobs use staged application-managed execution.
+
+Typical stages:
+
+```text
+queued
+validating
+building_loft_plan
+compiling_kcl
+executing_zoo
+validating_result
+succeeded
+```
+
+Failure states:
+
+```text
+failed
+cancel_requested
+cancelled
+```
+
+Generation requirements:
+
+* one active generation job per project;
+* progress reporting;
+* stage-level errors;
+* safe retry;
+* no concurrent model overwrite;
+* last-known-good preservation;
+* exact KCL lineage.
+
+---
+
+## 18. Error model
+
+### Categories
+
+* `AUTH`
+* `INPUT`
+* `IMAGE`
+* `PROFILE`
+* `CALIBRATION`
+* `DESIGN_RULE`
+* `KCL`
+* `ENGINE`
+* `AGENT`
+* `EXPORT`
+* `SESSION`
+* `NETWORK`
+* `INTERNAL`
+
+### Format
 
 ```text
 IF-{CATEGORY}-{NUMBER}
@@ -763,1076 +1239,252 @@ IF-{CATEGORY}-{NUMBER}
 
 Examples:
 
-- `IF-IMAGE-002`
-- `IF-PROFILE-004`
-- `IF-ENGINE-001`
-- `IF-EXPORT-003`
+```text
+IF-AUTH-401
+IF-AGENT-503
+IF-PROFILE-004
+IF-KCL-001
+IF-EXPORT-004
+```
 
-### Error properties
+### Error requirements
 
-Each error must define:
+Each user-facing error should include:
 
-- user-facing message;
-- recommended action;
-- retryable boolean;
-- HTTP status;
-- internal technical detail;
-- request ID;
-- safe log context.
+* stable ID;
+* clear message;
+* recovery steps;
+* HTTP status;
+* retryability where relevant;
+* safe technical context;
+* no exposed secret;
+* no raw stack trace.
 
 ### Recovery rules
 
-- User-input errors preserve all valid fields.
-- Failed revision preserves last known good model.
-- Service timeout allows retry.
-- Malformed Agent output is never applied.
-- Stale model cannot be exported.
-- Unknown errors do not expose raw stack traces.
+* Input errors preserve valid user work.
+* Agent failures do not modify the project.
+* Generation failures preserve the previous model.
+* Stale models cannot export.
+* Missing Zoo Agent configuration returns an explicit unavailable error.
+* Zoo Agent must not silently fall back to Mock in the production path.
 
 ---
 
-## State management
+## 19. Caching
 
-### Frontend state
+May be cached:
 
-Recommended split:
+* normalized profiles by image hash;
+* KCL by canonical schema hash;
+* current-revision STL;
+* static frontend assets;
+* provider capability metadata.
 
-- URL/router state:
-  - current step;
-  - project ID;
-  - interface ID.
-- server state:
-  - project;
-  - analysis results;
-  - model status;
-  - export status.
-- local UI state:
-  - unsaved field edits;
-  - open dialogs;
-  - viewport controls.
+Must not be broadly cached:
 
-A server-state library such as TanStack Query is recommended but not mandatory.
-
-### Backend state
-
-Preferred MVP options:
-
-1. in-memory session store plus artifact directory for local demo;
-2. SQLite for reliable project recovery;
-3. Redis only if deployed infrastructure already supports it.
-
-### Recommended decision
-
-Use SQLite or a lightweight persistent store if implementation time permits. Pure in-memory state risks losing the demo project on restart.
-
-### State invariants
-
-- Interface approval is explicit.
-- Editing approved data increments schema revision.
-- Editing invalidates current model.
-- Successful generation creates model revision.
-- Failed generation does not replace last known good.
-- Export references exact model revision.
+* project tokens;
+* credentials;
+* raw uploads across projects;
+* unapproved profile results;
+* stale exports;
+* failed Agent proposals.
 
 ---
 
-## Background processing
+## 20. Security considerations
 
-### Candidate background tasks
+### Upload security
 
-- image analysis;
-- profile normalization;
-- Zoo geometry generation;
-- preview rendering;
-- export conversion;
-- volume analysis.
+* validate file type;
+* validate image bytes;
+* sanitize filenames;
+* prevent path traversal;
+* limit file size;
+* never execute uploaded content.
 
-### MVP approach
+### Prompt security
 
-Use simple application-managed jobs rather than a distributed queue unless runtime behavior requires more.
+* Agent fields are allowlisted.
+* Agent cannot output executable KCL.
+* Injection-like instructions are rejected or ignored.
+* Provider responses are parsed as structured data.
+* Non-JSON or malformed responses are rejected.
 
-Possible design:
+### API security
 
-- create job record;
-- run task in FastAPI background task or controlled worker;
-- expose polling endpoint;
-- store stage and progress;
-- prevent duplicate active generation per project.
-
-### Job states
-
-```text
-queued
-running
-succeeded
-failed
-cancel_requested
-cancelled
-```
-
-### Job requirements
-
-- idempotency key per generation request;
-- timeout per provider;
-- stage-level logging;
-- safe retry;
-- no concurrent model writes for same project;
-- last known good artifact preserved.
+* validate project tokens;
+* keep provider secrets server-side;
+* redact tokens from logs;
+* configure CORS only for required origins;
+* avoid exposing internal paths;
+* validate all artifact requests.
 
 ---
 
-## Caching
+## 21. Testing strategy
 
-### What may be cached
-
-- normalized profile from identical image hash;
-- stable sample projects;
-- generated KCL for identical canonical schema hash;
-- export results for identical model revision;
-- static help content;
-- provider capability metadata.
-
-### What should not be broadly cached
-
-- raw uploads across users;
-- secrets;
-- low-confidence inference;
-- user-specific project tokens;
-- failed Agent responses.
-
-### Cache key strategy
-
-Use deterministic hashes of:
-
-- schema version;
-- canonical JSON;
-- generation template version;
-- export format;
-- provider options.
-
-### MVP recommendation
-
-Implement only:
-
-- generated artifact reuse by schema hash;
-- export reuse by model revision;
-- browser caching for static assets.
-
-Avoid building a complex distributed cache.
-
----
-
-## Observability
-
-### Structured logging
-
-Each log entry should include where relevant:
-
-- timestamp;
-- request ID;
-- project ID;
-- schema revision;
-- model revision;
-- job ID;
-- operation;
-- stage;
-- duration;
-- provider;
-- result;
-- normalized error ID.
-
-### Metrics
-
-Track:
-
-- image-analysis success rate;
-- profile approval rate;
-- generation success rate;
-- export success rate;
-- average generation duration;
-- Agent patch validation failure rate;
-- provider timeout count;
-- physical validation result for hero case.
-
-### Tracing
-
-At minimum, preserve request correlation across:
-
-```text
-frontend request
-→ backend request
-→ vision / Zoo call
-→ artifact creation
-→ response
-```
-
-### Bug documentation
-
-Every Zoo issue should record:
-
-- date/time;
-- endpoint or workflow;
-- request summary;
-- expected result;
-- actual result;
-- reproduction steps;
-- error details;
-- screenshot/artifact;
-- workaround;
-- severity;
-- report status.
-
-### Privacy
-
-Do not log:
-
-- raw API keys;
-- full user images by default;
-- unnecessary prompt content;
-- provider authorization headers.
-
----
-
-## Testing strategy
-
-### Unit tests
+### Backend tests
 
 Cover:
 
-- Pydantic schemas;
-- dimension provenance;
-- unit conversion;
-- profile closure;
-- duplicate-point removal;
-- winding normalization;
-- self-intersection detection;
-- profile resampling;
-- geometry limits;
-- clearance rules;
-- wall-thickness rules;
-- Agent patch allowlist;
-- KCL emitter;
-- error mapping.
+* project creation and persistence;
+* token validation;
+* upload handling;
+* OpenCV analysis;
+* calibration;
+* profile approval;
+* connection validation;
+* LoftPlan generation;
+* KCL compilation;
+* Agent proposal validation;
+* relative increase/decrease/set operations;
+* generation state;
+* last-known-good behavior;
+* STL validation;
+* stale export rejection.
 
-### Contract tests
-
-Mock and validate:
-
-- vision response schema;
-- Engine client response;
-- Agent response;
-- File Format response;
-- error normalization.
-
-### Integration tests
+### Frontend tests
 
 Cover:
 
-- upload → analysis → approval;
-- two approved profiles → connection validation;
-- canonical schema → KCL;
-- KCL → Engine result;
-- model → export;
-- revision → new model;
-- failed revision → previous model retained.
+* workflow navigation;
+* upload states;
+* profile review;
+* calibration UI;
+* connection configuration;
+* fit-intent controls;
+* explicit preview generation;
+* number-input behavior;
+* generation progress;
+* Agent proposal review;
+* export controls;
+* stale-state warnings.
 
-### End-to-end tests
+### Live checks
 
-Known-good flows:
+Submission-critical live checks include:
 
-1. coaxial circular reducer;
-2. offset circular adapter;
-3. coaxial or offset circular adapter;
-4. rectangular transition;
-5. simple flat mounting plate.
+* deployed frontend loads from Cloudflare Pages;
+* frontend reaches Render backend;
+* project creation works;
+* upload and analysis work;
+* KCL generation works;
+* Zoo Engine generation succeeds;
+* STL download succeeds;
+* Agent revision works when credentialed.
 
-### Visual tests
-
-- SVG profile snapshots;
-- critical UI states;
-- result preview screenshots where stable.
-
-### Physical test
-
-Hero vacuum adapter:
-
-- generate;
-- export;
-- slice;
-- print;
-- fit-test;
-- record measured mismatch;
-- revise if required;
-- document result.
-
-### Manual accessibility test
-
-- keyboard-only workflow;
-- focus order;
-- error focus;
-- live-region behavior;
-- color-independent provenance;
-- zoom alternatives.
+Live Zoo Agent execution should only be claimed as verified when a credentialed request has been completed successfully.
 
 ---
 
-## Deployment model
+## 22. Current limitations
 
-### Recommended MVP deployment
+* Clean, front-facing profile images are strongly preferred.
+* Perspective correction is not implemented.
+* Dimensioned drawings may produce false edges.
+* Internal cavities in input profiles are not supported.
+* STEP export is not implemented.
+* Angle-based connections are not supported.
+* Complex manufacturing features are outside scope.
+* Render cold starts may delay the first request.
+* Generated results require user inspection before manufacturing.
 
-- Frontend: static hosting.
-- Backend: single containerized FastAPI service.
-- Persistent storage: SQLite volume or managed lightweight database.
-- Artifact storage:
-  - local persistent volume for demo deployment, or
-  - object storage if readily available.
-- Secrets: deployment environment variables.
-- HTTPS required.
+---
 
-### Local development
+## 23. Deployment configuration
+
+### Frontend
+
+Platform:
 
 ```text
-frontend/
-backend/
-docs/
-tests/
-artifacts/   # gitignored
+Cloudflare Pages
 ```
 
-Commands should be documented for Windows.
+Required frontend variable:
 
-### Environment separation
-
-- local;
-- test;
-- production/demo.
-
-Use distinct API keys if available.
-
-### Deployment priorities
-
-- simple;
-- reproducible;
-- low operational risk;
-- no unnecessary cloud complexity;
-- easy judge setup.
-
----
-
-## Migration strategy
-
-The MVP begins with schema version `0.1`.
-
-### Schema versioning
-
-Every canonical project includes:
-
-```json
-{
-  "schema_version": "0.1"
-}
+```text
+VITE_BACKEND_URL
 ```
 
-### Migration rules
+This must point to the deployed Render backend.
 
-- Never silently reinterpret old fields.
-- Add migration functions when schema changes.
-- Store original canonical JSON with each model revision.
-- KCL template version should be recorded.
-- Existing generated artifacts remain linked to their original schema/template version.
+### Backend
 
-### MVP migration needs
+Platform:
 
-Likely migrations:
+```text
+Render
+```
 
-- adding profile metadata;
-- adding manufacturing presets;
-- changing clearance representation;
-- changing model-revision structure.
+Backend requirements include:
 
-### Backward compatibility
+* Python runtime;
+* FastAPI application;
+* SQLite-compatible storage;
+* writable artifact directory;
+* Zoo API credentials;
+* allowed frontend CORS origin;
+* environment-based configuration.
 
-Only required for projects created during active development if persistence is implemented.
+### Secrets
 
-No public long-term compatibility guarantee in MVP.
+Typical server-side environment variables include:
 
----
+```text
+ZOO_API_TOKEN
+ENGINE_PROVIDER
+EXPORT_PROVIDER
+DATABASE_PATH
+ARTIFACT_ROOT
+CORS_ALLOWED_ORIGINS
+```
 
-## Security analysis
-
-### Threats
-
-#### Malicious uploads
-
-Risks:
-
-- oversized files;
-- malformed images;
-- decompression bombs;
-- unsupported file content;
-- filename traversal.
-
-Mitigations:
-
-- file size limit;
-- MIME verification;
-- image decoding in controlled library;
-- generated filenames;
-- no direct execution;
-- temporary storage;
-- cleanup.
-
-#### Prompt injection through images or text
-
-Risks:
-
-- image contains instructions to external model;
-- natural-language prompt tries to bypass constraints.
-
-Mitigations:
-
-- fixed system prompts;
-- structured output schema;
-- treat model output as untrusted;
-- allowlisted Agent patch fields;
-- no secret exposure to model;
-- no tool execution from model output.
-
-#### API-key exposure
-
-Mitigations:
-
-- server-side only;
-- environment secrets;
-- redaction;
-- no frontend provider calls;
-- repository scanning.
-
-#### Insecure direct object reference
-
-Mitigations:
-
-- unguessable project tokens;
-- project-artifact ownership checks;
-- short-lived download links;
-- no sequential public IDs.
-
-#### Denial of service / API exhaustion
-
-Mitigations:
-
-- upload limits;
-- per-project active-job limit;
-- request throttling if needed;
-- generation idempotency;
-- timeout;
-- no automatic infinite retry.
-
-#### Unsafe generated geometry
-
-Mitigations:
-
-- clear disclaimer;
-- manufacturability warnings;
-- no certification claims;
-- user approval;
-- physical test for hero model;
-- conservative rules.
-
-#### Privacy leakage
-
-Mitigations:
-
-- ephemeral uploads;
-- minimal logs;
-- explicit external-service notice;
-- cleanup policy;
-- no public artifact URLs by default.
+Exact names must remain synchronized with the active backend configuration.
 
 ---
 
-## Accessibility implementation
+## 24. Non-reversible technical decisions
 
-### Semantic structure
+The following decisions define the submission architecture:
 
-- single H1;
-- landmarks for header, navigation, main, footer;
-- labeled workflow navigation;
-- proper form grouping.
-
-### Form behavior
-
-- visible labels;
-- units associated with numeric inputs;
-- error summary and field-level errors;
-- no placeholder-only instructions;
-- keyboard-operable controls.
-
-### SVG profile editor
-
-- all dimensions mirrored in HTML fields;
-- profile description in text;
-- zoom controls;
-- no drag-only requirement;
-- provenance labels as text/icons.
-
-### 3D viewer
-
-- textual model summary;
-- keyboard-accessible controls where available;
-- fit/reset controls;
-- reduced-motion consideration;
-- no critical validation shown only in 3D.
-
-### Dynamic states
-
-- polite live region for progress;
-- assertive region for critical errors;
-- focus moves to error/proposal heading when appropriate;
-- dialog focus trapping and restoration.
-
-### Color and contrast
-
-- provenance never color-only;
-- warnings include icon and text;
-- contrast checked before final polish;
-- focus indicators visible.
+1. The canonical project schema is the source of truth.
+2. The LoftPlan is the authoritative geometry plan.
+3. KCL is generated deterministically by the backend.
+4. Zoo Agent interprets bounded requests but does not author CAD.
+5. The browser never receives Zoo credentials.
+6. Generation and export artifacts are revision-linked.
+7. Failed regeneration preserves the last-known-good model.
+8. KCL 2.0 solid-body geometry is the active construction.
+9. Surface-shell workarounds are not the active architecture.
+10. STL and KCL are the supported submission outputs.
+11. STEP is not implemented for this submission.
+12. Coaxial and offset are the supported connection modes.
+13. Cloudflare Pages hosts the frontend.
+14. Render hosts the backend.
+15. SQLite provides project persistence.
 
 ---
 
-## Alternatives considered
-
-### 1. Full browser CAD editor
-
-Rejected because:
-
-- duplicates Zoo Design Studio;
-- exceeds Makeathon scope;
-- creates high UX and geometry complexity;
-- conflicts with accessibility-first product direction.
-
-### 2. Unrestricted Agent-generated KCL
-
-Rejected because:
-
-- non-deterministic;
-- difficult to validate;
-- poor recovery when geometry is wrong;
-- observed Zookeeper behavior requires iterative correction;
-- undermines reliable demos.
-
-### 3. Text-only input
-
-Rejected because:
-
-- lay users struggle to describe physical geometry;
-- dimensions and profiles are easier to verify visually;
-- increases hallucination and ambiguity.
-
-### 4. Photo directly to final model
-
-Rejected because:
-
-- unsafe inference;
-- perspective distortion;
-- hidden geometry;
-- user cannot trust result;
-- no approval gate.
-
-### 5. General-purpose adapter support
-
-Rejected for MVP because:
-
-- arbitrary topologies are too broad;
-- difficult to test;
-- higher engine failure rate;
-- weaker polish.
-
-### 6. Streamlit-only application
-
-Possible but not preferred because:
-
-- weaker custom SVG editing;
-- less polished guided workflow;
-- limited frontend control.
-
-### 7. Local CAD kernel instead of Zoo
-
-Rejected for competition entry because:
-
-- weakens meaningful Zoo API use;
-- adds kernel complexity;
-- defeats core contest objective.
-
-### 8. Pure in-memory session state
-
-Considered for speed but risky because:
-
-- application restart loses projects;
-- weak demo reliability;
-- no recovery.
-
-A lightweight persistent store is preferred.
-
----
-
-## Known trade-offs
-
-- Restricting profile types improves reliability but limits perceived generality.
-- Requiring user approval adds steps but builds trust.
-- External vision improves accessibility but adds latency and privacy considerations.
-- Deterministic KCL limits creative freedom but improves reproducibility.
-- Supporting angled adapters increases wow factor but adds geometric failure risk.
-- Server-side orchestration protects secrets but adds backend complexity.
-- SQLite improves recovery but introduces schema management.
-- Polling is simpler than WebSockets but less immediate.
-- STL and KCL exports create value; STEP is planned but not implemented for this submission.
-- Desktop-first design is practical but limits mobile use.
-- Preserving last known good models uses more storage but greatly improves recovery.
-
----
-
-## Unresolved decisions
-
-1. Exact vision provider and model.
-2. Exact Zoo SDK versus direct REST/WebSocket use.
-3. Whether generation jobs are synchronous or polled background jobs.
-4. Whether SQLite is mandatory for MVP.
-5. Exact artifact storage approach in deployed demo.
-6. Exact 3D preview technology.
-7. Whether GLB is required internally for preview.
-8. Maximum traced-profile point count.
-9. Profile-resampling algorithm.
-10. Maximum supported angle.
-11. Offset-to-length safety formula.
-12. Default wall-thickness rules.
-13. Fit preset values.
-14. Whether volume analysis is stable enough for user-facing display.
-15. Whether direct browser camera capture is included.
-16. Whether manual basic-shape entry exists as fallback.
-17. Whether design JSON is user-downloadable.
-18. Whether sample projects are interactive.
-19. Whether section view is included.
-20. Exact deployment host.
-
----
-
-# Architecture Decision Records
-
-The following ADRs define decisions that implementation agents must not casually reverse. Any proposed reversal requires:
-
-- explicit product-owner approval;
-- written rationale;
-- impact analysis;
-- migration plan;
-- update to this document and `docs/DESIGN_DECISIONS.md`.
-
----
-
-## ADR-001 — Canonical design schema is the source of truth
-
-**Status:** Accepted
-
-### Decision
-
-The versioned canonical design schema is the source of truth for all user-approved geometry and manufacturing inputs.
-
-KCL is a generated artifact, not the primary project state.
-
-### Rationale
-
-- separates user intent from CAD syntax;
-- supports validation;
-- enables deterministic regeneration;
-- enables future alternative renderers;
-- makes Agent changes safe and inspectable.
-
-### Consequences
-
-- all geometry generation must begin from validated schema;
-- raw KCL edits are not imported back into project state in MVP;
-- schema migrations must be versioned.
-
-### Agents must not
-
-- replace canonical JSON with KCL as project state;
-- mutate model geometry outside schema;
-- accept arbitrary frontend KCL.
-
----
-
-## ADR-002 — Final KCL generation is deterministic
-
-**Status:** Accepted
-
-### Decision
-
-Final KCL must be emitted from tested templates and functions using validated canonical data.
-
-### Rationale
-
-- avoids Agent unpredictability;
-- improves testability;
-- makes bugs reproducible;
-- supports reliable demo flow.
-
-### Consequences
-
-- supported geometry is intentionally constrained;
-- new geometry families require explicit templates and tests.
-
-### Agents must not
-
-- allow an LLM to freely generate final executable KCL;
-- bypass template validation to make a single case pass.
-
----
-
-## ADR-003 — AI outputs are untrusted proposals
-
-**Status:** Accepted
-
-### Decision
-
-Vision and Agent outputs are treated as untrusted structured proposals until validated.
-
-### Rationale
-
-- models may hallucinate;
-- dimensions and geometry affect physical fit;
-- protects against prompt injection and malformed output.
-
-### Consequences
-
-- strict schemas;
-- allowlists;
-- user approval;
-- no direct execution.
-
-### Agents must not
-
-- apply Agent patches without validation;
-- mark inferred values as user-entered;
-- silently approve profiles.
-
----
-
-## ADR-004 — Interface approval is a mandatory gate
-
-**Status:** Accepted
-
-### Decision
-
-Both interfaces must be explicitly approved before connection configuration and generation.
-
-### Rationale
-
-- preserves user trust;
-- makes uncertainty visible;
-- prevents bad image inference from becoming hidden geometry.
-
-### Consequences
-
-- additional workflow steps;
-- approved profiles become versioned state;
-- editing invalidates downstream model state.
-
-### Agents must not
-
-- auto-approve profiles;
-- skip approval for demo speed;
-- generate from unresolved critical values.
-
----
-
-## ADR-005 — Preserve the last known good model
-
-**Status:** Accepted
-
-### Decision
-
-A failed revision or regeneration must not replace or delete the previous successful model.
-
-### Rationale
-
-- protects user work;
-- enables safe iteration;
-- improves resilience during remote API failures.
-
-### Consequences
-
-- model revisions are versioned;
-- stale/current status must be explicit;
-- artifact storage retains at least one prior successful result.
-
-### Agents must not
-
-- overwrite current model before new generation succeeds;
-- delete prior exports on failed revision.
-
----
-
-## ADR-006 — Zoo Engine API is the core geometry executor
-
-**Status:** Accepted
-
-### Decision
-
-Zoo’s Engine API is central to geometry execution and model generation.
-
-### Rationale
-
-- contest alignment;
-- meaningful use requirement;
-- avoids adding another CAD kernel;
-- demonstrates Zoo as a programmable geometry backend.
-
-### Consequences
-
-- network dependency;
-- API-minute consumption;
-- need for robust error handling and logs.
-
-### Agents must not
-
-- replace Zoo with a local CAD kernel for the primary workflow;
-- reduce Zoo to a decorative export-only integration.
-
----
-
-## ADR-007 — Agent API is limited to structured revisions and explanations
-
-**Status:** Accepted
-
-### Decision
-
-The Agent API may interpret natural-language changes, ask clarification, and explain issues, but it cannot directly control final geometry.
-
-### Rationale
-
-- preserves useful AI interaction;
-- avoids unrestricted CAD generation;
-- improves safety and predictability.
-
-### Consequences
-
-- parameter patch schema required;
-- unsupported requests must fall back to manual controls.
-
-### Agents must not
-
-- let Agent output overwrite KCL;
-- allow non-allowlisted schema paths.
-
----
-
-## ADR-008 — Purpose-built UX replaces manual Zoo correction
-
-**Status:** Accepted
-
-### Decision
-
-Users correct profiles and parameters inside InterfaceForge, not in Zoo Design Studio.
-
-### Rationale
-
-- Zoo’s manual CAD UX is not suitable for the target lay user;
-- InterfaceForge must hide KCL and CAD complexity;
-- correction must remain guided and accessible.
-
-### Consequences
-
-- SVG and parameter editing are core product features;
-- no “Open in Design Studio to fix” dependency.
-
-### Agents must not
-
-- make Design Studio a required user step;
-- expose raw KCL as the primary editor.
-
----
-
-## ADR-009 — Backend owns all privileged external API calls
-
-**Status:** Accepted
-
-### Decision
-
-Vision, Zoo Engine, Agent, and File Format calls requiring credentials are made by the backend.
-
-### Rationale
-
-- protects secrets;
-- centralizes validation and error handling;
-- enables observability and quotas.
-
-### Consequences
-
-- backend required even for static frontend;
-- frontend uses only InterfaceForge API.
-
-### Agents must not
-
-- embed provider keys in frontend;
-- call privileged provider APIs directly from browser.
-
----
-
-## ADR-010 — MVP remains a modular monolith
-
-**Status:** Accepted
-
-### Decision
-
-The MVP uses one frontend and one backend application, with internal modules rather than microservices.
-
-### Rationale
-
-- solo developer;
-- short competition window;
-- easier deployment and debugging;
-- sufficient separation through modules.
-
-### Consequences
-
-- internal boundaries must still be explicit;
-- background jobs remain lightweight.
-
-### Agents must not
-
-- introduce microservices, message brokers, or distributed infrastructure without explicit approval.
-
----
-
-## ADR-011 — No user accounts or billing in MVP
-
-**Status:** Accepted
-
-### Decision
-
-The Makeathon MVP has no end-user login, account system, subscription, payment, or credit balance.
-
-### Rationale
-
-- not needed to prove value;
-- high implementation and compliance cost;
-- distracts from competition scoring.
-
-### Consequences
-
-- temporary project tokens;
-- limited persistence;
-- no cloud project list.
-
-### Agents must not
-
-- add authentication frameworks;
-- build billing or credit logic;
-- redirect users to sign-in.
-
----
-
-## ADR-012 — Geometry scope is intentionally constrained
-
-**Status:** Accepted
-
-### Decision
-
-The MVP supports only defined profile families and connection modes.
-
-### Rationale
-
-- reliable generation;
-- testability;
-- physical validation;
-- competition polish.
-
-### Consequences
-
-- unsupported requests must be rejected clearly;
-- extensibility belongs in roadmap/documentation.
-
-### Agents must not
-
-- add arbitrary freeform CAD;
-- expand topology before P0 reliability is achieved.
-
----
-
-## ADR-013 — Errors are product features, not raw exceptions
-
-**Status:** Accepted
-
-### Decision
-
-All significant failures map to stable error IDs, plain-language explanations, and corrective actions.
-
-### Rationale
-
-- target users do not understand API/KCL errors;
-- judging rewards notes and bug reporting;
-- improves support and reproducibility.
-
-### Consequences
-
-- central error registry;
-- provider errors normalized;
-- logs retain technical context.
-
-### Agents must not
-
-- expose raw stack traces;
-- use generic “Something went wrong” where a known category exists.
-
----
-
-## ADR-014 — Accessibility is implemented before visual polish
-
-**Status:** Accepted
-
-### Decision
-
-Semantic structure, keyboard access, text equivalents, focus handling, and non-color status cues are baseline implementation requirements.
-
-### Rationale
-
-- target user accessibility;
-- prevents expensive retrofit;
-- wireframes already define accessible states.
-
-### Consequences
-
-- SVG and 3D information require text equivalents;
-- drag cannot be mandatory;
-- dynamic states use live regions.
-
-### Agents must not
-
-- defer all accessibility until final styling;
-- create color-only provenance or validation.
-
----
-
-## ADR-015 — Competition documentation is part of implementation
-
-**Status:** Accepted
-
-### Decision
-
-API notes, bug reports, design decisions, tests, and limitations are updated during development, not after.
-
-### Rationale
-
-- documentation and bug reporting represent a major portion of judging;
-- real-time notes are more accurate;
-- improves team/agent coordination.
-
-### Consequences
-
-- significant changes include documentation updates;
-- bugs require reproducible records.
-
-### Agents must not
-
-- postpone all documentation until the end;
-- silently work around Zoo bugs without recording them.
+## 25. Submission architecture summary
+
+InterfaceForge is implemented as a guided, revision-safe adapter-generation workflow.
+
+Its key technical characteristics are:
+
+* reviewed 2D profile input;
+* explicit calibration;
+* canonical project data;
+* deterministic LoftPlan generation;
+* current KCL 2.0 solid-body compilation;
+* Zoo Engine execution;
+* bounded Zoo Agent revisions;
+* model and artifact lineage;
+* verified STL output;
+* KCL download;
+* last-known-good preservation;
+* Cloudflare frontend deployment;
+* Render backend deployment.
+
+The submission intentionally prioritizes a clear, reliable adapter workflow over unsupported breadth.

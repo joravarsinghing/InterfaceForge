@@ -31,7 +31,7 @@
 InterfaceForge creates a hollow parametric transition between two reviewed planar interface profiles.
 
 <p align="center">
-  <a href="https://interfaceforge.pages.dev/">Visit the InterfaceForge website 🔗</a>
+  <a href="https://interfaceforge.pages.dev/">Visit InterfaceForge website 🔗</a>
 </p>
 
 The controlled submission workflow demonstrates a practical dust-extraction adapter:
@@ -104,6 +104,14 @@ InterfaceForge guides the user through:
 # User workflows
 
 ## Workflow 1 — Create an adapter from start to finish
+
+<div align="center">
+
+<p align="center">
+  <img src="assets\export6.jpg" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
+
+</div>
 
 This is the primary guided workflow.
 
@@ -281,6 +289,23 @@ Exports remain tied to the current model revision.
 
 If an upstream parameter changes, the existing model becomes stale and must be regenerated before current exports are available.
 
+3D Printed part:
+
+<div align="center">
+
+<p align="center">
+  <img src="assets\export5.jpg" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
+
+</div>
+
+Some more examples:
+
+<p align="center">
+  <img src="assets\export3.png" alt="Right image" style="width: 48%; border-radius: 5px; border: 1px solid #39FF14;">
+  <img src="assets\export4.png" alt="Right image" style="width: 48%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
+
 ---
 
 ## Workflow 2 — Edit the generated adapter using AI chat
@@ -428,7 +453,7 @@ The reliable workflow uses a **clean, filled 2D profile image**.
     </td>
     <td width="50%" align="center" valign="top">
       <strong>Interface B — Recommended custom profile input</strong><br><br>
-        <img src="samples\manual_qa\profile1.jpg" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14; width=300px">
+        <img src="samples\manual_qa\profile10.png" alt="Left image"; border-radius: 5px; border: 1px solid #39FF14; width=300px">
     </td>
   </tr>
 </table>
@@ -448,6 +473,10 @@ It cannot correct:
 
 For that reason, InterfaceForge expects a prepared planar profile, scan, silhouette, or orthographic representation rather than an unrestricted phone photograph.
 
+<p align="center">
+  <img src="assets\error1.png" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
+
 ### Why dimensioned drawings are experimental
 
 Dimension lines, arrows, leaders, extension lines, center marks, and text may be detected as geometry during classical image processing.
@@ -458,6 +487,10 @@ They can introduce:
 * false extensions;
 * additional closed regions;
 * incorrect contour selection.
+
+<p align="center">
+  <img src="assets\error2.png" alt="Right image" style="width: 60%; border-radius: 5px; border: 1px solid #39FF14;">
+</p>
 
 Dimensioned drawings remain experimental and require manual review. Approved arbitrary traced closed profiles are supported for final adapter generation.
 
