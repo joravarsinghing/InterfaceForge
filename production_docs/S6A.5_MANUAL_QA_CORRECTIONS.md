@@ -1,3 +1,9 @@
+Historical implementation record.
+
+This document reflects the project state at the named stage and may contain superseded architecture, providers, syntax, tests, or scope. Refer to README.md, technical_design.md, and active files under docs/ for current submission behavior.
+
+---
+
 # Stage S6A.5 — Manual QA Corrections and UI Stabilization
 
 **Stage Status:** Complete  

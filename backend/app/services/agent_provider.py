@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 # Strict allowlist of allowed revision fields per S9 specification
 ALLOWED_REVISION_FIELDS: Set[str] = {
     "connection.length_mm",
+    "connection.extension_a_mm",
+    "connection.extension_b_mm",
     "connection.offset_x_mm",
     "connection.offset_y_mm",
     "manufacturing.wall_thickness_mm",
@@ -33,6 +35,8 @@ ALLOWED_REVISION_FIELDS: Set[str] = {
 # Unit mapping per field type
 FIELD_UNITS: Dict[str, str] = {
     "connection.length_mm": "mm",
+    "connection.extension_a_mm": "mm",
+    "connection.extension_b_mm": "mm",
     "connection.offset_x_mm": "mm",
     "connection.offset_y_mm": "mm",
     "manufacturing.wall_thickness_mm": "mm",
@@ -114,7 +118,32 @@ class MockAgentProvider(AgentProvider):
                 provider_used="mock",
             )
 
-        # 3. Specific Deterministic Cases
+        # Extensions require an explicit Interface A/B side.
+        if "extension" in prompt_lower:
+            side_a = bool(re.search(r"\b(interface\s*a|inlet|input)\b", prompt_lower))
+            side_b = bool(re.search(r"\b(interface\s*b|outlet|output)\b", prompt_lower))
+            if side_a == side_b:
+                return AgentProposalResult(changes=[], summary="Extension side is ambiguous. Specify Interface A/inlet or Interface B/outlet.", is_valid=True, provider_used="mock")
+            side = "a" if side_a else "b"
+            field = f"connection.extension_{side}_mm"
+            current = getattr(project.connection, f"extension_{side}_mm")
+            match = re.search(r"(\d+(?:\.\d+)?)\s*mm", prompt_lower)
+            remove = any(term in prompt_lower for term in ("remove", "zero", "no extension"))
+            amount = float(match.group(1)) if match else 0.0
+            if remove:
+                operation, amount = "set", 0.0
+            elif "increase" in prompt_lower or "longer" in prompt_lower:
+                operation = "increase"
+            elif "decrease" in prompt_lower or "shorter" in prompt_lower:
+                operation = "decrease"
+            elif "set" in prompt_lower or " to " in prompt_lower:
+                operation = "set"
+            else:
+                return AgentProposalResult(changes=[], summary="Extension operation is ambiguous. Specify set, increase, decrease, or remove.", is_valid=True, provider_used="mock")
+            proposed = current + amount if operation == "increase" else current - amount if operation == "decrease" else amount
+            return AgentProposalResult(changes=[ParameterChange(field=field, current_value=current, proposed_value=proposed, unit="mm", reason=f"{operation.title()} Interface {side.upper()} extension.", operation=operation, amount=amount)], summary=f"{operation.title()} Interface {side.upper()} vertical extension.", is_valid=True, provider_used="mock")
+
+        # 4. Specific Deterministic Cases
         # Length terminology is aligned with the Zoo contract.
         if any(
             term in prompt_lower for term in ["length", "height", "taller", "shorter", "longer"]
@@ -273,6 +302,8 @@ class ZooAgentProvider(AgentProvider):
             "1. You MUST NEVER output KCL code, CAD commands, or geometry files.\n"
             "2. Allowed fields ONLY:\n"
             "   - connection.length_mm\n"
+            "   - connection.extension_a_mm (Interface A/inlet vertical extension)\n"
+            "   - connection.extension_b_mm (Interface B/outlet vertical extension)\n"
             "   - connection.offset_x_mm\n"
             "   - connection.offset_y_mm\n"
             "   - manufacturing.wall_thickness_mm\n"
@@ -283,7 +314,9 @@ class ZooAgentProvider(AgentProvider):
             "4. Terminology: length, height, adapter height, transition height, taller, and "
             "shorter all refer to connection.length_mm. Increase X by N means current value plus N; "  # noqa: E501
             "decrease X by N means current value minus N; set X to N means absolute value N.\n"
-            "5. Examples: Increase height by 3 mm; Decrease length by 3 mm; Make it 5 mm shorter; "
+            "5. Interface A/inlet/input means extension_a_mm; Interface B/outlet/output means extension_b_mm.\n"
+            "An extension request without a side is ambiguous. Remove means set the selected extension to 0.\n"
+            "6. Examples: Increase height by 3 mm; Decrease length by 3 mm; Make it 5 mm shorter; "
             "Set the height to 60 mm.\n"
             "6. Each change must contain field, operation (increase, decrease, or set), amount/value, "  # noqa: E501
             "unit, and reason. The backend calculates the final trusted value from current state.\n"
@@ -291,6 +324,8 @@ class ZooAgentProvider(AgentProvider):
             "8. Return strictly valid JSON format matching schema with keys 'changes' and 'summary'.\n\n"  # noqa: E501
             f"Current trusted parameters:\n"
             f"- connection.length_mm = {conn.length_mm}\n"
+            f"- connection.extension_a_mm = {conn.extension_a_mm}\n"
+            f"- connection.extension_b_mm = {conn.extension_b_mm}\n"
             f"- connection.offset_x_mm = {conn.offset_x_mm}\n"
             f"- connection.offset_y_mm = {conn.offset_y_mm}\n"
             f"- manufacturing.wall_thickness_mm = {mfg.wall_thickness_mm}\n"

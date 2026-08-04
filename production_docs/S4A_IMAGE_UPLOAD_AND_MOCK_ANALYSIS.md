@@ -1,3 +1,9 @@
+Historical implementation record.
+
+This document reflects the project state at the named stage and may contain superseded architecture, providers, syntax, tests, or scope. Refer to README.md, technical_design.md, and active files under docs/ for current submission behavior.
+
+---
+
 # Stage S4A — Interface Image Upload and Mock Analysis Contract
 
 **Stage Status:** Complete  

@@ -1,5 +1,18 @@
+## Implementation configuration and evidence
 
-# InterfaceForge — Technical Design
+The active backend settings are `APP_NAME`, `APP_VERSION`, `ENVIRONMENT`, `DEBUG`, `CORS_ORIGINS`, `HOST`, `PORT`, `DB_PATH`, `ENGINE_PROVIDER`, `ZOO_API_TOKEN`, `ZOO_API_BASE_URL`, `GENERATION_TIMEOUT_SECONDS`, `ANALYSIS_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_VISION_MODEL`, `GEMINI_VISION_FALLBACK_MODEL`, `GEMINI_VISION_FALLBACK_ENABLED`, `GEMINI_MODEL`, `ANALYSIS_TIMEOUT_SECONDS`, `OPENROUTER_API_KEY`, `OPENROUTER_API_BASE_URL`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_VISION_FALLBACK_MODEL`, and `EXPORT_PROVIDER`. The frontend uses `VITE_BACKEND_URL`.
+
+SQLite is configured by `DB_PATH` and defaults to `artifacts/interfaceforge.db`. Uploads, generated KCL, previews, and exports use the runtime `artifacts` directory. Render filesystem persistence must be treated as deployment-dependent; the application does not claim durable object storage.
+
+The active Agent allowlist contains exactly six fields: `connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, and `manufacturing.clearance_b_mm`. Confirmation changes canonical values and marks the model stale; a separate generation request is required.
+
+A prior credentialed Zoo Agent integration flow completed successfully. During the focused 2026-08-04 adversarial audit, 17 of 18 Agent attempts timed out or closed their WebSocket. The direct live Engine audit timed out before a fresh STL conversion result. These observations do not establish a confirmed Zoo defect, and offline tests are not live-provider proof.
+## Current submission evidence and boundary
+
+This design document preserves historical rationale below, but active behavior is: two approved profiles, two-point calibration with one known real-world distance per profile, OpenCV tracing, LoftPlan authority, KCL 2.0, coaxial/parallel offset connections, bounded Zoo Agent proposals, separate regeneration after confirmation, SQLite persistence, and STL/KCL exports. STEP and angle-based connections are not submission capabilities. A prior credentialed Zoo Agent flow succeeded; the focused 2026-08-04 audit had 17 of 18 Agent attempts timeout or close WebSocket, and the direct live Engine audit timed out before a fresh STL conversion result. Offline tests are not live-provider proof.
+
+
+# InterfaceForge Ã¢â‚¬â€ Technical Design
 
 **Document status:** Submission implementation record  
 **Last reviewed:** 2026-08-03  
@@ -17,23 +30,23 @@ InterfaceForge is a guided adapter-generation application for users who do not k
 
 The product converts:
 
-```text
+`	ext
 Two user-approved 2D interface definitions
         +
 Connection relationship
         +
 Manufacturing parameters
-        ↓
+        Ã¢â€ â€œ
 Validated canonical project schema
-        ↓
+        Ã¢â€ â€œ
 Persisted LoftPlan
-        ↓
+        Ã¢â€ â€œ
 Deterministic KCL 2.0
-        ↓
+        Ã¢â€ â€œ
 Zoo Engine execution
-        ↓
+        Ã¢â€ â€œ
 3D preview, KCL, and STL output
-````
+``
 
 The primary submission scenario is a hollow dust-extraction adapter connecting:
 
@@ -164,49 +177,49 @@ Traced profiles must be:
 
 ## 4. Deployment architecture
 
-```text
-┌───────────────────────────────────────────────────────────────┐
-│ Cloudflare Pages                                              │
-│                                                               │
-│ React + Vite frontend                                         │
-│ - Guided workflow                                             │
-│ - Upload and calibration UI                                   │
-│ - Profile review                                              │
-│ - Connection configuration                                    │
-│ - Preview and result screens                                  │
-│ - Agent revision panel                                        │
-│ - KCL and STL download controls                               │
-└──────────────────────────────┬────────────────────────────────┘
-                               │ HTTPS
-                               │ VITE_BACKEND_URL
-                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│ Render                                                        │
-│                                                               │
-│ FastAPI backend                                               │
-│ - Project/session API                                         │
-│ - SQLite persistence                                          │
-│ - Upload and artifact storage                                 │
-│ - OpenCV analysis                                             │
-│ - Profile normalization                                       │
-│ - Canonical schema management                                 │
-│ - LoftPlan generation                                         │
-│ - KCL 2.0 compiler                                            │
-│ - Zoo Engine integration                                      │
-│ - Zoo Agent integration                                       │
-│ - STL generation and validation                               │
-│ - Revision and export lineage                                 │
-└───────────────────────┬───────────────────────────────────────┘
-                        │ Server-side credentials
-                        ▼
-┌───────────────────────────────────────────────────────────────┐
-│ Zoo services                                                  │
-│                                                               │
-│ - Zoo Engine                                                  │
-│ - Zoo Agent                                                   │
-│ - KCL execution/export tooling                                │
-└───────────────────────────────────────────────────────────────┘
-```
+``text
+Ã¢â€Å’Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â
+Ã¢â€â€š Cloudflare Pages                                              Ã¢â€â€š
+Ã¢â€â€š                                                               Ã¢â€â€š
+Ã¢â€â€š React + Vite frontend                                         Ã¢â€â€š
+Ã¢â€â€š - Guided workflow                                             Ã¢â€â€š
+Ã¢â€â€š - Upload and calibration UI                                   Ã¢â€â€š
+Ã¢â€â€š - Profile review                                              Ã¢â€â€š
+Ã¢â€â€š - Connection configuration                                    Ã¢â€â€š
+Ã¢â€â€š - Preview and result screens                                  Ã¢â€â€š
+Ã¢â€â€š - Agent revision panel                                        Ã¢â€â€š
+Ã¢â€â€š - KCL and STL download controls                               Ã¢â€â€š
+Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Ëœ
+                               Ã¢â€â€š HTTPS
+                               Ã¢â€â€š VITE_BACKEND_URL
+                               Ã¢â€“Â¼
+Ã¢â€Å’Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â
+Ã¢â€â€š Render                                                        Ã¢â€â€š
+Ã¢â€â€š                                                               Ã¢â€â€š
+Ã¢â€â€š FastAPI backend                                               Ã¢â€â€š
+Ã¢â€â€š - Project/session API                                         Ã¢â€â€š
+Ã¢â€â€š - SQLite persistence                                          Ã¢â€â€š
+Ã¢â€â€š - Upload and artifact storage                                 Ã¢â€â€š
+Ã¢â€â€š - OpenCV analysis                                             Ã¢â€â€š
+Ã¢â€â€š - Profile normalization                                       Ã¢â€â€š
+Ã¢â€â€š - Canonical schema management                                 Ã¢â€â€š
+Ã¢â€â€š - LoftPlan generation                                         Ã¢â€â€š
+Ã¢â€â€š - KCL 2.0 compiler                                            Ã¢â€â€š
+Ã¢â€â€š - Zoo Engine integration                                      Ã¢â€â€š
+Ã¢â€â€š - Zoo Agent integration                                       Ã¢â€â€š
+Ã¢â€â€š - STL generation and validation                               Ã¢â€â€š
+Ã¢â€â€š - Revision and export lineage                                 Ã¢â€â€š
+Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Ëœ
+                        Ã¢â€â€š Server-side credentials
+                        Ã¢â€“Â¼
+Ã¢â€Å’Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â
+Ã¢â€â€š Zoo services                                                  Ã¢â€â€š
+Ã¢â€â€š                                                               Ã¢â€â€š
+Ã¢â€â€š - Zoo Engine                                                  Ã¢â€â€š
+Ã¢â€â€š - Zoo Agent                                                   Ã¢â€â€š
+Ã¢â€â€š - KCL execution/export tooling                                Ã¢â€â€š
+Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Ëœ
+``
 
 ### Deployment rules
 
@@ -245,63 +258,63 @@ The architecture avoids:
 
 ## 6. Core data flow
 
-```text
+``text
 Image upload
-    ↓
+    Ã¢â€ â€œ
 Image validation
-    ↓
+    Ã¢â€ â€œ
 OpenCV profile extraction
-    ↓
+    Ã¢â€ â€œ
 Profile normalization
-    ↓
+    Ã¢â€ â€œ
 Two-point calibration
-    ↓
+    Ã¢â€ â€œ
 User review and approval
-    ↓
+    Ã¢â€ â€œ
 Connection and manufacturing configuration
-    ↓
+    Ã¢â€ â€œ
 Server-side validation
-    ↓
+    Ã¢â€ â€œ
 Canonical project update
-    ↓
+    Ã¢â€ â€œ
 LoftPlan generation
-    ↓
+    Ã¢â€ â€œ
 Deterministic KCL 2.0 compilation
-    ↓
+    Ã¢â€ â€œ
 Zoo Engine execution
-    ↓
+    Ã¢â€ â€œ
 Model revision marked current
-    ↓
+    Ã¢â€ â€œ
 KCL and STL made available
-```
+``
 
 For Agent revisions:
 
-```text
+``text
 Natural-language request
-    ↓
+    Ã¢â€ â€œ
 Zoo Agent interpretation
-    ↓
+    Ã¢â€ â€œ
 Structured bounded proposal
-    ↓
+    Ã¢â€ â€œ
 Server-side allowlist validation
-    ↓
+    Ã¢â€ â€œ
 Trusted arithmetic using current project values
-    ↓
+    Ã¢â€ â€œ
 User confirmation
-    ↓
+    Ã¢â€ â€œ
 Canonical project update
-    ↓
+    Ã¢â€ â€œ
 Derived geometry marked stale
-    ↓
+    Ã¢â€ â€œ
 LoftPlan rebuilt
-    ↓
+    Ã¢â€ â€œ
 KCL regenerated
-    ↓
+    Ã¢â€ â€œ
 Zoo Engine executes revised model
-    ↓
+    Ã¢â€ â€œ
 New model revision and exports
-```
+``
 
 ---
 
@@ -568,26 +581,26 @@ Tokens and raw credentials must never appear in logs.
 
 ## 8. Trust boundaries
 
-```text
+``text
 Untrusted user input
     - images
     - calibration points
     - dimensions
     - connection values
     - Agent prompts
-        ↓
+        Ã¢â€ â€œ
 Application validation boundary
-        ↓
+        Ã¢â€ â€œ
 Canonical project schema
-        ↓
+        Ã¢â€ â€œ
 LoftPlan
-        ↓
+        Ã¢â€ â€œ
 Deterministic KCL compiler
-        ↓
+        Ã¢â€ â€œ
 Zoo execution
-        ↓
+        Ã¢â€ â€œ
 Validated KCL and STL artifacts
-```
+``
 
 ### Trust rules
 
@@ -607,7 +620,7 @@ Validated KCL and STL artifacts
 
 ### 9.1 Project
 
-```json
+``json
 {
   "project_id": "uuid",
   "project_token": "secret-project-token",
@@ -625,11 +638,11 @@ Validated KCL and STL artifacts
   "last_known_good_model_revision": 2,
   "model_revisions": []
 }
-```
+``
 
 ### 9.2 Interface definition
 
-```json
+``json
 {
   "id": "interface_a",
   "source_image_ref": "artifact-id",
@@ -660,11 +673,11 @@ Validated KCL and STL artifacts
   "approved": true,
   "approved_at": "ISO-8601"
 }
-```
+``
 
 ### 9.3 Connection definition
 
-```json
+``json
 {
   "mode": "offset",
   "length_mm": 50.0,
@@ -674,13 +687,13 @@ Validated KCL and STL artifacts
   "extension_a_mm": 12.0,
   "extension_b_mm": 12.0
 }
-```
+``
 
 `angle_deg` may remain in the persisted schema for backward compatibility, but submission workflows require it to remain `0.0`.
 
 ### 9.4 Manufacturing definition
 
-```json
+``json
 {
   "process": "fdm",
   "material": "PETG",
@@ -688,11 +701,11 @@ Validated KCL and STL artifacts
   "clearance_a_mm": 0.3,
   "clearance_b_mm": 0.1
 }
-```
+``
 
 ### 9.5 Model revision
 
-```json
+``json
 {
   "model_revision": 2,
   "schema_revision": 3,
@@ -706,11 +719,11 @@ Validated KCL and STL artifacts
   "warnings": [],
   "generated_at": "ISO-8601"
 }
-```
+``
 
 ### 9.6 Agent proposal
 
-```json
+``json
 {
   "changes": [
     {
@@ -727,11 +740,11 @@ Validated KCL and STL artifacts
   "is_valid": true,
   "provider_used": "zoo"
 }
-```
+``
 
 ### 9.7 Error record
 
-```json
+``json
 {
   "error_id": "IF-ENGINE-004",
   "request_id": "uuid",
@@ -744,7 +757,7 @@ Validated KCL and STL artifacts
   "retryable": true,
   "timestamp": "ISO-8601"
 }
-```
+``
 
 ---
 
@@ -752,12 +765,12 @@ Validated KCL and STL artifacts
 
 API responses use:
 
-```json
+``json
 {
   "success": true,
   "data": {}
 }
-```
+``
 
 Errors use the application error model with:
 
@@ -769,87 +782,87 @@ Errors use the application error model with:
 
 ### Core project routes
 
-```text
+``text
 POST   /api/projects
 GET    /api/projects/{project_id}
 PATCH  /api/projects/{project_id}
-```
+``
 
 ### Provider routes
 
-```text
+``text
 GET    /api/projects/provider-mode
 PATCH  /api/projects/provider-mode
 GET    /api/projects/{project_id}/provider-mode
 PATCH  /api/projects/{project_id}/provider-mode
-```
+``
 
 ### Interface routes
 
-```text
+``text
 POST   /api/projects/{project_id}/interfaces/{interface_id}/upload
 POST   /api/projects/{project_id}/interfaces/{interface_id}/analyze
 PATCH  /api/projects/{project_id}/interfaces/{interface_id}
 POST   /api/projects/{project_id}/interfaces/{interface_id}/approve
-```
+``
 
 ### Calibration routes
 
-```text
+``text
 POST   /api/projects/{project_id}/interfaces/{interface_id}/scale/snap
 POST   /api/projects/{project_id}/interfaces/{interface_id}/scale/calibrate
 DELETE /api/projects/{project_id}/interfaces/{interface_id}/scale/calibration
-```
+``
 
 ### Artifact routes
 
-```text
+``text
 GET /api/projects/{project_id}/interfaces/{interface_id}/image
 GET /api/projects/{project_id}/interfaces/{interface_id}/cleaned_image
 GET /api/projects/{project_id}/interfaces/{interface_id}/analysis_image
 GET /api/projects/{project_id}/interfaces/{interface_id}/trace_svg
 GET /api/projects/{project_id}/interfaces/{interface_id}/overlay_svg
-```
+``
 
 ### Connection and validation routes
 
-```text
+``text
 PUT  /api/projects/{project_id}/connection
 POST /api/projects/{project_id}/connection/validate
-```
+``
 
 Exact route names should remain synchronized with the implementation.
 
 ### KCL routes
 
-```text
+``text
 GET  /api/projects/{project_id}/kcl/readiness
 POST /api/projects/{project_id}/kcl/compile
 GET  /api/projects/{project_id}/kcl
-```
+``
 
 ### Generation routes
 
-```text
+``text
 POST /api/projects/{project_id}/generation
 GET  /api/projects/{project_id}/generation/{job_id}
-```
+``
 
 ### Revision routes
 
-```text
+``text
 POST /api/projects/{project_id}/revision/propose
 POST /api/projects/{project_id}/revision/confirm
-```
+``
 
 ### Export routes
 
-```text
+``text
 GET  /api/projects/{project_id}/exports/status
 POST /api/projects/{project_id}/exports
 POST /api/projects/{project_id}/exports/{format}/retry
 GET  /api/projects/{project_id}/exports/{format}/download
-```
+``
 
 ### Contract rules
 
@@ -1010,7 +1023,7 @@ The generated model contains:
 
 Conceptually:
 
-```kcl
+``kcl
 @settings(defaultLengthUnit = mm, kclVersion = 2.0)
 
 outer_solid = loft(
@@ -1031,7 +1044,7 @@ adapter_model = subtract(
   [outer_solid],
   tools = [inner_cutter]
 )
-```
+``
 
 The exact emitted syntax is controlled by the current compiler and tests.
 
@@ -1053,21 +1066,21 @@ The exact emitted syntax is controlled by the current compiler and tests.
 
 The required lineage is:
 
-```text
+``text
 Canonical schema revision
-        ↓
+        Ã¢â€ â€œ
 LoftPlan
-        ↓
+        Ã¢â€ â€œ
 KCL bytes
-        ↓
+        Ã¢â€ â€œ
 KCL SHA-256 hash
-        ↓
+        Ã¢â€ â€œ
 Zoo execution
-        ↓
+        Ã¢â€ â€œ
 Model revision
-        ↓
+        Ã¢â€ â€œ
 STL artifact
-```
+``
 
 Required invariants:
 
@@ -1087,50 +1100,50 @@ The Agent is used for language interpretation, not CAD authorship.
 
 Examples:
 
-```text
+``text
 Increase length by 3 mm.
 Decrease height by 3 mm.
 Make it 5 mm shorter.
 Set wall thickness to 3 mm.
 Move the outlet 10 mm right.
 Increase Interface A tolerance by 0.2 mm.
-```
+``
 
 The backend converts the proposal into trusted arithmetic.
 
 Example:
 
-```text
+``text
 Current transition length: 50 mm
 User request: decrease height by 3 mm
 Agent operation: decrease
 Agent amount: 3 mm
 Backend result: 47 mm
-```
+``
 
 The Agent must never independently decide the trusted current value.
 
 ### Confirmation flow
 
-```text
+``text
 Propose revision
-    ↓
+    Ã¢â€ â€œ
 Validate proposal
-    ↓
+    Ã¢â€ â€œ
 Display old and new values
-    ↓
+    Ã¢â€ â€œ
 User confirms
-    ↓
+    Ã¢â€ â€œ
 Canonical project changes
-    ↓
+    Ã¢â€ â€œ
 LoftPlan invalidated
-    ↓
+    Ã¢â€ â€œ
 Project marked stale
-    ↓
+    Ã¢â€ â€œ
 New generation starts
-    ↓
+    Ã¢â€ â€œ
 New model revision becomes current
-```
+``
 
 ---
 
@@ -1183,7 +1196,7 @@ Generation jobs use staged application-managed execution.
 
 Typical stages:
 
-```text
+``text
 queued
 validating
 building_loft_plan
@@ -1191,15 +1204,15 @@ compiling_kcl
 executing_zoo
 validating_result
 succeeded
-```
+``
 
 Failure states:
 
-```text
+``text
 failed
 cancel_requested
 cancelled
-```
+``
 
 Generation requirements:
 
@@ -1233,19 +1246,19 @@ Generation requirements:
 
 ### Format
 
-```text
+``text
 IF-{CATEGORY}-{NUMBER}
-```
+``
 
 Examples:
 
-```text
+``text
 IF-AUTH-401
 IF-AGENT-503
 IF-PROFILE-004
 IF-KCL-001
 IF-EXPORT-004
-```
+``
 
 ### Error requirements
 
@@ -1398,15 +1411,15 @@ Live Zoo Agent execution should only be claimed as verified when a credentialed 
 
 Platform:
 
-```text
+``text
 Cloudflare Pages
-```
+``
 
 Required frontend variable:
 
-```text
+``text
 VITE_BACKEND_URL
-```
+``
 
 This must point to the deployed Render backend.
 
@@ -1414,9 +1427,9 @@ This must point to the deployed Render backend.
 
 Platform:
 
-```text
+``text
 Render
-```
+``
 
 Backend requirements include:
 
@@ -1432,14 +1445,14 @@ Backend requirements include:
 
 Typical server-side environment variables include:
 
-```text
+``text
 ZOO_API_TOKEN
 ENGINE_PROVIDER
 EXPORT_PROVIDER
-DATABASE_PATH
-ARTIFACT_ROOT
-CORS_ALLOWED_ORIGINS
-```
+DB_PATH
+artifacts/
+CORS_ORIGINS
+``
 
 Exact names must remain synchronized with the active backend configuration.
 

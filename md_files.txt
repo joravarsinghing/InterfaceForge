@@ -1,3 +1,8 @@
+﻿# Markdown inventory
+
+Generated documentation index. This file lists tracked Markdown documents for repository audits; it is not a second source of product truth. Refer to README.md and active documents under docs/ for current behavior.
+
+---
 .agent/skills/ui-ux-pro-max/SKILL.md
 AGENTS.md
 InterfaceForge_PRD_v0.1.md

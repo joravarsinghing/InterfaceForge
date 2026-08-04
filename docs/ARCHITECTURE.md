@@ -1,180 +1,59 @@
-# InterfaceForge — System Architecture
+﻿# InterfaceForge Architecture
 
-**Document Status:** Active Specification  
-**Project:** InterfaceForge (Zoo API Makeathon 2026)  
-
----
-
-## 1. Modular Monolith Architecture
-
-InterfaceForge uses a modular monolith design containing a FastAPI backend and a React/TypeScript frontend.
+InterfaceForge is a modular monolith. The React/TypeScript frontend is deployed to Cloudflare Pages and calls the FastAPI backend deployed to Render through `VITE_BACKEND_URL`. The backend owns authorization, workflow invariants, canonical persistence, image/artifact handling, provider orchestration, deterministic compilation, and export authorization.
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ React / TypeScript Frontend                                              │
-│ - Global App Shell & Step Navigation (`src/components/StepNavigation`)    │
-│ - Session Hydration & Route Guards (`src/components/ProtectedRoute`)    │
-│ - Typed API Client (`src/services/api.ts`) & Schema Contracts (`types`)  │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │ HTTP REST (JSON Envelopes)
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ FastAPI Backend (`backend/app`)                                          │
-│                                                                          │
-│  [API Layer]           `app/api/routes/projects.py`, `generation.py`    │
-│                               │                                          │
-│  [Service Layer]       `app/services/project_service.py`                 │
-│                        - Invariant enforcement & workflow state machine  │
-│                        - Schema revision increment & staleness logic     │
-│                               │                                          │
-│  [Repository Layer]    `app/repositories/sqlite_project_repository.py`   │
-│                        - SQLite local persistence (`artifacts/*.db`)     │
-│                        - Automated bootstrap and schema management       │
-└──────────────────────────────────────────────────────────────────────────┘
+Cloudflare Pages frontend
+  React workflow, route guards, calibration, review, status, downloads
+        | VITE_BACKEND_URL + X-Project-Token
+Render FastAPI backend
+  routes -> ProjectService / GenerationJobService / AgentService
+        |-- SQLite canonical projects and revision lineage
+        |-- runtime artifacts: uploads, traces, KCL, previews, exports
+        |-- OpenCV analysis and calibration artifacts
+        |-- LoftPlan builder -> KCL 2.0 compiler
+        |-- EngineProvider: Zoo live or explicit Mock offline
+        |-- AgentProvider: Zoo Agent or explicit Mock test provider
+        `-- ExportProvider: Zoo-native or explicit Mock provider
 ```
 
----
+## Component responsibilities
 
-## 2. Storage & Persistence Layer
+- Frontend pages enforce the user sequence and `ProtectedRoute`/workflow helpers redirect users to the earliest incomplete step. It never receives Zoo credentials.
+- FastAPI routes validate request shapes, require project tokens for project data, and return stable error envelopes.
+- `ProjectService` owns canonical project updates, approval gates, calibration, configuration, stale-state transitions, persistence, KCL readiness, and artifact access.
+- OpenCV produces deterministic cleaned/analysis images, closed traces, SVG artifacts, and trace diagnostics. Optional Gemini guidance is not the geometry author.
+- `LoftPlan` stores normalized, resampled, corresponding outer/inner loops and ordered sections. It is authoritative for preview, KCL, and generated geometry.
+- `kcl_compiler.py` emits deterministic KCL 2.0 solid-body code and does not execute providers.
+- `GenerationJobService` creates model revisions, executes the selected Engine provider, tracks staged jobs, and preserves last-known-good state on failure.
+- `AgentService` validates structured Zoo Agent intent against a six-field allowlist, recalculates trusted values, and requires explicit confirmation.
+- Export services verify current revision/KCL lineage and generate active STL/KCL outputs.
 
-- **Database:** SQLite 3 (Standard Library `sqlite3`)
-- **File Location:** `artifacts/interfaceforge.db` (Excluded from Git via `.gitignore`)
-- **Upload Storage:** `artifacts/uploads/` (Excluded from Git via `.gitignore`)
-- **Schema Bootstrap:** Auto-executed on app creation via `SQLiteProjectRepository`.
-- **Isolation:** Decoupled repository interface separating DB operations from API route controllers.
+## Main data flow
 
----
+1. Create a project and receive a project token.
+2. Upload Interface A/B; runtime image and trace artifacts are stored under the artifact root.
+3. Analyze with OpenCV, calibrate with two points plus one known distance, review, and approve each interface.
+4. Validate connection/manufacturing settings and preview the resulting LoftPlan.
+5. Compile KCL 2.0 from the canonical project and LoftPlan.
+6. Start a generation job through the selected Engine provider.
+7. Persist model revision metadata, Zoo model ID, KCL hash, preview metadata, and current/last-known-good pointers.
+8. Generate and authorize current STL/KCL exports.
 
-## 3. Analysis Provider Architecture & Upload Pipeline
+## State, lineage, and failure handling
 
-Stage S4A introduces the decoupled `AnalysisProvider` abstraction:
+Upstream profile, calibration, connection, or manufacturing changes increment schema revision and mark the model stale. Exports tied to an older model revision are stale and cannot be downloaded as current. A generation attempt creates a draft/generating revision. Success marks it current and updates `last_known_good_model_revision`; failure marks the attempt failed and restores the prior last-known-good revision. Generation jobs can be resumed through active/status routes and retried after failure.
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ AnalysisProvider (Abstract Base Class)                                   │
-│  - `analyze(image_bytes: bytes, filename: str) -> AnalysisResult`        │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-         ┌───────────────────────────┴───────────────────────────┐
-         ▼                                                       ▼
-GeminiAnalysisProvider (Vision guidance)                     MockAnalysisProvider (Fallback)
-- Multimodal image guidance for clean cross-sections     - Deterministic candidate profile generation
-- OpenCV remains responsible for deterministic tracing                       - Configurable offline/demo provider
-- Strict JSON schema & finite value validation           - Safe fallback when key is unconfigured
-- Honest low-confidence quality rejection (< 0.60)       - Selected via ANALYSIS_PROVIDER=mock
-```
+Agent confirmation updates canonical values and returns a stale project with no generation job. The user must explicitly start regeneration. A failed revision never overwrites the previous successful model.
 
-### Upload Pipeline & Security Controls
+## Security boundaries
 
-1. **File Validation:** MIME type allowlist (`image/png`, `image/jpeg`, `image/webp`), extension validation, 10MB size limit.
-2. **Path Traversal Protection:** Base name sanitization (`os.path.basename`) and `target_path.startswith(abs_upload_dir)` validation.
-3. **Image Corruption Prevention:** Dual-pass Pillow decoding (`Image.open().verify()` and `load()`) to prevent image bomb attacks.
-4. **State Transition Enforcement:** `interface_a_uploaded` and `interface_b_uploaded` state progression; Interface B upload requires approved Interface A (`IF-PREREQ-400`).
+Project tokens authorize project and artifact access through `X-Project-Token`; browser binary endpoints additionally accept a token query parameter. Uploaded filenames and artifact paths are handled server-side. Zoo, Gemini, and other provider credentials are environment-backed on the backend only. The frontend receives provider capability status, not secrets. The backend validates Agent proposals and never permits Agent-authored KCL or direct profile-contour changes.
 
----
+## Storage and deployment
 
-## 5. KCL Compiler Service Layer (Stage S5A)
+SQLite is the implemented repository and defaults to `artifacts/interfaceforge.db` through `DB_PATH`. Runtime uploads, traces, KCL, previews, and exports use the local artifact directory with path-safety checks. Render filesystem persistence is deployment-dependent; the repository does not claim durable object storage. CORS is configured by `CORS_ORIGINS`. Live provider availability depends on backend credentials and provider settings; Mock providers are explicit offline/test modes, not silent production fallbacks.
 
-Per **ADR-001** and **ADR-002**, Stage S5A introduces a dedicated, deterministic KCL compiler service layer (`backend/app/services/kcl_compiler.py`).
+## Scope and evidence boundary
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ Canonical Project Design Schema (Source of Truth)                       │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │ Validation Gate (Readiness Check)
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ KCL Compiler (`app/services/kcl_compiler.py`)                           │
-│ - Supported profiles: circle, rectangle, rounded_rectangle, and approved traced_closed              │
-│ - Supported connection modes: coaxial, offset, angled (<= 45°)           │
-│ - Output: Deterministic KCL string with explicit mm units & comments     │
-│ - SHA-256 Hash computation & version metadata (v1.0.0)                  │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │ Artifact Write
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ Artifact Storage (`artifacts/kcl_<project_id>_rev<rev>_<hash>.kcl`)       │
-│ - Model revision updated as status=DRAFT (Zoo execution pending)         │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 6. Brand & Visual Design System Foundation
-
-- **Visual Theme:** Restrained dark theme with high-contrast neon-green accent tokens (`--accent-neon-green: #00e676`).
-- **Logo System:** Full SVG logo (`InterfaceForge_logo.svg`) for landing page and wide desktop header; compact logo mark (`InterfaceForge_logo_in.svg`) for narrow screens, loading states, and app favicon.
-- **Accessibility Baseline:** Non-color-only status indicators (`✓ [VALID]`, `⚠️ [WARNING]`, `⛔ [ERROR]`), visible focus ring (`:focus-visible`), and standard GFM contrast thresholds per **ADR-014**.
-
----
-
-## 7. Zoo Engine Provider Abstraction & Generation Pipeline (Stage S6)
-
-Per **ADR-005**, **ADR-006**, and **ADR-009**, Stage S6 implements live 3D execution via `ZooEngineProvider` behind the `EngineProvider` abstract contract.
-
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ GenerationJobService (`app/services/generation_job_service.py`)         │
-│ - Enforces single active job per project (IF-JOB-409 duplicate rejection) │
-│ - Preserves last-known-good model revision (ADR-005)                    │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-         ┌───────────────────────────┴───────────────────────────┐
-         ▼                                                       ▼
-ZooEngineProvider (Active in S6)                        MockEngineProvider (Fallback)
-- Live WebSocket modeling API                             - Deterministic staged progress
-- Endpoint: wss://api.zoo.dev/ws/modeling/commands        - 6 test scenarios (success, timeout, etc.)
-- Bearer auth from backend/.env                           - Offline development mode
-- Secret redaction (redact_secrets)                       - Configurable via ENGINE_PROVIDER=mock
-```
-
----
-
-## 8. Full Web App Workflow & Route Integration Architecture (Stage S6A)
-
-Stage S6A connects all individual page components into one end-to-end web application workflow:
-
-1. **Session Hydration:** Active `project_id` & `project_token` stored in `sessionStorage`. Asynchronous hydration on mount via `fetchProject`.
-2. **Server-Side & Client-Side Route Guards (`ProtectedRoute.tsx`):** Computes `getEarliestIncompleteStep(project)`. Redirects invalid direct URL access automatically.
-3. **Stale Model Handling:** Upstream edits to approved interfaces or connection parameters set model state to `STALE` and trigger warning notices on Step 4 and Step 5.
-4. **Preservation of Last-Known-Good Model:** Failed generation attempts preserve `last_known_good_model_revision` without overwriting active model state.
-5. **Result and Export Review (`ResultPage.tsx`):** Presents the generated adapter as an inspectable candidate, preserves stale/last-known-good status, and offers STL/KCL exports only from the current approved model revision.
-
----
-
-## 9. Bounded Zoo Agent API Revision Architecture (Stage S9)
-
-Stage S9 integrates natural language model revisions via `ZooAgentProvider` behind the `AgentProvider` abstraction:
-
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ User Natural Language Input (ResultPage.tsx Revision Panel)               │
-│ - "Make it 20 mm longer", "Move outlet 10 mm right and 5 mm up"           │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │ POST /api/projects/{id}/revision/propose
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ AgentService (`app/services/agent_service.py`)                           │
-│  - Fetches active project schema & trusted parameter values               │
-│  - Queries `AgentProvider` (`ZooAgentProvider` or `MockAgentProvider`)   │
-│  - Server-side allowlist check (7 allowed connection/mfg fields ONLY)    │
-│  - Parametric range & engineering validation (`connection_validation`)    │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │ Returns AgentProposalResult (Unapplied)
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ User Confirmation Gate (`ResultPage.tsx`)                                │
-│ - Displays summary, before/after value table, and validation warnings     │
-│ - Requires explicit user click on "Confirm Revision"                      │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │ POST /api/projects/{id}/revision/confirm
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ Schema Patch, KCL Compilation & 3D Generation Pipeline                   │
-│ - Updates canonical project schema & increments current_schema_revision  │
-│ - Compiles deterministic KCL (`kcl_compiler.py`)                         │
-│ - Initiates 3D generation job (`GenerationJobService`)                   │
-│ - Preserves last-known-good model revision if 3D generation fails        │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
+Active profiles are circle, rectangle, rounded rectangle, and approved `traced_closed`. Active connections are coaxial and parallel X/Y offset. Angle-based connections, internal cavities, STEP export, and richer CAD features are compatibility/deferred scope. A prior credentialed Zoo Agent flow succeeded, while 17 of 18 Agent attempts timed out or closed during the focused 2026-08-04 audit. The direct live Engine audit timed out before a fresh STL conversion result; transient transport failures are not classified as confirmed Zoo bugs.

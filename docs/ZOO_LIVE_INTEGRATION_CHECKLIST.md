@@ -1,92 +1,36 @@
-# Zoo Engine Live API Integration Checklist (Stage S5.5 & S6 Transition)
+﻿# Zoo Live Integration Checklist
 
-**Project:** InterfaceForge (Zoo API Makeathon 2026)  
-**Document Status:** Operational Checklist  
-**Precedence:** Technical Design & Accepted ADRs (ADR-006, ADR-009)
+**Status:** PARTIAL / UNPROVEN live matrix
+**Last reviewed:** 2026-08-04
 
----
+## Credential and environment safety
 
-## 1. Executive Overview
+| Check | Status | Evidence |
+|---|---|---|
+| `ZOO_API_TOKEN` backend-only | PASS | Configuration and docs keep credentials server-side. |
+| Authenticated REST reachability | PASS (prior evidence) | Prior authenticated probes reached Zoo endpoints; this proves reachability/authentication only. |
+| Engine live provider selection | UNPROVEN current matrix | Requires credentialed execution in the intended deployment. |
+| Agent live provider selection | PARTIAL | Prior credentialed flow succeeded; latest audit was transport-unreliable. |
 
-This document provides the mandatory step-by-step verification protocol for transitioning InterfaceForge from the `MockEngineProvider` to the live `ZooEngineProvider` when Zoo Engine API access keys are provisioned.
+## Evidence matrix
 
----
+| Area | Status | Current evidence |
+|---|---|---|
+| Prior credentialed Zoo Agent integration | PASS (prior) | Bounded proposal and explicit confirm/reject flow completed previously. |
+| Latest Agent transport reliability | PARTIAL | 17 of 18 calls timed out or closed during the 2026-08-04 adversarial audit. |
+| KCL 2.0 local compilation | PASS (offline) | Current compiler tests pass; not live Zoo proof. |
+| Prior STL export | PASS (prior project evidence) | STL export was previously verified. |
+| Fresh live STL conversion | BLOCKED | Direct live Engine audit timed out before conversion result. |
+| Coaxial live adapter matrix | UNPROVEN | No fresh credentialed result in this audit. |
+| X/Y offset live adapter matrix | UNPROVEN | No fresh credentialed result in this audit. |
+| Traced profile live matrix | UNPROVEN | No fresh credentialed result in this audit. |
+| Angle mode | NOT IN SCOPE | Compatibility-only field; not an active submission capability. |
+| STEP export | NOT IN SCOPE | Compatibility-only field/provider; not an active submission output. |
 
-## 2. Environment Variables & Credentials Setup
+## Interpretation rules
 
-Before running live API tests, verify that the backend environment is configured without hardcoding secrets:
+Do not classify timeouts, WebSocket closures, or missing local Zoo tooling as confirmed Zoo bugs without attribution. Do not treat Mock Engine/Agent/export results as live proof. A live PASS requires credentialed execution with recorded request/result evidence and no unsupported scope claims.
 
-| Variable | Required Value | Notes |
-| :--- | :--- | :--- |
-| `ENGINE_PROVIDER` | `zoo` | Switches engine factory from `MockEngineProvider` to `ZooEngineProvider`. |
-| `ZOO_API_TOKEN` | `<YOUR_ZOO_API_KEY>` | Bearer token provided by Zoo dev platform. **NEVER COMMIT TO GIT.** |
-| `ZOO_API_BASE_URL` | `https://api.zoo.dev` | Production API gateway URL. |
-| `GENERATION_TIMEOUT_SECONDS` | `30.0` | Execution timeout threshold. |
+## Recovery procedure
 
----
-
-## 3. Pre-Flight Verification Sequence
-
-1. **Verify Environment Token:**
-   Run the safety stub script without token to confirm refusal gate:
-   ```bash
-   python scripts/test_zoo_live_stub.py
-   # Expected Output: [ERROR] REFUSING TO RUN: ZOO_API_TOKEN environment variable is missing
-   ```
-2. **Verify Configuration Fallback:**
-   Confirm that if `ENGINE_PROVIDER=zoo` is set without `ZOO_API_TOKEN`, `settings.get_effective_engine_provider()` safely defaults to `mock`.
-
----
-
-## 4. Live Test Suite Execution Protocol
-
-Execute the tests in strict order. Stop immediately if any test fails.
-
-### Test 1: Reference Cube / Flat Plate Test
-- **Purpose:** Confirm API authentication, request formatting, and basic extrusion geometry execution.
-- **KCL Payload:** Simple 20mm × 20mm extruded square box.
-- **Success Criteria:** HTTP 200 OK from Zoo API, non-empty mesh payload returned.
-
-### Test 2: Circular Coaxial Adapter Test
-- **Purpose:** Validate lofting between two circular profiles (Interface A: 50mm OD, Interface B: 34.5mm OD, Length: 40mm).
-- **Success Criteria:** Watertight solid generated, wall thickness 2.5mm maintained, preview mesh rendered cleanly.
-
-### Test 3: Offset Adapter Test
-- **Purpose:** Validate lofting between offset centers (Interface A at (0,0), Interface B at (15,10), Length: 40mm).
-- **Success Criteria:** Asymmetric loft surface interpolated smoothly without self-intersection or non-manifold edges.
-
-### Test 4: Angled Adapter Test
-- **Purpose:** Validate inclined top plane construction (`plane(origin = [...], xAxis = [...], yAxis = [...])`) up to 30° angle.
-- **Success Criteria:** Inclined profile face matches specified vector normal, boolean void subtraction succeeds.
-
-### Test 5: Timeout & Retry Verification
-- **Purpose:** Verify client resilience against network delay or long generation queue.
-- **Procedure:** Simulate/test 30s timeout handling; verify retry endpoint creates clean new job without corrupting project state.
-
-### Test 6: Preview Mesh Verification
-- **Purpose:** Verify preview rendering pipeline converts Zoo GLB/mesh artifacts into web-ready preview metadata.
-- **Success Criteria:** Bounding box calculations (X/Y/Z mm) and estimated volume (cm³) match expected geometric tolerances within ±2%.
-
----
-
-## 5. API-Minute Monitoring & Resource Management
-
-- **Rate Limits:** Monitor Zoo API dashboard to ensure requests stay within allocated quota.
-- **Error Logs:** Log all HTTP status codes (401, 429, 500) with stable error IDs (`IF-ZOO-401`, `IF-ZOO-429`, `IF-ZOO-500`).
-- **Telemetry Evidence:** Capture JSON responses, execution duration (ms), and mesh facet counts for stage report.
-
----
-
-## 6. Immediate Rollback Protocol
-
-If live Zoo API fails unexpectedly or exceeds timeout limits during demo/testing:
-
-1. Revert environment configuration to mock mode:
-   ```env
-   ENGINE_PROVIDER=mock
-   ```
-2. Restart backend server:
-   ```bash
-   python -m uvicorn app.main:app --reload
-   ```
-3. Confirm frontend displays `[MOCK ENGINE MODE]` banner and user operations continue without interruption.
+For demo or local development, use explicit Mock mode and label it offline evidence. For live failure, preserve the project/last-known-good model, record the sanitized error class and request phase, and retry only through the documented generation/revision flow. Never place credentials in frontend variables, screenshots, or tracked logs.

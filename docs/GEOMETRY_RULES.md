@@ -1,197 +1,46 @@
-# InterfaceForge — Geometry Rules & Manufacturing Validation Specifications
+﻿# Geometry Rules
 
-**Document Status:** Active Specification  
-**Project:** InterfaceForge (Zoo API Makeathon 2026)  
-**Schema Version:** `0.1`  
-**Stage:** S10.5H — Input Requirements and Honest Upload Guidance  
+## Input, coordinates, and units
 
----
+Inputs are clean, filled, front-facing or orthographic 2D images. OpenCV produces one approved closed outer profile. Trace coordinates are normalized into `canonical_profile_v1`, then calibrated into millimetres using two selected points and one positive known distance. Calibration is uniform scale only; it does not correct perspective, camera tilt, or lens distortion. KCL and all connection/manufacturing values use millimetres.
 
-## 0. Input Requirements & Preferred Image Standard (S10.5H)
+## Profile preparation
 
-Per **FR-001** (Image guidance), the upload screens must communicate the supported input standard clearly and honestly.
+Contours are cleaned by rejecting non-finite points, removing adjacent points closer than `1e-6`, removing a duplicated closing point, requiring at least three distinct points, rejecting self-intersection, and rejecting near-zero signed area (`<= 1e-8`). Profiles are centered by subtracting the arithmetic mean of their points and normalized to counter-clockwise winding (positive signed area).
 
-### 0.1 Preferred Input
+Closed contours are resampled by perimeter distance. The target point count is `min(256, max(32, estimated))`, where `estimated` is the larger input point count or `ceil(2*pi*max_edge/0.2 mm)`. This preserves a minimum of 32 and caps complexity at 256. Correspondence uses equal point counts, same winding, cyclic seam shifts, reversal candidates, tangent/displacement/seam cost, and a large crossing penalty. Crossing or unavailable correspondence rejects the loft.
 
-The most reliable input for profile extraction is a **clean cross-section image** meeting all of the following criteria:
+## Supported profiles and fit intent
 
-| Criterion | Requirement |
-|:---|:---|
-| View angle | Front-facing / orthographic (no perspective) |
-| Profile count | One cross-section only |
-| Background | Plain, high-contrast background |
-| Fill | Solid or clearly shaded material region |
-| Annotations | No dimension lines, no text, no arrows, no leaders |
-| Center marks | None |
-| Overlapping elements | None |
-| Completeness | Full profile visible and uncropped |
-| Scale | At least one real dimension supplied separately by the user |
+Active final profiles are `circle`, `rectangle`, `rounded_rectangle`, and approved `traced_closed`. `custom_closed` is compatibility-only. Each interface has `fit-over` or `fit-inside` intent:
 
-### 0.2 Input Quality Classification
+- `fit-over`: target -> outward clearance -> outward wall offset. The clearance boundary is the inner passage and the outer boundary is one wall thickness farther outward.
+- `fit-inside`: target -> inward clearance. That boundary is the outer boundary and the inner passage is one wall thickness farther inward.
 
-The upload screen classifies images into four statuses before analysis begins:
+The outer loop must be simple, counter-clockwise, positive-area, and larger than the inner loop. Inner/outer loops may not cross; the inner area must be strictly smaller. Wall midpoint deviation is checked against `max(2.0, 1.25 * wall_thickness)` mm, and local inner clearance must remain at least `0.1 mm`.
 
-| Status | Signal | Implication |
-|:---|:---|:---|
-| **Recommended input** | Clean shaded profile, no annotation noise | Best trace fidelity; proceed normally |
-| **Usable with review** | Limited text outside profile, profile fully visible | Review SVG trace carefully before approving |
-| **Manual cleanup likely** | Leaders/extension lines/center marks touching geometry | Expect false edges; manual SVG correction required |
-| **Unsupported** | Cropped, perspective-distorted, severely blurred, or incomplete | Do not attempt to trace; upload a clean image |
+Uploaded internal cavities, holes, branches, assemblies, threads, mounting features, dovetails, undercuts, and curved centerlines are excluded from submission geometry.
 
-**Note:** The client-side classification is a heuristic pre-analysis signal. The authoritative quality assessment comes from the backend GeminiAnalysisProvider after upload.
+## Connection and manufacturing rules
 
-### 0.3 Why Dimensioned Drawings Are Unreliable
+- `coaxial`: X/Y offsets must both equal zero; profiles remain parallel.
+- `offset`: Interface B is displaced by `offset_x_mm` and `offset_y_mm` on a parallel plane.
+- Angle-based connections are unsupported. Legacy `angle_deg` remains in compatibility schemas but must be zero and is not an active control.
 
-Dimension lines, leaders, extension lines, and center marks are **indistinguishable from profile edges** by OpenCV contour detection. They create:
+`length_mm` must be finite and greater than zero. Length below `10 mm` produces warning `IF-CONN-W001`; length above `300 mm` produces `IF-CONN-W002`. Each extension must be finite and at least `0 mm`; values above `300 mm` produce `IF-CONN-W005`. Extensions add straight sections aligned with their respective approved profiles.
 
-- False cuts into the outer profile boundary
-- False boundary extensions toward annotation endpoints
-- Circle-wedge artefacts from crosshair center marks
-- Leader line intrusions into internal cavities
+Wall thickness must be finite and positive. Values below `0.4 mm` block with `IF-MFG-002`; below `1.2 mm` warns `IF-MFG-W001`; above `15 mm` warns `IF-MFG-W002`. Clearance must be finite and within `[0.0, 5.0] mm`, otherwise `IF-MFG-003`; below `0.1 mm` warns `IF-MFG-W003`.
 
-**Annotation masking (S10.5G) is Experimental / manual review required.** It reduces annotation noise but does not guarantee zero residual false edges at junction points.
+The offset-to-length ratio is `hypot(offset_x_mm, offset_y_mm) / length_mm`. Above `1.0` warns `IF-CONN-W004`; above `1.5` blocks with `IF-CONN-006`. Coaxial non-zero offsets block with `IF-CONN-007`. Missing approvals use `IF-CONN-001`; unsupported mode uses `IF-CONN-002`; invalid length uses `IF-CONN-003`; invalid extensions use `IF-CONN-008`.
 
-### 0.4 One-Dimension Scale Workflow
+Additional fit failures use `IF-MFG-004` for a closed passage, `IF-MFG-005` for a collapsed fitted boundary, and `IF-MFG-006` for an unsupported rounded-rectangle radius. Missing calibrated trace data uses `IF-CAL-001`.
 
-Dimensions do not need to be inside the drawing image. The user provides one known real-world measurement separately:
+## LoftPlan and KCL construction
 
-- Overall width
-- Overall height
-- Hole diameter
-- Reference distance
+The persisted `LoftPlan` records normalized/resampled `outer_a`, `outer_b`, `inner_a`, `inner_b`, target/mating loops, fit modes, clearances, wall thickness, correspondence diagnostics, geometry hash, and ordered sections. Sections are ordered from Interface A at `z=0`, through optional Interface A extension and the transition, to Interface B and optional Interface B extension. The transition uses the configured length and X/Y displacement.
 
-After the trace is generated, the user confirms the measurement. **Scale is never applied automatically.** This is a mandatory approval gate (ADR-004).
+The compiler emits KCL 2.0 solid-body syntax: outer closed sketches are lofted into `outerSolid`; inner closed sketches are lofted into `innerCutter`; `adapterModel = subtract([outerSolid], tools = [innerCutter])`. The same LoftPlan drives preview, deterministic KCL, mock geometry checks, and Zoo Engine execution.
 
-### 0.5 Product Truthfulness Rules (S10.5H)
+## Output and safety
 
-The following claims must **not** appear anywhere in the product UI or documentation:
-
-- "Arbitrary technical drawings are always supported"
-- "Annotation masking is production-ready"
-- "Gemini cleanup preserves CAD geometry perfectly"
-- "Heavily dimensioned drawings are the recommended path"
-- "Manufacturing-ready" (before scale confirmation gate)
-
-The following claim must **always be accurate**:
-
-> Dimensioned drawings may introduce false edges and require manual cleanup.
-
----
-
-## 1. Overview
-
-Per **ADR-001** and **ADR-012**, connection parameters (transition length, lateral offsets, connection parameters) and manufacturing parameters (wall thickness, clearances) define the 3D transition geometry linking Interface A to Interface B. This document defines all mathematical formulas, validation rules, stable error IDs, non-blocking warnings, conservative initial defaults, and engineering limitations.
-
----
-
-## 2. Connection Parameters & Modes
-
-### 2.1 Alignment Modes
-1. **`coaxial` (Coaxial Alignment):**
-   - Interfaces A and B share a single straight central axis.
-   - Requirements: `offset_x_mm = 0`, `offset_y_mm = 0`, `angle_deg = 0`.
-2. **`offset` (Parallel Offset Alignment):**
-   - Interfaces A and B remain parallel (z-planes parallel) with lateral translation.
-   - Parameters: `offset_x_mm`, `offset_y_mm`.
-   - Requirements: `angle_deg = 0`.
-3. **`angled` transition:** Not supported in the submission build.
-   - Interface B is inclined relative to Interface A by an angle up to 45°.
-   - Parameters: `length_mm`, `offset_x_mm`, `offset_y_mm`, `angle_deg`.
-
----
-
-## 3. Parametric Validation Rules & Conservative Limits
-
-### 3.1 Initial Configurable Defaults
-- **Default Transition Length (`length_mm`):** `40.0` mm
-- **Default Wall Thickness (`wall_thickness_mm`):** `2.4` mm
-- **Default Clearance A (`clearance_a_mm`):** `0.3` mm
-- **Default Clearance B (`clearance_b_mm`):** `0.1` mm
-- **Default Lateral Offsets (`offset_x_mm`, `offset_y_mm`):** `0.0` mm
-- **Default Angle (`angle_deg`):** `0.0`°
-
-*Note: Initial defaults are conservative heuristic choices for standard FDM 3D printing and are not certified engineering structural calculations.*
-
-### 3.2 Hard Blocking Limits & Error IDs
-
-| Parameter | Condition / Boundary | Error ID | Description |
-| :--- | :--- | :--- | :--- |
-| **Prerequisites** | `!interface_a.approved \|\| !interface_b.approved` | **`IF-CONN-001`** | Both Interface A and Interface B must be approved first. |
-| **Mode** | `mode not in {coaxial, offset}` | **`IF-CONN-002`** | Connection mode must be coaxial or offset. |
-| **Length** | `length_mm <= 0` or non-finite | **`IF-CONN-003`** | Transition length must be positive and finite (> 0 mm). |
-| **Angle** | `abs(angle_deg) > 45.0` | **`IF-CONN-004`** | Angle exceeds maximum MVP limit of 45.0°. |
-| **Mode Angle** | `mode in {coaxial, offset} && angle_deg != 0` | **`IF-CONN-005`** | Angle must be 0° for coaxial and offset modes. |
-| **Offset Ratio** | $\frac{\sqrt{\text{offset\_x}^2 + \text{offset\_y}^2}}{\text{length\_mm}} > 1.5$ | **`IF-CONN-006`** | Lateral offset relative to length exceeds 1.5 ratio limit. |
-| **Mode Offset** | `mode == coaxial && (offset_x != 0 \|\| offset_y != 0)` | **`IF-CONN-007`** | X/Y offsets must be 0 mm for coaxial mode. |
-| **Profile Scope**| `profile_type == traced_closed` | **`IF-CONN-008`** | Approved traced closed profiles are supported for final generation after validation and approval. |
-| **Self-Intersection**| $\text{total\_span} > 1.8 \cdot \text{length\_mm} + \min(D_A, D_B)$ | **`IF-CONN-009`** | Loft self-intersection risk due to excessive angle/offset. |
-| **Wall Thickness**| `wall_thickness_mm <= 0` or non-finite | **`IF-MFG-001`** | Wall thickness must be positive and finite (> 0 mm). |
-| **Min Printable Wall**| `wall_thickness_mm < 0.4` | **`IF-MFG-002`** | Wall thickness below absolute printable limit (0.4 mm). |
-| **Clearance B** | `clearance_b_mm < 0 \|\| > 5.0` | **`IF-CONN-008`** | Interface B clearance must be between 0.0 mm and 5.0 mm. |
-
----
-
-## 4. Complex Profile Tracing & Scale Validation Rules (Stage S10.4)
-
-### 4.1 Contour Geometry Rules
-1. **Outer Boundary Closure:** Traced outer contour must be closed (`is_closed == true`) with at least 4 ordered 2D vertices.
-2. **Self-Intersection Check:** No 2D line segment of the outer or inner contour may cross another non-adjacent segment ($\text{segment}_i \cap \text{segment}_j = \emptyset$).
-3. **Negative Region Classification:** Internal cavities are categorized as `hole` (circular/oval bore), `cavity` (arbitrary enclosed pocket), or `slot` (long recess).
-4. **User Region Decisions:** Each negative contour supports explicit user decision state:
-   - `include`: Preserved as open interior opening in adapter model.
-   - `ignore`: Filled/treated as solid material.
-   - `unsure`: Flagged for review; user approval required.
-
-### 4.2 Scale Calibration & Approval Gate
-1. **Scale Confirmation Mandatory Gate:** Profile approval (`/approve`) is strictly blocked if `scale_calibration.confirmed == false` for `traced_closed` profiles.
-2. **Real Distance Validation:** `scale_calibration.real_distance_mm` must be a positive finite float ($> 0.0$ mm).
-3. **Primitive Fallback Labeling:** When user toggles primitive envelope fallback, system forces `primitive_fallback_active = true` and attaches mandatory text: `"Simplified envelope — not the exact cross-section"`.
-| **Internal Collapse**| `wall_thickness_mm >= min(D_A, D_B) / 2.0` | **`IF-MFG-004`** | Wall thickness collapses internal flow passage. |
-
-### 3.3 Non-Blocking Warnings
-
-| Warning ID | Parameter Threshold | Description & Recommendation |
-| :--- | :--- | :--- |
-| **`IF-CONN-W001`** | `length_mm < 10.0` | Transition length is very short (< 10 mm), leading to steep loft angles. Recommend >= 20 mm. |
-| **`IF-CONN-W002`** | `length_mm > 300.0` | Transition length is unusually long (> 300 mm), increasing print volume. |
-| **`IF-CONN-W003`** | `abs(angle_deg) > 30.0` | Angle > 30° requires overhang support structures during 3D printing. |
-| **`IF-CONN-W004`** | $\text{ratio} > 1.0$ | High offset-to-length ratio (> 1.0) may cause geometry skew. |
-| **`IF-MFG-W001`** | `wall_thickness_mm < 1.2` | Wall thickness below FDM recommended minimum (1.2 mm). |
-| **`IF-MFG-W002`** | `wall_thickness_mm > 15.0` | Wall thickness unusually thick (> 15 mm), increasing print time and thermal warping risk. |
-| **`IF-MFG-W003`** | `clearance < 0.1` | Clearance below 0.1 mm may cause tight press-fit interference. |
-
----
-
----
-
-## 5. KCL Emission Rules & Unverified Zoo Assumptions (Stage S5A)
-
-### 5.1 KCL Emitter Determinism
-1. **Deterministic String Emission:** Identical canonical JSON schema and compiler version (`v1.0.0`) produce byte-for-byte identical KCL output.
-2. **Explicit Units:** `@settings(defaultLengthUnit = mm)` is declared at the top of every emitted KCL file.
-3. **Stable Identifiers:** Constant variable names follow predictable identifiers (`interfaceAOuterDiameterMm`, `wallThicknessMm`, `transitionLengthMm`, `sketchOuter0`, `sketchOuter1`, `outerSolid`, `adapterModel`).
-
-### 5.2 Geometry Scope & Supported Families (in Order of Evaluation)
-1. **Circular Coaxial Hollow Adapter:** Circle to circle, `offset_x = 0`, `offset_y = 0`, `angle = 0`.
-2. **Rectangular / Rounded-Rectangle Coaxial Transition:** Rectangle/rounded-rectangle to rectangle/rounded-rectangle or circle, `offset_x = 0`, `offset_y = 0`, `angle = 0`.
-3. **Circular Offset Adapter:** Circle to circle, parallel z-planes with non-zero lateral offset (`offset_x`, `offset_y`), `angle = 0`.
-4. **Angle-based adapters:** Not supported in the submission build.
-
-### 5.3 KCL Assumptions Requiring Zoo Verification (Stage S5B)
-1. **Loft Interpolation Across Dissimilar Profiles:** Lofting a circle to a rounded rectangle via `loft([sketch_a, sketch_b])` is syntactically valid in KCL, but exact surface curvature and tangent continuity require Zoo Engine execution verification.
-2. **Angled Plane Sketch Alignment:** Constructing an inclined top plane via `plane(origin = [...], xAxis = [...], yAxis = [...])` requires Zoo Engine execution to confirm plane normal direction and winding.
-3. **Solid-body generation:** Current KCL 2.0 solid-body generation is the submission path.
-
----
-
-## 6. Geometry Fidelity Verification & Tolerance Standards (Stage S8.4)
-
-Per **ADR-001** and **ADR-003**, exported CAD models must be verified for geometric fidelity against requested canonical parameters:
-
-1. **Linear Dimension Tolerance:** Measured STL bounding box and profile dimensions must match requested schema values within **±0.2 mm**.
-2. **Angle-based output:** No angle-based output claim is made for the submission.
-3. **Lateral Offset Tolerance:** Measured bounding box span must reflect requested `offset_x` and `offset_y` translation within **±0.2 mm**.
-4. **Hollow Passage Verification:** Every exported adapter solid must contain a hollow passage created via solid-body subtraction, producing non-box facet topologies (> 12 facets for STL).
-5. **Non-Box Topology Requirement:** Uniform 12-facet / 684-byte solid boxes are rejected as unproven fallback geometry.
-
-
+Zoo Engine is the authoritative CAD executor. STL and KCL are the active submission exports. STEP fields/providers remain compatibility-only and are not claimed as implemented. Outputs are user-reviewed engineering candidates, not certified manufacturing-ready products. Any upstream change makes the model and exports stale; failed generation preserves the last-known-good revision.

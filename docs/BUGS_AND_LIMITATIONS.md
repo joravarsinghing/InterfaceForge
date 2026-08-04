@@ -1,6 +1,7 @@
 # InterfaceForge - Bugs and Limitations
 
-**Document status:** Focused Zoo API adversarial audit record
+**Document status:** Active sanitized audit record
+**Last reviewed:** 2026-08-04
 **Project:** InterfaceForge (Zoo API Makeathon 2026)
 **Last reviewed:** 2026-08-04
 
@@ -71,3 +72,12 @@ An earlier InterfaceForge artifact emitted deprecated KCL syntax (`const` declar
 - **Offline only:** Current KCL compilation and the existing provider regression suite. These do not prove Zoo Engine geometry behavior.
 - **Not proven:** Current Zoo Engine loft/subtraction behavior across the requested geometry matrix; deterministic live STL conversion; malformed-KCL and unsupported-geometry diagnostics from the live Engine; timeout/connection-close semantics at the Zoo service; and the requested three-repeat Agent consistency checks.
 - **Cannot generalize:** One authenticated REST success proves reachability/authentication only. Agent model interpretation variability is not a Zoo API defect unless a documented structured-output guarantee is violated. No raw credentials, authorization headers, private IDs, or request IDs are retained in the permanent report.
+
+## Evidence reconciliation for Prompt 2
+
+- **Verified live behavior:** A prior credentialed Zoo Agent integration flow completed successfully, including bounded proposals and explicit confirmation/rejection behavior. Prior project evidence also verified STL export.
+- **Latest live observation:** During the focused 2026-08-04 adversarial audit, 17 of 18 Agent calls timed out or closed their WebSocket. The direct live Engine audit timed out before a fresh STL conversion result.
+- **Transient/inconclusive:** Agent transport timeouts, WebSocket closures, and the Engine timeout do not establish a confirmed Zoo bug.
+- **InterfaceForge defect:** The current live Engine timeout was observed propagating as `asyncio.TimeoutError` rather than the intended `IF-ENG-002` job envelope. This is an InterfaceForge orchestration issue.
+- **Offline-only:** Local compiler, geometry, mock provider, and regression tests do not prove live Zoo behavior.
+- **Permanent evidence hygiene:** Raw credentials, authorization headers, private IDs, and sensitive logs are not retained in tracked documentation.

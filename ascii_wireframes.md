@@ -1,3 +1,9 @@
+Status: Historical pre-implementation design artifact.
+
+These wireframes record early UX planning and may contain superseded workflows, fields, providers, and scope. They do not define current submission behavior. Refer to README.md, user_flow.md, technical_design.md, and the deployed application for the implemented workflow.
+
+---
+
 # InterfaceForge — ASCII Wireframes
 
 **Document status:** Draft v0.1  

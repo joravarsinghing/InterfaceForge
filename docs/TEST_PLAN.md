@@ -1,4 +1,4 @@
-# InterfaceForge — Test Plan & Execution Strategy
+﻿# InterfaceForge â€” Test Plan & Execution Strategy
 
 **Document Status:** Active Specification  
 **Project:** InterfaceForge (Zoo API Makeathon 2026)  
@@ -50,8 +50,7 @@
 - `test_validate_supported_modes`: Verifies coaxial and offset modes pass validation when parameters are within bounds.
 - `test_prerequisite_approval_failure`: Verifies validation fails if either Interface A or B is not approved (`IF-CONN-001`).
 - `test_invalid_negative_or_non_finite_length_and_wall`: Negative or non-finite length or wall thickness returns blocking errors (`IF-CONN-003`, `IF-MFG-001`).
-- `test_excessive_angle_limit`: Angle > 45° returns blocking error (`IF-CONN-004`).
-- `test_excessive_offset_to_length_ratio`: Offset-to-length ratio > 1.5 returns blocking error (`IF-CONN-006`).
+- Compatibility-only angle-field rejection is covered indirectly; angle mode is not an active submission test target.\n- `test_excessive_offset_to_length_ratio`: Offset-to-length ratio > 1.5 returns blocking error (`IF-CONN-006`).
 - `test_wall_thickness_warnings_and_errors`: Wall thickness < 0.4 mm returns error (`IF-MFG-002`), < 1.2 mm returns FDM warning (`IF-MFG-W001`).
 - `test_clearance_bounds`: Clearances outside [0.0, 5.0] mm produce blocking errors (`IF-MFG-003`).
 - `test_mode_parameter_mismatch_rules`: Non-zero offsets or angle in coaxial mode returns errors (`IF-CONN-005`, `IF-CONN-007`).
@@ -61,8 +60,7 @@
 - `test_circular_coaxial_compilation`: Validates circular coaxial adapter emits explicit mm units, required variables, loft/subtract calls, and artifact reference.
 - `test_rectangular_coaxial_compilation`: Validates rectangle to rounded rectangle transition emits correct width, height, corner radius, and tangential arcs.
 - `test_circular_offset_compilation`: Validates offset mode emits lateral translation parameters.
-- `test_angled_compilation`: Validates angled mode emits inclined top plane construction.
-- `test_arbitrary_closed_profiles_compile_to_polyline_sketches`: Approved `traced_closed` profiles compile for final generation through the deterministic KCL path.
+- Compatibility-only angle schema handling is not a final-generation test target.\n- `test_arbitrary_closed_profiles_compile_to_polyline_sketches`: Approved `traced_closed` profiles compile for final generation through the deterministic KCL path.
 - `test_non_finite_input`: Non-finite numbers fail compilation with `IF-KCL-002`.
 - `test_unapproved_prerequisites_fail`: Unapproved interfaces fail compilation with `IF-KCL-003`.
 - `test_repeated_identical_compilation_is_deterministic`: Repeated compilation of identical schema produces byte-for-byte identical KCL output and hash.
@@ -107,3 +105,11 @@
 - `test_mock_fallback_selection`: Missing key or `ANALYSIS_PROVIDER=mock` falls back to `MockAnalysisProvider`.
 - `test_secret_redaction_utility`: `sanitize_error_message` scrubs API key patterns.
 
+
+## Current submission coverage additions
+
+The active plan must retain coverage for OpenCV one-closed-profile extraction, two-point calibration with one known distance, Interface A/B approval ordering, fit-over/fit-inside clearance formulas, X/Y offset and extension sections, LoftPlan authority, KCL 2.0 determinism, six-field Agent allowlisting and confirmation, stale exports, last-known-good recovery, STL/KCL lineage, exact API contracts, frontend route guards, and deployment smoke checks. STEP and angle generation are compatibility/historical scope only.
+
+## Deployment smoke checks
+
+With the frontend and backend deployed, verify health/readiness, `VITE_BACKEND_URL`, CORS, project-token authorization, image/artifact authorization, Mock project creation, and truthful live-provider capability status. Do not call a smoke check live Zoo PASS unless credentials and the provider request actually execute.

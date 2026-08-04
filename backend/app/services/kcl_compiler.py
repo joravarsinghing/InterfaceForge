@@ -341,7 +341,7 @@ def compile_project_to_kcl(
     if_b = project.interface_b
 
     kcl_lines: List[str] = [
-        "// InterfaceForge ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Deterministic KCL Adapter Model",
+        "// InterfaceForge - Deterministic KCL Adapter Model",
         f"// Compiler Version: {COMPILER_VERSION}",
         f"// Schema Version: {project.schema_version}",
         f"// Schema Revision: {project.current_schema_revision}",
@@ -403,7 +403,7 @@ def compile_project_to_kcl(
     kcl_lines.append(f"// LoftPlan sections: {len(plan.sections)} points: {plan.point_count}")
     kcl_lines.append(f"// center = [{conn.offset_x_mm:.3f}, {conn.offset_y_mm:.3f}]")
     if conn.mode == ConnectionMode.ANGLED:
-        kcl_lines.append(f"// |> rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
+        kcl_lines.append(f"// rotate(axis = [1.000, 0.000, 0.000], angle = {conn.angle_deg:.3f}deg)")
     kcl_lines.append("")
     outer_sections, cutter_sections = _stable_sections(project, plan)
     kcl_lines.append(f"// Solid loft sections: {len(outer_sections)}")

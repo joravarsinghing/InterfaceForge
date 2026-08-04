@@ -160,3 +160,21 @@ def test_unapproved_prerequisites_fail(tmp_path):
     assert result.success is False
     assert len(result.errors) > 0
     assert result.errors[0].id == "IF-KCL-003"
+
+
+
+def test_generated_kcl_header_is_clean_ascii_and_utf8(tmp_path):
+    project = create_base_approved_project()
+    project.connection.extension_a_mm = 10.0
+    project.connection.extension_b_mm = 12.0
+    result = compile_project_to_kcl(project, artifacts_dir=str(tmp_path))
+    assert result.success is True
+    assert result.kcl_code is not None
+    assert result.kcl_code.startswith("// InterfaceForge - Deterministic KCL Adapter Model\n")
+    result.kcl_code.encode("utf-8")
+    mojibake_markers = (chr(0xC3), chr(0xC2), chr(0xE2))
+    assert not any(marker in result.kcl_code for marker in mojibake_markers)
+    assert "// extensionAMm = 10.000" in result.kcl_code
+    assert "// extensionBMm = 12.000" in result.kcl_code
+    assert "// Compiler Version: 2.0.0" in result.kcl_code
+    assert "// Schema Version: 0.1" in result.kcl_code

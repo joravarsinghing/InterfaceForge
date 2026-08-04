@@ -139,6 +139,14 @@ class AgentService:
                 "transition height": "connection.length_mm",
                 "taller": "connection.length_mm",
                 "shorter": "connection.length_mm",
+                "interface a extension": "connection.extension_a_mm",
+                "interface a vertical extension": "connection.extension_a_mm",
+                "inlet extension": "connection.extension_a_mm",
+                "inlet vertical extension": "connection.extension_a_mm",
+                "interface b extension": "connection.extension_b_mm",
+                "interface b vertical extension": "connection.extension_b_mm",
+                "outlet extension": "connection.extension_b_mm",
+                "outlet vertical extension": "connection.extension_b_mm",
             }.get(raw_field, raw_field)
 
             # Rule A: Allowlist enforcement
@@ -149,7 +157,7 @@ class AgentService:
                         message=f"Field '{field}' is outside allowed revision parameter scope.",
                         field=field,
                         recovery_steps=[
-                            "Only connection length, offsets, wall thickness, "
+                            "Only connection length, interface extensions, offsets, wall thickness, "
                             "and tolerances can be revised."
                         ],
                     )
@@ -209,6 +217,14 @@ class AgentService:
                         field=field,
                     )
                 )
+                continue
+            if field in {"connection.extension_a_mm", "connection.extension_b_mm"} and proposed_value > 300.0:
+                blocking_errors.append(ValidationIssue(
+                    id="IF-AGENT-400",
+                    message="Interface extension must not exceed 300 mm.",
+                    field=field,
+                    recovery_steps=["Set the extension to 300 mm or less."],
+                ))
                 continue
 
             # Unit check and normalization
@@ -278,6 +294,14 @@ class AgentService:
             "transition height": "connection.length_mm",
             "taller": "connection.length_mm",
             "shorter": "connection.length_mm",
+            "interface a extension": "connection.extension_a_mm",
+            "interface a vertical extension": "connection.extension_a_mm",
+            "inlet extension": "connection.extension_a_mm",
+            "inlet vertical extension": "connection.extension_a_mm",
+            "interface b extension": "connection.extension_b_mm",
+            "interface b vertical extension": "connection.extension_b_mm",
+            "outlet extension": "connection.extension_b_mm",
+            "outlet vertical extension": "connection.extension_b_mm",
         }
         for change in changes:
             field = aliases.get(change.field.strip().lower(), change.field.strip())
@@ -344,6 +368,10 @@ class AgentService:
         """Lookup exact trusted current value from canonical project schema."""
         if field == "connection.length_mm":
             return project.connection.length_mm
+        elif field == "connection.extension_a_mm":
+            return project.connection.extension_a_mm
+        elif field == "connection.extension_b_mm":
+            return project.connection.extension_b_mm
         elif field == "connection.offset_x_mm":
             return project.connection.offset_x_mm
         elif field == "connection.offset_y_mm":
@@ -382,6 +410,8 @@ class AgentService:
                 value = float(amount)
             else:
                 value = float(c.proposed_value)
+            if c.field in {"connection.extension_a_mm", "connection.extension_b_mm"} and value > 300.0:
+                raise APIError(error_id="IF-AGENT-400", message="Interface extension must not exceed 300 mm.")
             if not math.isfinite(value) or (c.field == "connection.length_mm" and value <= 0):
                 raise APIError(
                     error_id="IF-AGENT-400", message=f"Resulting value for '{c.field}' is invalid."

@@ -1,4 +1,12 @@
-# InterfaceForge — Design Decisions (ADRs & Technical Rationale)
+﻿# Status and decision classification
+
+The ADR sections below preserve valid rationale. The current submission corrections at the top are active behavior. References to angle, STEP, older providers, or stage-era defaults are historical or compatibility-only unless explicitly identified as active. The active Agent allowlist contains six fields.
+
+# Current submission corrections
+
+The following active boundary supersedes older stage notes in this historical decision log: profiles are circle, rectangle, rounded_rectangle, or approved traced_closed; connections are coaxial or parallel offset; the Agent allowlist excludes angle fields; KCL 2.0 and LoftPlan are authoritative; exports are STL/KCL; STEP is planned only. Mock and Gemini references below describe explicit local/optional providers, not silent production fallbacks.
+
+# InterfaceForge Ã¢â‚¬â€ Design Decisions (ADRs & Technical Rationale)
 
 **Document Status:** Active Record  
 **Project:** InterfaceForge (Zoo API Makeathon 2026)  
@@ -66,8 +74,8 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 ## 7. Stage S9 Decision: Bounded Zoo Agent API Revisions & Confirmation Gate
 
 ### Decision
-1. **Agent as Intent Interpreter Only:** Integrate Zoo’s Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`) via `ZooAgentProvider` behind `AgentProvider` abstraction. The Agent interprets user intent but is strictly forbidden from writing KCL or generating CAD geometry directly (ADR-001, ADR-002, ADR-007).
-2. **Server-Side 7-Field Allowlist:** Proposals are restricted to 7 explicit connection/manufacturing fields (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `connection.angle_deg`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Out-of-allowlist requests (profile type changes, process, material, KCL code generation) are rejected server-side (`IF-AGENT-400`).
+1. **Agent as Intent Interpreter Only:** Integrate ZooÃ¢â‚¬â„¢s Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`) via `ZooAgentProvider` behind `AgentProvider` abstraction. The Agent interprets user intent but is strictly forbidden from writing KCL or generating CAD geometry directly (ADR-001, ADR-002, ADR-007).
+2. **Server-Side Agent Allowlist:** Proposals are restricted to 6 explicit connection/manufacturing fields (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Out-of-allowlist requests (profile type changes, process, material, KCL code generation) are rejected server-side (`IF-AGENT-400`).
 3. **Explicit User Confirmation Gate:** Proposals are returned as unapplied suggestions. Schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation (`POST /api/projects/{id}/revision/confirm`).
 4. **Preservation of Last-Known-Good Model (ADR-005):** If 3D generation fails after confirmation, `last_known_good_model_revision` remains preserved as active current model without corrupting project state.
 
@@ -92,6 +100,4 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 - **ADR-012:** Geometry scope includes circle, rectangle, rounded rectangle, and approved `traced_closed` profiles; supported connection modes are coaxial and offset.
 - **ADR-013:** Standardized error envelopes with stable error IDs.
 - **ADR-014:** Accessibility baseline is enforced before visual polish.
-
-
 

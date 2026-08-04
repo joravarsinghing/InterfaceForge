@@ -19,6 +19,8 @@ from app.services.agent_provider import (
     redact_secrets,
 )
 from app.services.agent_service import AgentService
+from app.services.kcl_compiler import compile_project_to_kcl
+from app.services.loft_plan import ensure_loft_plan
 from app.services.project_service import ProjectService
 
 
@@ -280,3 +282,76 @@ async def test_mock_agent_contract_cases(agent_service, approved_project, prompt
     assert proposal.provider_used == "mock"
     assert proposal.changes[0].field == "connection.length_mm"
     assert proposal.changes[0].proposed_value == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prompt, field, expected",
+    [
+        ("Set Interface A extension to 15 mm.", "connection.extension_a_mm", 15.0),
+        ("Increase Interface A extension by 5 mm.", "connection.extension_a_mm", 15.0),
+        ("Make the inlet extension 10 mm longer.", "connection.extension_a_mm", 20.0),
+        ("Set Interface B extension to 20 mm.", "connection.extension_b_mm", 20.0),
+        ("Decrease the outlet extension by 3 mm.", "connection.extension_b_mm", 2.0),
+        ("Remove the Interface B extension.", "connection.extension_b_mm", 0.0),
+    ],
+)
+async def test_mock_agent_extension_contract(agent_service, approved_project, prompt, field, expected):
+    approved_project.connection.extension_a_mm = 10.0
+    approved_project.connection.extension_b_mm = 5.0
+    agent_service.project_service.repository.save(approved_project)
+    proposal = await agent_service.propose_revision(approved_project.project_id, prompt)
+    assert proposal.is_valid is True
+    assert proposal.changes[0].field == field
+    assert proposal.changes[0].proposed_value == expected
+
+
+@pytest.mark.asyncio
+async def test_extension_confirmation_updates_only_selected_field(agent_service, approved_project):
+    approved_project.connection.extension_a_mm = 10.0
+    approved_project.connection.extension_b_mm = 20.0
+    agent_service.project_service.repository.save(approved_project)
+    updated, _ = await agent_service.confirm_revision(
+        approved_project.project_id,
+        [ParameterChange(
+            field="connection.extension_a_mm", current_value=10.0,
+            proposed_value=15.0, operation="set", amount=15.0, unit="mm"
+        )],
+    )
+    assert updated.connection.extension_a_mm == 15.0
+    assert updated.connection.extension_b_mm == 20.0
+    assert updated.loft_plan is None
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_extension_is_unapplied(agent_service, approved_project):
+    proposal = await agent_service.propose_revision(approved_project.project_id, "Set the extension to 15 mm.")
+    assert proposal.is_valid is True
+    assert proposal.changes == []
+    assert "ambiguous" in proposal.summary.lower()
+
+
+@pytest.mark.asyncio
+async def test_extension_above_limit_is_rejected(agent_service, approved_project):
+    proposal = await agent_service.propose_revision(
+        approved_project.project_id, "Set Interface A extension to 301 mm."
+    )
+    assert proposal.is_valid is False
+    assert proposal.changes == []
+    assert proposal.validation_errors[0].id == "IF-AGENT-400"
+
+
+@pytest.mark.asyncio
+async def test_confirmed_extension_reaches_loft_plan_and_kcl(agent_service, approved_project, tmp_path):
+    updated, _ = await agent_service.confirm_revision(
+        approved_project.project_id,
+        [ParameterChange(
+            field="connection.extension_a_mm", current_value=0.0,
+            proposed_value=15.0, operation="set", amount=15.0, unit="mm"
+        )],
+    )
+    plan = ensure_loft_plan(updated)
+    assert any(section.z_mm == pytest.approx(15.0) for section in plan.sections)
+    result = compile_project_to_kcl(updated, artifacts_dir=str(tmp_path))
+    assert result.success is True
+    assert "// extensionAMm = 15.000" in result.kcl_code
