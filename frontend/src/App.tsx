@@ -12,6 +12,7 @@ import { ProfileReviewPage } from './pages/ProfileReviewPage';
 import { ConnectionConfigPage } from './pages/ConnectionConfigPage';
 import { ModelGenerationPage } from './pages/ModelGenerationPage';
 import { ResultPage } from './pages/ResultPage';
+import { RestartProjectModal } from './components/RestartProjectModal';
 import { fetchHealthStatus, createProject, fetchProject, fetchProviderModeStatus, updateProviderMode, validateDefaultProviderMode, HealthResponse, APIState } from './services/api';
 import { AnalysisResult, Project, ProviderMode, ProviderModeStatus } from './types/schema';
 
@@ -32,6 +33,8 @@ export const AppContent: React.FC = () => {
   });
 
   const [project, setProject] = useState<Project | null>(null);
+  const [showRestartModal, setShowRestartModal] = useState(false);
+  const requestRestart = useCallback(() => setShowRestartModal(true), []);
   const [preProjectProviderMode, setPreProjectProviderMode] = useState<ProviderMode>(() => {
     return sessionStorage.getItem(PROVIDER_MODE_PREFERENCE_KEY) === 'live' ? 'live' : 'mock';
   });
@@ -190,7 +193,7 @@ export const AppContent: React.FC = () => {
         healthState={healthState}
         project={project}
         onRetryHealth={checkBackendHealth}
-        onRestartProject={handleRestartProject}
+        onRequestRestart={requestRestart}
       providerStatus={providerStatus}
         providerModeError={providerModeError}
         onProviderModeChange={handleProviderModeChange}
@@ -291,7 +294,7 @@ export const AppContent: React.FC = () => {
                 <ResultPage
                   project={project}
                   onProjectUpdate={(updated) => setProject(updated)}
-                  onRestartProject={handleRestartProject}
+                  onRequestRestart={requestRestart}
                 />
               </ProtectedRoute>
             }
@@ -301,6 +304,15 @@ export const AppContent: React.FC = () => {
       </main>
 
       <Footer healthState={healthState} />
+      {showRestartModal && (
+        <RestartProjectModal
+          onCancel={() => setShowRestartModal(false)}
+          onConfirm={() => {
+            setShowRestartModal(false);
+            handleRestartProject();
+          }}
+        />
+      )}
     </div>
   );
 };

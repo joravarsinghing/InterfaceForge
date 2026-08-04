@@ -13,7 +13,7 @@ interface HeaderProps {
   providerStatus?: ProviderModeStatus | null;
   providerModeError?: string | null;
   onRetryHealth: () => void;
-  onRestartProject?: () => void;
+  onRequestRestart?: () => void;
   onProviderModeChange?: (mode: ProviderMode) => Promise<void> | void;
 }
 
@@ -23,11 +23,11 @@ export const Header: React.FC<HeaderProps> = ({
   providerStatus: _providerStatus,
   providerModeError,
   onRetryHealth,
-  onRestartProject,
+  onRequestRestart,
   onProviderModeChange: _onProviderModeChange,
 }) => {
   const [showHelp, setShowHelp] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
 
 
 
@@ -80,11 +80,11 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           )}
 
-          {project && onRestartProject && (
+          {project && onRequestRestart && (
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => setShowConfirmModal(true)}
+              onClick={onRequestRestart}
             >
               Start Over
             </button>
@@ -153,31 +153,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {showConfirmModal && (
-        <div className="modal-overlay">
-          <div className="modal-card">
-            <h3>Restart Project?</h3>
-            <p>
-              All active session data for this project will be reset in this browser. Existing backend records are not deleted.
-            </p>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn-danger-confirm"
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  if (onRestartProject) onRestartProject();
-                }}
-              >
-                Yes, Restart Project
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 };

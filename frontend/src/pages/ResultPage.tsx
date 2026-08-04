@@ -30,7 +30,7 @@ const ZOO_LOADING_DIALOGUES = [
 interface ResultPageProps {
   project: Project | null;
   onProjectUpdate?: (updated: Project) => void;
-  onRestartProject?: () => void;
+  onRequestRestart?: () => void;
 }
 
 const SAFE_REVISION_COMMANDS = [
@@ -45,12 +45,12 @@ const SAFE_REVISION_COMMANDS = [
 export const ResultPage: React.FC<ResultPageProps> = ({
   project,
   onProjectUpdate,
-  onRestartProject,
+  onRequestRestart,
 }) => {
   const navigate = useNavigate();
   const [showKclCode, setShowKclCode] = useState(false);
   const [copiedKcl, setCopiedKcl] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
+
   const [kclArtifact, setKclArtifact] = useState<{ text: string; kcl_hash: string } | null>(null);
   const [exportStatus, setExportStatus] = useState<import('../types/schema').ExportStatusResponse | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -241,18 +241,6 @@ export const ResultPage: React.FC<ResultPageProps> = ({
       setProposal(null);
       setRevisionPrompt('');
 
-      setRegenerationJob({
-        job_id: 'pending_revision_' + Date.now(),
-        project_id: project.project_id,
-        model_revision: (project.current_model_revision || 0) + 1,
-        status: 'queued',
-        current_stage: 'validating',
-        progress_percent: 0,
-        mock_scenario: 'success',
-        recovery_steps: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
       const queuedJob = await startGeneration(project.project_id, project.project_token);
       setRegenerationJob(queuedJob);
       let latestJob = queuedJob;
@@ -289,6 +277,12 @@ export const ResultPage: React.FC<ResultPageProps> = ({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Regeneration failed during revision confirmation.';
       setRegenerationError(msg);
+      try {
+        const failedProject = await fetchProject(project.project_id, project.project_token);
+        onProjectUpdate?.(failedProject);
+      } catch {
+        // Preserve the generation error when the recovery refresh also fails.
+      }
     } finally {
       setIsConfirming(false);
     }
@@ -343,35 +337,35 @@ export const ResultPage: React.FC<ResultPageProps> = ({
       </div>
 
       {/* Warning Banners */}
-      {regenerationJob && (regenerationJob.status === 'queued' || regenerationJob.status === 'running' || regenerationJob.status === 'cancel_requested') && (
+      {isPipelineBusy && (
         <section className="generation-progress-card" aria-labelledby="step5-job-progress-heading">
           <div className="card-header-row">
             <h2 id="step5-job-progress-heading" className="card-title">Updating model - please wait</h2>
-            <span className={`status-badge-inline status-${regenerationJob.status}`}>
-              {regenerationJob.status.toUpperCase()}
+            <span className={`status-badge-inline status-${regenerationJob?.status || 'confirming'}`}>
+              {regenerationJob?.status.toUpperCase() || 'CONFIRMING'}
             </span>
           </div>
           <div className="staged-progress-container">
             <div className="generation-loading-header" aria-live="polite">
               <div>
                 <span className="generation-loading-label">Zoo Engine generation progress</span>
-                <strong className="generation-loading-percent">{Math.round(regenerationJob.progress_percent)}%</strong>
+                <strong className="generation-loading-percent">{regenerationJob ? Math.round(regenerationJob.progress_percent) + '%' : 'Waiting for generation job'}</strong>
               </div>
               <div className="generation-loading-dialogue" role="status">
                 <strong>While Zoo is thinking:</strong> {ZOO_LOADING_DIALOGUES[loadingDialogueIndex]}
               </div>
             </div>
             <div className="progress-bar-track">
-              <div className={`progress-bar-fill ${regenerationJob.status}`} style={{ width: `${regenerationJob.progress_percent}%` }} />
+              <div className={`progress-bar-fill ${regenerationJob?.status || 'confirming'}`} style={{ width: `${regenerationJob?.progress_percent || 0}%` }} />
             </div>
             <div className="current-stage-callout">
-              <strong>Current Stage:</strong> <span className="stage-highlight">{regenerationJob.current_stage.toUpperCase()}</span> ({Math.round(regenerationJob.progress_percent)}%)
+              <strong>Current Stage:</strong> <span className="stage-highlight">{regenerationJob?.current_stage.toUpperCase() || 'CONFIRMING'}</span> ({regenerationJob ? Math.round(regenerationJob.progress_percent) + '%' : 'Waiting for generation job'})
             </div>
           </div>
         </section>
       )}
 
-      {isStale && (
+      {isStale && !isPipelineBusy && (
         <div className="warning-banner" role="alert" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.5rem', color: '#f0f6fc' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
@@ -730,7 +724,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({
         )}
 
 
-        {isStale && (
+        {isStale && !isPipelineBusy && (
           <div className="export-notice-banner" style={{ background: 'rgba(210, 153, 34, 0.15)', borderLeft: '4px solid #d29922', padding: '1rem', borderRadius: '6px', marginBottom: '1.25rem' }}>
             <strong style={{ color: '#d29922', fontSize: '0.95rem' }}>
                 Model is Stale Export Blocked
@@ -806,8 +800,8 @@ export const ResultPage: React.FC<ResultPageProps> = ({
             </button>
           </div>
 
-          {onRestartProject && (
-            <button type="button" className="btn btn-tertiary" onClick={() => setShowExportModal(true)} style={{ color: '#f85149', borderColor: '#f85149' }}>
+          {onRequestRestart && (
+            <button type="button" className="btn btn-tertiary" onClick={onRequestRestart} style={{ color: '#f85149', borderColor: '#f85149' }}>
               Start New Project
             </button>
           )}
@@ -815,34 +809,6 @@ export const ResultPage: React.FC<ResultPageProps> = ({
       </div>
 
       {/* Exit / Restart Confirmation Modal */}
-      {showExportModal && (
-        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '1.5rem', maxWidth: '480px', width: '90%', color: '#f0f6fc' }}>
-            <h3 style={{ marginTop: 0, color: '#f85149', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span></span> Restart Workflow?
-            </h3>
-            <p style={{ fontSize: '0.9rem', color: '#c9d1d9' }}>
-              Are you sure you want to start a new project? Your current active project state will be reset in this browser session.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowExportModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ background: '#da3633', borderColor: '#f85149' }}
-                onClick={() => {
-                  setShowExportModal(false);
-                  if (onRestartProject) onRestartProject();
-                }}
-              >
-                Confirm &amp; Restart
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
