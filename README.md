@@ -1,4 +1,4 @@
-﻿# InterfaceForge
+# InterfaceForge
 
 InterfaceForge turns two reviewed, clean, front-facing 2D profiles into a hollow parametric transition adapter for dust extraction. The submission workflow uses two-point calibration, explicit profile approval, an authoritative `LoftPlan`, deterministic KCL 2.0, Zoo Engine generation, bounded Zoo Agent revisions, and STL/KCL exports.
 
@@ -32,8 +32,8 @@ Recommended audit path: `README -> technical design -> API usage -> bugs/limitat
 ## Judge Quick Start
 
 1. Open the [live app](https://interfaceforge.pages.dev/) or run the local frontend/backend.
-2. Create a project in Mock mode for deterministic offline review, or select Live only when backend Zoo credentials are configured.
-3. Upload `samples/valid_circle.png` as Interface A and `samples/valid_rounded_rectangle.png` as Interface B.
+2. Open the deployed application for the submission workflow. For deterministic local testing, configure the backend provider variables described in [backend setup](backend/README.md).
+3. Upload `samples/valid_circle.png` as Interface A and `samples/valid_rounded_rectangle.png` as Interface B. Use a dark filled profile on a solid white background. Black or transparent backgrounds are not reliably supported and may cause the entire image boundary to be detected as the profile.
 4. For each profile select two points representing `50 mm` of known distance, confirm calibration, review the trace, and approve it.
 5. Use `fit-over` for both profiles, `coaxial` mode, `40 mm` length, `2.4 mm` wall thickness, and `0.3 mm` / `0.1 mm` clearances.
 6. Validate and explicitly generate. Inspect the result, then download current STL and KCL.

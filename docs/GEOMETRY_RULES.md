@@ -1,8 +1,8 @@
-﻿# Geometry Rules
+# Geometry Rules
 
 ## Input, coordinates, and units
 
-Inputs are clean, filled, front-facing or orthographic 2D images. OpenCV produces one approved closed outer profile. Trace coordinates are normalized into `canonical_profile_v1`, then calibrated into millimetres using two selected points and one positive known distance. Calibration is uniform scale only; it does not correct perspective, camera tilt, or lens distortion. KCL and all connection/manufacturing values use millimetres.
+Inputs are clean, dark filled, front-facing or orthographic 2D images on a solid white background. Black or transparent backgrounds are not reliably supported and may cause the full image-sized rectangle/canvas boundary to be detected as the profile. This is an InterfaceForge image-preprocessing limitation; no automatic background correction is assumed. OpenCV produces one approved closed outer profile. Trace coordinates are normalized into `canonical_profile_v1`, then calibrated into millimetres using two selected points and one positive known distance. Calibration is uniform scale only; it does not correct perspective, camera tilt, or lens distortion. KCL and all connection/manufacturing values use millimetres.
 
 ## Profile preparation
 

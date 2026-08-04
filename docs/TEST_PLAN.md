@@ -1,4 +1,4 @@
-﻿# InterfaceForge â€” Test Plan & Execution Strategy
+# InterfaceForge â€” Test Plan & Execution Strategy
 
 **Document Status:** Active Specification  
 **Project:** InterfaceForge (Zoo API Makeathon 2026)  
@@ -108,7 +108,7 @@
 
 ## Current submission coverage additions
 
-The active plan must retain coverage for OpenCV one-closed-profile extraction, two-point calibration with one known distance, Interface A/B approval ordering, fit-over/fit-inside clearance formulas, X/Y offset and extension sections, LoftPlan authority, KCL 2.0 determinism, six-field Agent allowlisting and confirmation, stale exports, last-known-good recovery, STL/KCL lineage, exact API contracts, frontend route guards, and deployment smoke checks. STEP and angle generation are compatibility/historical scope only.
+The active plan must retain coverage for OpenCV one-closed-profile extraction, two-point calibration with one known distance, Interface A/B approval ordering, fit-over/fit-inside clearance formulas, X/Y offset and extension sections, LoftPlan authority, KCL 2.0 determinism, eight-field Agent allowlisting and confirmation, stale exports, last-known-good recovery, STL/KCL lineage, exact API contracts, frontend route guards, and deployment smoke checks. STEP and angle generation are compatibility/historical scope only.
 
 ## Deployment smoke checks
 

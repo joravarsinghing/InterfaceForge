@@ -1,4 +1,4 @@
-﻿# Canonical Design Schema
+# Canonical Design Schema
 
 The canonical `Project` JSON is the source of truth. KCL, preview geometry, generation, and exports are derived from the validated project and its persisted `LoftPlan`. Schema version is currently `0.1`.
 
@@ -38,7 +38,7 @@ Active final generation requires one approved closed outer profile. `traced_hole
 4. Traced final profiles require a closed contour with sufficient points and no self-intersection.
 5. Active connection modes are coaxial and parallel X/Y offset; compatibility angle values must remain zero.
 6. Schema changes stale the current model and exports.
-7. Agent proposals are limited to six allowlisted numeric fields and are recalculated server-side.
+7. Agent proposals are limited to eight allowlisted numeric fields and are recalculated server-side.
 8. Failed generation preserves `last_known_good_model_revision`.
 9. Current exports must match the current model revision and KCL lineage.
 

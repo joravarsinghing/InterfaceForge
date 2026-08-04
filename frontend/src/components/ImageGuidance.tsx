@@ -39,7 +39,7 @@ export const ImageGuidance: React.FC<ImageGuidanceProps> = ({
             </h3>
             <ul>
               <li>One cross-section only, front-facing / orthographic</li>
-              <li>Plain high-contrast background</li>
+              <li>Solid white background behind a dark filled profile</li>
               <li>Solid or clearly shaded material region</li>
               <li>Full profile visible and uncropped</li>
               <li>No dimension lines, text, or arrows</li>
@@ -128,8 +128,7 @@ export const PreferredInput: React.FC = () => (
       aria-label="Best results guidance"
     >
       <p>
-    For best results, upload a <strong>clean cross-section image</strong> without
-    dimensions or annotations. One confirmed measurement is enough to calibrate
+    For best results, upload a <strong>dark filled profile on a solid white background</strong> without dimensions or annotations. Black or transparent backgrounds are not reliably supported and may cause the entire image boundary to be detected as the profile. One confirmed measurement is enough to calibrate
     the profile scale after review.
       </p>
     </div>

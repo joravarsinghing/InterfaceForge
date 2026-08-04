@@ -1,11 +1,11 @@
-﻿# InterfaceForge - Implemented User Flow
+# InterfaceForge - Implemented User Flow
 
 This document describes the current submission workflow. `Interface A` and `Interface B` are the only two profiles in a project.
 
 ## Locked workflow
 
 1. Create a project. The backend returns a project ID and project token; the frontend keeps the token and sends it as `X-Project-Token`.
-2. Upload Interface A as a clean, front-facing, filled 2D image. OpenCV produces the processed image, trace artifacts, and one closed outer profile.
+2. Upload Interface A as a clean, front-facing, dark filled 2D profile on a solid white background. Black or transparent backgrounds are not reliably supported and may cause the entire image boundary to be detected as the profile. OpenCV produces the processed image, trace artifacts, and one closed outer profile.
 3. Select two calibration points, enter one known real-world distance, and confirm the two-point calibration. Calibration applies scale only; it does not correct perspective.
 4. Review the detected profile, dimensions, trace, fit intent, and warnings. Explicitly approve Interface A.
 5. Interface B remains locked until A is approved. Upload, calibrate, review, and explicitly approve B using the same process.
@@ -40,7 +40,7 @@ OpenCV is the deterministic profile extraction path. Gemini is optional guidance
 
 - Invalid token or project: the backend returns `IF-AUTH-401` or `IF-PROJECT-404`; the frontend keeps the user on a safe error state and offers restart rather than exposing project data.
 - Invalid upload: reject unsupported/empty/unsafe files with a recoverable upload error; preserve the existing project state.
-- Failed detection or calibration: show analysis/calibration errors, keep the prior valid interface data, and allow re-upload, re-analysis, or recalibration.
+- Failed detection or calibration: show analysis/calibration errors, keep the prior valid interface data, and allow re-upload, re-analysis, or recalibration. If the image has a black or transparent background, ask for a dark filled profile on solid white and do not imply automatic background correction.
 - Approval retry: approval remains blocked until the profile is closed, calibrated, reviewed, and valid; correcting the profile clears downstream approval as implemented.
 - Blocked navigation: route guards redirect direct access to the earliest incomplete workflow step. Interface B and configuration remain locked until prerequisites are met.
 - Invalid configuration: display field-level validation IDs and recovery steps; do not compile or start generation.

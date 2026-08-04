@@ -1,4 +1,4 @@
-﻿# InterfaceForge API Usage
+# InterfaceForge API Usage
 
 This is the application API contract. There are 46 active application routes: 38 project routes, 6 generation routes, and 2 health/readiness routes. FastAPI `/docs` and `/redoc` are framework-generated and excluded. Project routes require `X-Project-Token` unless explicitly noted. Success responses use `{ "success": true, "data": ... }`; API errors use `{ "success": false, "error": { "id", "message", "details", "recovery_steps" } }`.
 
@@ -81,7 +81,7 @@ Generation and export errors include `IF-PREREQ-400`, `IF-KCL-*`, `IF-JOB-409`, 
 | POST | `/api/projects/{project_id}/revision/propose` | `{ "prompt": string, "provider": "zoo" | "mock" }` | `AgentProposalResult` with structured `ParameterChange` items and validation errors. Default provider is Zoo; mock is explicit offline/test mode. |
 | POST | `/api/projects/{project_id}/revision/confirm` | `{ "changes": [ParameterChange] }`, optional `?mock_scenario=` | Updated `Project` and `job: null`. Applies only server-validated changes, increments schema revision, and marks the model stale. It does not start generation. |
 
-The allowlist contains exactly six fields: `connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, and `manufacturing.clearance_b_mm`. Profiles, contours, provider settings, and KCL text are not editable by Agent proposals.
+The allowlist contains exactly eight fields: connection.length_mm, connection.extension_a_mm, connection.extension_b_mm, connection.offset_x_mm, connection.offset_y_mm, manufacturing.wall_thickness_mm, manufacturing.clearance_a_mm, and manufacturing.clearance_b_mm. Profiles, contours, provider settings, and KCL text are not editable by Agent proposals.
 
 ## Compatibility-only routes
 

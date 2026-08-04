@@ -43,7 +43,7 @@ The KCL runtime can identify a source line and column, but the InterfaceForge pr
 
 ## InterfaceForge limitations
 
-1. Reliable input is a clean, front-facing, filled 2D profile image. Image tracing, calibration, perspective handling, profile cleanup, and annotation-heavy drawing handling remain InterfaceForge concerns and limitations.
+1. Reliable input is a dark, filled, front-facing 2D profile on a solid white background. Black or transparent backgrounds are not reliably supported and may cause the entire image boundary to be detected as the profile. Image tracing, calibration, perspective handling, profile cleanup, and annotation-heavy drawing handling remain InterfaceForge concerns and limitations. This is an InterfaceForge input limitation, not a Zoo issue.
 2. Scale is manually calibrated from a known measurement and must be explicitly confirmed. Perspective correction is not automatic.
 3. Dimensioned engineering drawings are experimental/manual-review inputs; users must inspect and approve the traced profile.
 4. Final generation supports the bounded profile and connection scope implemented by InterfaceForge. Angle-based connections are unsupported for this submission.

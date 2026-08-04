@@ -1,12 +1,12 @@
-﻿# Status and decision classification
+# Status and decision classification
 
-The ADR sections below preserve valid rationale. The current submission corrections at the top are active behavior. References to angle, STEP, older providers, or stage-era defaults are historical or compatibility-only unless explicitly identified as active. The active Agent allowlist contains six fields.
+The ADR sections below preserve valid rationale. The current submission corrections at the top are active behavior. References to angle, STEP, older providers, or stage-era defaults are historical or compatibility-only unless explicitly identified as active. The active Agent allowlist contains eight fields.
 
 # Current submission corrections
 
-The following active boundary supersedes older stage notes in this historical decision log: profiles are circle, rectangle, rounded_rectangle, or approved traced_closed; connections are coaxial or parallel offset; the Agent allowlist excludes angle fields; KCL 2.0 and LoftPlan are authoritative; exports are STL/KCL; STEP is planned only. Mock and Gemini references below describe explicit local/optional providers, not silent production fallbacks.
+The following active boundary supersedes older stage notes in this historical decision log: profiles are circle, rectangle, rounded_rectangle, or approved traced_closed; connections are coaxial or parallel offset; the Agent allowlist has eight fields including Interface A/B vertical extensions; KCL 2.0 and LoftPlan are authoritative; exports are STL/KCL; angle mode and STEP submission export are unavailable. There is no silent production fallback; Mock is an explicit offline/test provider. Historical angle and STEP availability statements below are superseded: no active angle mode and no STEP submission export.
 
-# InterfaceForge Ã¢â‚¬â€ Design Decisions (ADRs & Technical Rationale)
+# InterfaceForge - Design Decisions (ADRs & Technical Rationale)
 
 **Document Status:** Active Record  
 **Project:** InterfaceForge (Zoo API Makeathon 2026)  
@@ -47,7 +47,7 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 2. **Staged Execution Progress:** Model generation progresses through discrete stages (`validating`, `compiling`, `executing`, `rendering`, `finalizing`).
 3. **Last-Known-Good Preservation:** If generation fails or is cancelled, `last_known_good_model_revision` is preserved as active `current` model (ADR-005).
 4. **Duplicate Active-Job Prevention:** Enforce single active generation job per project (`IF-JOB-409`).
-5. **Safe Configuration Fallback:** If `ENGINE_PROVIDER=zoo` is configured without `ZOO_API_TOKEN`, the backend safely falls back to `mock` mode.
+5. **Superseded - Safe Configuration Fallback:** If ENGINE_PROVIDER=zoo is configured without ZOO_API_TOKEN, the backend historically fell back to mock mode. Current behavior has no silent production fallback; provider availability is reported and Mock remains an explicit offline/test mode.
 
 ### Rationale
 - Decouples geometry execution from live credentials, allowing comprehensive offline development and testing.
@@ -62,7 +62,7 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 2. **Backend-Only Secret Credentials:** Store API key (`GEMINI_API_KEY`) strictly in `backend/.env` with automatic secret redaction (`sanitize_error_message`) on all exception tracebacks and logs.
 3. **Versioned Prompt & Untrusted Model Output Validation:** Enforce prompt version `1.0` and multi-pass output validation (JSON structure, profile enums, finite numbers via `math.isfinite`, and confidence range `[0.0, 1.0]`).
 4. **Honest Rejection & Recovery:** Rejections (< 0.60 confidence) raise `AnalysisRejectedError` (`IF-ANALYSIS-400`) with clear recovery steps without altering project schema.
-5. **Configurable Mock Fallback:** Safe automatic fallback to `MockAnalysisProvider` when `ANALYSIS_PROVIDER=mock` or when API keys are unconfigured.
+5. **Historical - Configurable Mock Fallback:** Safe automatic fallback to MockAnalysisProvider when ANALYSIS_PROVIDER=mock or when API keys were unconfigured. This stage-era behavior does not override the current explicit provider boundary.
 
 ### Rationale
 - Treats AI vision predictions as unapproved candidate proposals requiring explicit user approval per ADR-003 and ADR-004.
@@ -74,9 +74,9 @@ Use SQLite standard library (`sqlite3`) for lightweight local project persistenc
 ## 7. Stage S9 Decision: Bounded Zoo Agent API Revisions & Confirmation Gate
 
 ### Decision
-1. **Agent as Intent Interpreter Only:** Integrate ZooÃ¢â‚¬â„¢s Copilot WebSocket API (`wss://api.zoo.dev/ws/ml/copilot`) via `ZooAgentProvider` behind `AgentProvider` abstraction. The Agent interprets user intent but is strictly forbidden from writing KCL or generating CAD geometry directly (ADR-001, ADR-002, ADR-007).
-2. **Server-Side Agent Allowlist:** Proposals are restricted to 6 explicit connection/manufacturing fields (`connection.length_mm`, `connection.offset_x_mm`, `connection.offset_y_mm`, `manufacturing.wall_thickness_mm`, `manufacturing.clearance_a_mm`, `manufacturing.clearance_b_mm`). Out-of-allowlist requests (profile type changes, process, material, KCL code generation) are rejected server-side (`IF-AGENT-400`).
-3. **Explicit User Confirmation Gate:** Proposals are returned as unapplied suggestions. Schema parameters, KCL compilation, and 3D generation execute ONLY after explicit user confirmation (`POST /api/projects/{id}/revision/confirm`).
+1. **Agent as Intent Interpreter Only:** Integrate Zoo's Copilot WebSocket API via ZooAgentProvider behind AgentProvider abstraction. The Agent interprets user intent but is strictly forbidden from writing KCL or generating CAD geometry directly (ADR-001, ADR-002, ADR-007).
+2. **Superseded - Server-Side Agent Allowlist:** Proposals were restricted to 6 explicit connection/manufacturing fields. Current behavior allows exactly 8 fields: connection.length_mm, connection.extension_a_mm, connection.extension_b_mm, connection.offset_x_mm, connection.offset_y_mm, manufacturing.wall_thickness_mm, manufacturing.clearance_a_mm, and manufacturing.clearance_b_mm. Out-of-allowlist requests remain rejected server-side (IF-AGENT-400).
+3. **Superseded - Explicit User Confirmation Gate:** Proposals are returned as unapplied suggestions. Confirmation updates canonical schema values and marks the model stale; it does not compile KCL or launch generation. Regeneration is a separate explicit action (revision confirm, followed by generation).
 4. **Preservation of Last-Known-Good Model (ADR-005):** If 3D generation fails after confirmation, `last_known_good_model_revision` remains preserved as active current model without corrupting project state.
 
 ### Rationale

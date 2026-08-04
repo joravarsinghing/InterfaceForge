@@ -1,4 +1,4 @@
-﻿# InterfaceForge - Implemented Submission Record
+# InterfaceForge - Implemented Submission Record
 
 Status: authoritative product record for the current submission build.
 
@@ -66,7 +66,7 @@ STEP export, richer profile topology, angle-based and curved connections, additi
 - Support circle, rectangle, rounded rectangle, and approved `traced_closed` profiles.
 - Support `fit-over`, `fit-inside`, coaxial, parallel X/Y offset, length, extensions, wall thickness, and clearances.
 - Use the canonical project and persisted LoftPlan for preview, KCL 2.0, and generated geometry.
-- Execute KCL through Zoo Engine; constrain Zoo Agent to six allowlisted numeric fields and explicit confirmation.
+- Execute KCL through Zoo Engine; constrain Zoo Agent to eight allowlisted numeric fields and explicit confirmation.
 - Expose current STL and KCL only for the current model revision.
 - Preserve last-known-good state after failed generation or revision regeneration.
 
