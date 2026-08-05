@@ -6,7 +6,7 @@ from fastapi import APIRouter, Header, status
 from pydantic import BaseModel
 
 from app.models.generation import GenerationJobRequest, MockScenario
-from app.services.generation_job_service import GenerationJobService
+from app.services.generation_job_service import GenerationJobService, get_generation_job_service
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 
@@ -20,7 +20,7 @@ class StandardResponse(BaseModel):
 
 def get_generation_service() -> GenerationJobService:
     """Dependency provider for GenerationJobService."""
-    return GenerationJobService()
+    return get_generation_job_service()
 
 
 @router.post(

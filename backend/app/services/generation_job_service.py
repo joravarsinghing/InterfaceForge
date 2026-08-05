@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
+from app.core.config import settings
 from app.core.exceptions import APIError
 from app.models.generation import (
     GenerationJob,
@@ -51,6 +52,7 @@ class GenerationJobService:
     def __init__(self, project_service: Optional[ProjectService] = None) -> None:
         self.project_service = project_service or ProjectService()
         self._jobs: Dict[str, GenerationJob] = {}
+        self._active_tasks: dict[str, asyncio.Task[GenerationJob]] = {}
 
     def _all_persisted_jobs(self) -> Dict[str, GenerationJob]:
         jobs = {job.job_id: job for job in self.project_service.repository.list_generation_jobs()}
@@ -61,6 +63,33 @@ class GenerationJobService:
         self._jobs[job.job_id] = job
         self.project_service.repository.save_generation_job(job)
         return job
+
+    def _log_background_task_result(
+        self, project_id: str, task: asyncio.Task[GenerationJob]
+    ) -> None:
+        """Release a retained task and record unexpected task failures safely."""
+        if self._active_tasks.get(project_id) is task:
+            self._active_tasks.pop(project_id, None)
+        if task.cancelled():
+            logger.warning(
+                "generation background task cancelled job_id=unknown project_id=%s",
+                project_id,
+            )
+            return
+        try:
+            error = task.exception()
+        except asyncio.CancelledError:
+            logger.warning(
+                "generation background task cancelled job_id=unknown project_id=%s",
+                project_id,
+            )
+            return
+        if error is not None:
+            logger.error(
+                "generation background task failed project_id=%s exception_type=%s",
+                project_id,
+                type(error).__name__,
+            )
 
     def recover_abandoned_jobs(self) -> int:
         """Fail transient jobs left behind by a backend restart."""
@@ -308,19 +337,94 @@ class GenerationJobService:
             "preview_export_persistence_completed", executed_job.job_id, project_id
         )
         return executed_job
+    async def _run_background_generation(
+        self,
+        project_id: str,
+        mock_scenario: MockScenario,
+        project_token: Optional[str],
+    ) -> GenerationJob:
+        """Run generation and fail any persisted active job on unexpected errors."""
+        try:
+            return await self.start_generation_job(
+                project_id=project_id,
+                mock_scenario=mock_scenario,
+                project_token=project_token,
+            )
+        except APIError:
+            raise
+        except BaseException:
+            self._fail_unexpected_background_job(project_id)
+            raise
+
+    def _fail_unexpected_background_job(self, project_id: str) -> None:
+        """Prevent an unexpected task error from leaving an active job stuck."""
+        job = self.get_active_job_for_project(project_id)
+        if job is None:
+            return
+        job.status = JobStatus.FAILED
+        job.error_id = "IF-JOB-999"
+        job.error_message = "Generation background task failed unexpectedly."
+        job.recovery_steps = ["Retry model generation."]
+        job.completed_at = current_iso_timestamp()
+        job.updated_at = job.completed_at
+        self._save_job(job)
+        try:
+            project = self.project_service.get_project(project_id, None)
+            target_rev = next(
+                (rev for rev in project.model_revisions if rev.model_revision == job.model_revision),
+                None,
+            )
+            if target_rev:
+                target_rev.status = ModelRevisionStatus.FAILED
+                target_rev.warnings.append(job.error_message)
+            if project.last_known_good_model_revision is not None:
+                project.current_model_revision = project.last_known_good_model_revision
+            else:
+                project.current_model_revision = None
+            project.state = WorkflowState.GENERATION_FAILED
+            self.project_service.repository.save(project)
+        except Exception as cleanup_error:
+            logger.error(
+                "generation background cleanup failed project_id=%s exception_type=%s",
+                project_id,
+                type(cleanup_error).__name__,
+            )
+
     async def start_generation_job_background(
         self,
         project_id: str,
         mock_scenario: MockScenario = MockScenario.SUCCESS,
         project_token: Optional[str] = None,
     ) -> GenerationJob:
-        """Start the exact generation pipeline without holding the HTTP request open."""
+        """Start generation without holding the HTTP request open."""
+        if project_id in self._active_tasks:
+            active_job = self.get_active_job_for_project(project_id)
+            if active_job is not None:
+                raise APIError(
+                    error_id="IF-JOB-409",
+                    message=(
+                        f"Active generation job '{active_job.job_id}' is already in progress "
+                        f"for project '{project_id}'."
+                    ),
+                    status_code=409,
+                    recovery_steps=["Wait for the active generation job to complete or cancel it."],
+                )
+            raise APIError(
+                error_id="IF-JOB-409",
+                message="A generation task is already starting for this project.",
+                status_code=409,
+            )
+
         task = asyncio.create_task(
-            self.start_generation_job(
+            self._run_background_generation(
                 project_id=project_id,
                 mock_scenario=mock_scenario,
                 project_token=project_token,
             )
+        )
+        self._active_tasks[project_id] = task
+        task.add_done_callback(
+            lambda completed_task: self._log_background_task_result(project_id, completed_task)
         )
         await asyncio.sleep(0)
         active_job = self.get_active_job_for_project(project_id)
@@ -329,7 +433,24 @@ class GenerationJobService:
                 "background_task_started", active_job.job_id, active_job.project_id
             )
             return active_job
-        return await task
+        if task.done():
+            try:
+                return task.result()
+            except APIError:
+                raise
+            except BaseException:
+                raise APIError(
+                    error_id="IF-JOB-500",
+                    message="Generation failed before a job could be created.",
+                    status_code=500,
+                    recovery_steps=["Retry model generation."],
+                )
+        raise APIError(
+            error_id="IF-JOB-503",
+            message="Generation started but its job was not persisted.",
+            status_code=503,
+            recovery_steps=["Retry model generation."],
+        )
 
 
     async def cancel_job(
@@ -428,6 +549,8 @@ _generation_job_service_instance: Optional[GenerationJobService] = None
 def get_generation_job_service() -> GenerationJobService:
     """Singleton getter for GenerationJobService."""
     global _generation_job_service_instance
-    if _generation_job_service_instance is None:
+    if _generation_job_service_instance is None or (
+        _generation_job_service_instance.project_service.repository.db_path != str(settings.db_path)
+    ):
         _generation_job_service_instance = GenerationJobService()
     return _generation_job_service_instance

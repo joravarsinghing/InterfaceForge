@@ -136,3 +136,146 @@ async def test_zoo_engine_validation_failure():
             assert res.status == JobStatus.FAILED
             assert res.error_id == "IF-ENG-001"
             assert "validation" in res.error_message.lower()
+
+@pytest.mark.asyncio
+async def test_background_generation_retains_task_and_completes(approved_project):
+    """The service-owned task remains alive after the start call returns."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingCompletedEngine:
+        async def execute_generation(self, job, _kcl_code, project=None):
+            started.set()
+            job.progress_percent = 25
+            await release.wait()
+            job.status = JobStatus.SUCCEEDED
+            job.current_stage = GenerationStage.FINALIZING
+            job.progress_percent = 100
+            return job
+
+    service = GenerationJobService()
+    with patch("app.services.generation_job_service.get_engine_provider", return_value=BlockingCompletedEngine()):
+        returned = await service.start_generation_job_background(
+            approved_project.project_id,
+            project_token=approved_project.project_token,
+        )
+        assert returned.status == JobStatus.RUNNING
+        assert approved_project.project_id in service._active_tasks
+        assert started.is_set()
+        release.set()
+        task = service._active_tasks[approved_project.project_id]
+        result = await asyncio.wait_for(task, timeout=1)
+
+    assert result.status == JobStatus.SUCCEEDED
+    assert service.project_service.repository.get_generation_job(result.job_id).status == JobStatus.SUCCEEDED
+    await asyncio.sleep(0)
+    assert approved_project.project_id not in service._active_tasks
+
+
+@pytest.mark.asyncio
+async def test_background_provider_failure_marks_job_failed_and_cleans_task(approved_project):
+    class FailingEngine:
+        async def execute_generation(self, _job, _kcl_code, project=None):
+            raise RuntimeError("provider failure")
+
+    service = GenerationJobService()
+    with patch("app.services.generation_job_service.get_engine_provider", return_value=FailingEngine()):
+        returned = await service.start_generation_job_background(
+            approved_project.project_id,
+            project_token=approved_project.project_token,
+        )
+        assert returned.status == JobStatus.FAILED
+        await asyncio.sleep(0)
+
+    failed = service.project_service.repository.get_generation_job(returned.job_id)
+    assert failed is not None
+    assert failed.status == JobStatus.FAILED
+    await asyncio.sleep(0)
+    assert approved_project.project_id not in service._active_tasks
+
+
+@pytest.mark.asyncio
+async def test_unexpected_background_exception_is_retrieved_and_logged(approved_project, caplog):
+    service = GenerationJobService()
+    caplog.set_level("ERROR")
+    with patch.object(
+        service,
+        "start_generation_job",
+        side_effect=RuntimeError("secret payload must not be logged"),
+    ):
+        with pytest.raises(APIError) as exc_info:
+            await service.start_generation_job_background(
+                approved_project.project_id,
+                project_token=approved_project.project_token,
+            )
+
+    assert exc_info.value.error_id == "IF-JOB-500"
+    await asyncio.sleep(0)
+    assert approved_project.project_id not in service._active_tasks
+    assert "exception_type=RuntimeError" in caplog.text
+    assert "secret payload" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_background_duplicate_start_is_rejected(approved_project):
+    release = asyncio.Event()
+
+    class BlockingEngine:
+        async def execute_generation(self, job, _kcl_code, project=None):
+            job.progress_percent = 25
+            await release.wait()
+            job.status = JobStatus.SUCCEEDED
+            job.current_stage = GenerationStage.FINALIZING
+            job.progress_percent = 100
+            return job
+
+    service = GenerationJobService()
+    with patch("app.services.generation_job_service.get_engine_provider", return_value=BlockingEngine()):
+        first = await service.start_generation_job_background(
+            approved_project.project_id,
+            project_token=approved_project.project_token,
+        )
+        with pytest.raises(APIError) as exc_info:
+            await service.start_generation_job_background(
+                approved_project.project_id,
+                project_token=approved_project.project_token,
+            )
+        assert exc_info.value.error_id == "IF-JOB-409"
+        release.set()
+        await asyncio.wait_for(service._active_tasks[approved_project.project_id], timeout=1)
+
+    assert first.status == JobStatus.SUCCEEDED
+@pytest.mark.asyncio
+async def test_start_endpoint_returns_201_and_background_job_progresses(
+    approved_project, async_client
+):
+    release = asyncio.Event()
+
+    class BlockingEngine:
+        async def execute_generation(self, job, _kcl_code, project=None):
+            job.progress_percent = 25
+            await release.wait()
+            job.status = JobStatus.SUCCEEDED
+            job.current_stage = GenerationStage.FINALIZING
+            job.progress_percent = 100
+            return job
+
+    with patch("app.services.generation_job_service.get_engine_provider", return_value=BlockingEngine()):
+        response = await async_client.post(
+            f"/api/projects/{approved_project.project_id}/generation/start",
+            headers={"X-Project-Token": approved_project.project_token},
+        )
+        assert response.status_code == 201
+        assert response.json()["data"]["progress_percent"] > 0
+        job_id = response.json()["data"]["job_id"]
+        release.set()
+        for _ in range(20):
+            status_response = await async_client.get(
+                f"/api/projects/{approved_project.project_id}/generation/{job_id}",
+                headers={"X-Project-Token": approved_project.project_token},
+            )
+            if status_response.json()["data"]["status"] == JobStatus.SUCCEEDED.value:
+                break
+            await asyncio.sleep(0)
+
+    assert status_response.json()["data"]["status"] == JobStatus.SUCCEEDED.value
