@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import multiprocessing
+import signal
 import re
 import uuid
 from abc import ABC, abstractmethod
@@ -29,6 +31,115 @@ from app.services.geometry_generator import (
 
 
 logger = logging.getLogger(__name__)
+
+def _zoo_sdk_worker(kcl_code: str, export_format: str, response_conn) -> None:
+    """Run the native Zoo KCL SDK outside the Uvicorn process."""
+    try:
+        import os
+
+        token = os.environ.get("ZOO_API_TOKEN", "")
+        if not token:
+            response_conn.send({"kind": "error", "error_id": "IF-ZOO-401", "message": "Zoo token is not configured."})
+            return
+        os.environ["ZOO_API_TOKEN"] = token
+
+        async def _execute() -> None:
+            import base64
+            import kcl  # type: ignore[import-not-found]
+
+            files = await kcl.execute_code_and_export(
+                kcl_code,
+                getattr(kcl.FileExportFormat, export_format),
+            )
+            if not files:
+                raise RuntimeError("Zoo SDK returned no export files.")
+            payload = getattr(files[0], "contents", None)
+            if isinstance(payload, str):
+                stl_bytes = base64.b64decode(payload)
+            elif isinstance(payload, list):
+                stl_bytes = bytes(payload)
+            elif isinstance(payload, bytes):
+                stl_bytes = payload
+            else:
+                raise RuntimeError("Zoo SDK returned an unsupported export payload.")
+            response_conn.send({"kind": "success", "stl_bytes": stl_bytes})
+
+        asyncio.run(_execute())
+    except BaseException as exc:
+        # Native SDK errors may contain credentials or source fragments.
+        try:
+            response_conn.send({
+                "kind": "error",
+                "error_id": "IF-ZOO-SDK-EXCEPTION",
+                "message": f"Zoo SDK execution failed ({type(exc).__name__}).",
+            })
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+    finally:
+        response_conn.close()
+
+
+def _signal_name(exit_code: int | None) -> str | None:
+    """Return a stable signal name for POSIX-style abnormal exits."""
+    if exit_code is None or exit_code >= 0:
+        return None
+    try:
+        return signal.Signals(-exit_code).name
+    except ValueError:
+        return f"SIG{-exit_code}"
+
+
+async def _execute_zoo_sdk_isolated(
+    kcl_code: str, timeout_seconds: float
+) -> tuple[str, object]:
+    """Execute the native SDK in a spawn child and classify its termination."""
+    context = multiprocessing.get_context("spawn")
+    parent_conn, child_conn = context.Pipe(duplex=False)
+    process = context.Process(target=_zoo_sdk_worker, args=(kcl_code, "Stl", child_conn))
+    process.daemon = True
+    process.start()
+    child_conn.close()
+    try:
+        deadline = asyncio.get_running_loop().time() + timeout_seconds
+        response = None
+        while process.is_alive():
+            if parent_conn.poll():
+                response = parent_conn.recv()
+                break
+            if asyncio.get_running_loop().time() >= deadline:
+                process.terminate()
+                await asyncio.to_thread(process.join, max(1.0, min(timeout_seconds, 5.0)))
+                if process.is_alive():
+                    process.kill()
+                    await asyncio.to_thread(process.join, 1.0)
+                return "timeout", {"error_id": "IF-ZOO-WORKER-TIMEOUT"}
+            await asyncio.sleep(0.02)
+
+        if response is not None:
+            await asyncio.to_thread(process.join, max(0.0, deadline - asyncio.get_running_loop().time()))
+            if process.is_alive():
+                process.terminate()
+                await asyncio.to_thread(process.join, 1.0)
+            return "response", response
+
+        if process.exitcode != 0:
+            return "abnormal_exit", {
+                "error_id": "IF-ZOO-WORKER-ABNORMAL-EXIT",
+                "exit_code": process.exitcode,
+                "signal": _signal_name(process.exitcode),
+            }
+        if parent_conn.poll():
+            response = parent_conn.recv()
+            await asyncio.to_thread(process.join, 0)
+            return "response", response
+        return "abnormal_exit", {
+            "error_id": "IF-ZOO-WORKER-ABNORMAL-EXIT",
+            "exit_code": process.exitcode,
+            "signal": _signal_name(process.exitcode),
+        }
+    finally:
+        parent_conn.close()
+
 
 def current_iso_timestamp() -> str:
     """Generate ISO-8601 UTC timestamp string."""
@@ -254,9 +365,8 @@ class ZooEngineProvider(EngineProvider):
             return job
 
         # Execute the exact compiled bytes through the supported zoo-kcl runtime.
-        record_job_operation(job, "kcl_compile_completed", GenerationStage.EXECUTING, 60)
-        job.updated_at = current_iso_timestamp()
-        import base64
+        record_job_operation(job, "zoo_worker_started")
+        record_job_operation(job, "zoo_sdk_execute_export_started")
         import hashlib
         import os
 
@@ -264,30 +374,66 @@ class ZooEngineProvider(EngineProvider):
         previous_token = os.environ.get("ZOO_API_TOKEN")
         os.environ["ZOO_API_TOKEN"] = token
         try:
-            import kcl  # type: ignore[import-not-found]
-            from app.services.export_provider import parse_and_validate_stl
+            outcome, payload = await _execute_zoo_sdk_isolated(kcl_code, timeout_val)
+            if outcome == "timeout":
+                record_job_operation(job, "zoo_worker_timeout")
+                job.status = JobStatus.FAILED
+                job.error_id = "IF-ZOO-WORKER-TIMEOUT"
+                job.error_message = (
+                    f"Zoo SDK worker timed out after {timeout_val} seconds and was terminated."
+                )
+                job.recovery_steps = [
+                    "Retry model generation.",
+                    "If the timeout repeats, simplify the transition profiles or contact the administrator.",
+                ]
+                job.completed_at = current_iso_timestamp()
+                return job
 
-            files = await asyncio.wait_for(
-                kcl.execute_code_and_export(kcl_code, kcl.FileExportFormat.Stl),
-                timeout=timeout_val,
-            )
+            if outcome == "abnormal_exit":
+                details = payload if isinstance(payload, dict) else {}
+                record_job_operation(job, "zoo_worker_abnormal_exit")
+                exit_code = details.get("exit_code")
+                signal_name = details.get("signal")
+                termination = (
+                    f"signal {signal_name}" if signal_name else f"exit code {exit_code}"
+                )
+                job.status = JobStatus.FAILED
+                job.error_id = "IF-ZOO-WORKER-ABNORMAL-EXIT"
+                job.error_message = (
+                    f"Zoo SDK worker terminated abnormally ({termination}). "
+                    "The Uvicorn process remained isolated from the native failure."
+                )
+                job.recovery_steps = [
+                    "Retry model generation.",
+                    "If the failure repeats, inspect the Zoo SDK/runtime deployment and worker logs.",
+                ]
+                job.completed_at = current_iso_timestamp()
+                return job
+
+            response = payload if isinstance(payload, dict) else {}
+            record_job_operation(job, "zoo_worker_response_received")
+            record_job_operation(job, "zoo_sdk_execute_export_completed")
+            if response.get("kind") != "success":
+                job.status = JobStatus.FAILED
+                job.error_id = str(response.get("error_id") or "IF-ZOO-SDK-ERROR")
+                job.error_message = str(
+                    response.get("message") or "Zoo SDK execution failed in the isolated worker."
+                )
+                job.recovery_steps = ["Retry model generation."]
+                job.completed_at = current_iso_timestamp()
+                return job
+
             record_job_operation(job, "zoo_response_received")
             record_job_operation(job, "zoo_execution_completed")
-            if not files:
-                raise RuntimeError("Zoo KCL execution returned no STL files.")
-            payload = getattr(files[0], "contents", None)
-            if isinstance(payload, str):
-                stl_bytes = base64.b64decode(payload)
-            elif isinstance(payload, list):
-                stl_bytes = bytes(payload)
-            elif isinstance(payload, bytes):
-                stl_bytes = payload
-            else:
-                raise RuntimeError("Zoo KCL execution returned an unsupported STL payload.")
+            stl_bytes = response.get("stl_bytes")
+            if not isinstance(stl_bytes, bytes) or not stl_bytes:
+                raise RuntimeError("Zoo SDK returned an invalid STL payload.")
             log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
+            from app.services.export_provider import parse_and_validate_stl
+
             validation = parse_and_validate_stl(stl_bytes)
             if not validation["is_valid"] or not validation["dimensions_mm"]:
-                raise RuntimeError(f"Zoo KCL STL validation failed: {validation['error']}")
+                raise RuntimeError("Zoo KCL STL validation failed.")
             dx, dy, dz = validation["dimensions_mm"]
             record_job_operation(job, "model_result_processing_started", GenerationStage.RENDERING, 85)
             record_job_operation(job, "preview_generation_started")
@@ -307,13 +453,11 @@ class ZooEngineProvider(EngineProvider):
             job.completed_at = current_iso_timestamp()
             job.updated_at = job.completed_at
             return job
-        except asyncio.TimeoutError:
-            raise
-        except Exception as exc:
+        except Exception:
             job.status = JobStatus.FAILED
             job.error_id = "IF-ENG-001"
-            job.error_message = f"Zoo KCL execution/validation failed: {redact_secrets(str(exc), token)}"
-            job.recovery_steps = ["Inspect the reported Zoo/KCL error and retry generation."]
+            job.error_message = "Zoo KCL execution or STL validation failed."
+            job.recovery_steps = ["Retry model generation."]
             job.completed_at = current_iso_timestamp()
             return job
         finally:

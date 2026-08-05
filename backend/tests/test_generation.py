@@ -123,19 +123,23 @@ async def test_zoo_engine_validation_failure():
     provider = ZooEngineProvider()
     job = GenerationJob(job_id="job_zoo_val_fail", project_id="p1", model_revision=1)
 
-    mock_ws = AsyncMock()
-    mock_ws.recv.return_value = (
-        '{"success":false,"errors":[{"message":"Lofting surface self-intersects"}]}'
-    )
-
     with patch.object(settings, "zoo_api_token", "api-test-token"):
-        with patch("websockets.connect") as mock_connect:
-            mock_connect.return_value.__aenter__.return_value = mock_ws
+        with patch(
+            "app.services.engine_provider._execute_zoo_sdk_isolated",
+            return_value=(
+                "response",
+                {
+                    "kind": "error",
+                    "error_id": "IF-ZOO-SDK-EXCEPTION",
+                    "message": "Zoo SDK execution failed (RuntimeError).",
+                },
+            ),
+        ):
             res = await provider.execute_generation(job, "cube(20)")
 
-            assert res.status == JobStatus.FAILED
-            assert res.error_id == "IF-ENG-001"
-            assert "validation" in res.error_message.lower()
+    assert res.status == JobStatus.FAILED
+    assert res.error_id == "IF-ZOO-SDK-EXCEPTION"
+    assert "RuntimeError" in res.error_message
 
 @pytest.mark.asyncio
 async def test_background_generation_retains_task_and_completes(approved_project):
