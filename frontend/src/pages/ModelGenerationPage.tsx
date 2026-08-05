@@ -17,6 +17,7 @@ import {
   cancelGeneration,
   retryGeneration,
   fetchProject,
+  fetchGenerationStatus,
 } from '../services/api';
 
 const ZOO_LOADING_DIALOGUES = [
@@ -99,7 +100,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
   useEffect(() => {
     if (!project) return;
     fetchActiveGeneration(project.project_id, project.project_token)
-      .then((job) => { if (job) setActiveJob(job); })
+      .then((job) => { setActiveJob(job); })
       .catch(() => { /* the readiness card remains usable */ });
   }, [project]);
 
@@ -114,6 +115,39 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
       // Ignore background refresh errors
     }
   }, [project, onProjectUpdate]);
+
+
+  useEffect(() => {
+    if (!project || !activeJob || (activeJob.status !== 'queued' && activeJob.status !== 'running')) {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const updated = await fetchGenerationStatus(project.project_id, activeJob.job_id, project.project_token);
+        if (!cancelled) {
+          setActiveJob(updated);
+          if (updated.status !== 'queued' && updated.status !== 'running') {
+            await refreshProjectData();
+          }
+        }
+      } catch {
+        try {
+          const recovered = await fetchActiveGeneration(project.project_id, project.project_token);
+          if (!cancelled) setActiveJob(recovered);
+        } catch {
+          // Keep the last known job visible while a transient poll failure recovers.
+        }
+      }
+    };
+
+    const timer = window.setInterval(() => { void poll(); }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeJob?.job_id, activeJob?.status, project, refreshProjectData]);
 
   const handleCompileKcl = async () => {
     if (!project) return;
@@ -218,6 +252,8 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
   const isJobFailed = activeJob?.status === 'failed';
   const isJobCancelled = activeJob?.status === 'cancelled';
   const isModelGenerated = project.state === 'model_current' || isJobSucceeded || canProceedToReview;
+  const hasCompletedModel = project.model_revisions.some((revision) => revision.status === 'current' || revision.status === 'stale');
+  const generationActionLabel = hasCompletedModel ? 'Regenerate 3D Model' : 'Start 3D Generation';
 
   const stagesList = [
     { key: 'validating', label: 'Validating' },
@@ -326,7 +362,7 @@ export const ModelGenerationPage: React.FC<ModelGenerationPageProps> = ({
             disabled={!isReadyToCompile || isJobActive || jobState.loading}
             onClick={handleStartGeneration}
           >
-            {jobState.loading ? 'Launching Generation...' : ' Start 3D Generation'}
+            {jobState.loading ? 'Launching Generation...' : generationActionLabel}
           </button>
         </div>
         {(compileState.loading || jobState.loading) && (

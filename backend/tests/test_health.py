@@ -41,6 +41,7 @@ def test_ready_endpoint(client: TestClient) -> None:
     assert payload["success"] is True
     assert payload["data"]["status"] == "ready"
     assert payload["data"]["service"] == "InterfaceForge Backend"
+    assert set(payload["data"]["checks"]) == {"backend", "zoo_engine", "persistence"}
     assert payload["data"]["checks"]["backend"] == "Available"
 
 
@@ -75,18 +76,14 @@ def test_404_error_envelope(client: TestClient) -> None:
 def test_health_reports_independent_runtime_dependency_rows(
     client: TestClient, monkeypatch
 ) -> None:
-
-    monkeypatch.setattr(settings, "gemini_api_key", "")
-    monkeypatch.setattr(settings, "openrouter_api_key", "")
     monkeypatch.setattr(settings, "zoo_api_token", "")
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()["data"]
     rows = {row["id"]: row for row in data["services"]}
 
+    assert set(rows) == {"backend", "zoo_engine", "persistence"}
     assert rows["backend"]["status"] == "Available"
-    assert rows["gemini_vision"]["status"] == "Not configured"
-    assert rows["openrouter_vision"]["status"] == "Not configured"
     assert rows["zoo_engine"]["status"] == "Not configured"
     assert rows["persistence"]["status"] == "Available"
 
@@ -96,7 +93,7 @@ def test_health_reports_independent_runtime_dependency_rows(
     assert "password" not in raw_text
 
 
-def test_health_reports_available_configured_providers_without_secrets(
+def test_health_reports_available_zoo_without_secrets(
     client: TestClient, monkeypatch
 ) -> None:
 
@@ -117,26 +114,13 @@ def test_health_reports_available_configured_providers_without_secrets(
 
     def fake_urlopen(request, timeout=0):
         url = request.full_url
-        if "generativelanguage" in url:
-            return FakeResponse({"models": [{"name": "models/gemini-3.5-flash-lite"}]})
-        if "openrouter" in url:
-            return FakeResponse({"data": [{"id": "google/gemini-2.5-flash-image-preview"}]})
         return FakeResponse({"id": "user"})
-
-    monkeypatch.setattr(settings, "gemini_api_key", "gemini-secret-value")
-    monkeypatch.setattr(settings, "openrouter_api_key", "openrouter-secret-value")
-    monkeypatch.setattr(
-        settings, "openrouter_vision_model", "google/gemini-2.5-flash-image-preview"
-    )
-    monkeypatch.setattr(settings, "openrouter_vision_fallback_model", "openai/gpt-4o-mini")
     monkeypatch.setattr(settings, "zoo_api_token", "zoo-secret-value")
     monkeypatch.setattr(health_route.urllib.request, "urlopen", fake_urlopen)
 
     response = client.get("/health")
     rows = {row["id"]: row for row in response.json()["data"]["services"]}
-
-    assert rows["gemini_vision"]["status"] == "Available"
-    assert rows["openrouter_vision"]["status"] == "Available"
+    assert set(rows) == {"backend", "zoo_engine", "persistence"}
     assert rows["zoo_engine"]["status"] == "Available"
     assert "gemini-secret-value" not in response.text
     assert "openrouter-secret-value" not in response.text
@@ -147,19 +131,13 @@ def test_health_reports_timeout_as_unavailable(client: TestClient, monkeypatch) 
 
     def fake_urlopen(_request, timeout=0):
         raise TimeoutError("timed out with hidden secret")
-
-    monkeypatch.setattr(settings, "gemini_api_key", "gemini-secret-value")
-    monkeypatch.setattr(settings, "openrouter_api_key", "openrouter-secret-value")
     monkeypatch.setattr(settings, "zoo_api_token", "zoo-secret-value")
     monkeypatch.setattr(health_route.urllib.request, "urlopen", fake_urlopen)
 
     response = client.get("/health")
     rows = {row["id"]: row for row in response.json()["data"]["services"]}
-
-    assert rows["gemini_vision"]["status"] == "Unavailable"
-    assert rows["openrouter_vision"]["status"] == "Unavailable"
     assert rows["zoo_engine"]["status"] == "Unavailable"
-    assert "timed out" in rows["gemini_vision"]["message"]
+    assert "timed out" in rows["zoo_engine"]["message"]
     assert "secret" not in response.text.lower()
 
 
@@ -191,9 +169,7 @@ def _zoo_row(response) -> dict:
 
 
 def _disable_non_zoo_provider_checks(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "gemini_api_key", "")
-    monkeypatch.setattr(settings, "openrouter_api_key", "")
-
+    return None
 
 def test_zoo_health_uses_user_endpoint_and_bearer_auth_without_account_data(
     client: TestClient, monkeypatch

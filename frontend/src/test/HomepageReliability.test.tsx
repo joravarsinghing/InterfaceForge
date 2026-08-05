@@ -80,8 +80,6 @@ function mockHealth() {
   version: '0.1.0',
   services: [
    { id: 'backend', label: 'InterfaceForge backend', status: 'Available', message: 'Backend API is responding.' },
-   { id: 'gemini_vision', label: 'Gemini Vision', status: 'Not configured', message: 'Gemini API key is not configured.', model: 'gemini-3.5-flash-lite' },
-   { id: 'openrouter_vision', label: 'OpenRouter Vision fallback', status: 'Unavailable', message: 'OpenRouter check failed.', model: 'model-a / model-b' },
    { id: 'zoo_engine', label: 'Zoo Authentication', status: 'Available', message: 'Authenticated Zoo API probe succeeded.' },
    { id: 'persistence', label: 'Project persistence/storage', status: 'Available', message: 'SQLite storage is reachable.' },
   ],
@@ -165,12 +163,12 @@ describe('homepage reliability pass', () => {
  it('renders independent service-status states and refresh action', async () => {
   render(<App />);
 
-  await waitFor(() => expect(screen.getByText('Gemini Vision')).toBeInTheDocument());
-  expect(screen.getByText('OpenRouter Vision fallback')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText('InterfaceForge backend')).toBeInTheDocument());
+  expect(screen.queryByText('Gemini Vision')).not.toBeInTheDocument();
+  expect(screen.queryByText('OpenRouter Vision fallback')).not.toBeInTheDocument();
   expect(screen.getByText('Zoo Authentication')).toBeInTheDocument();
   expect(screen.getByText('Project persistence/storage')).toBeInTheDocument();
-  expect(screen.getByText('Not configured')).toBeInTheDocument();
-  expect(screen.getByText('Unavailable')).toBeInTheDocument();
+  expect(screen.getByText('3/3 services available')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Refresh Status' }));
   expect(apiModule.fetchHealthStatus).toHaveBeenCalledTimes(2);
  });

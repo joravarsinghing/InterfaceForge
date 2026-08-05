@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestIDMiddleware
 from app.repositories.sqlite_project_repository import SQLiteProjectRepository
+from app.services.generation_job_service import GenerationJobService
 
 
 def create_app() -> FastAPI:
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
 
     # 5. Bootstrap Database
     SQLiteProjectRepository()
+    GenerationJobService().recover_abandoned_jobs()
 
     return app
 

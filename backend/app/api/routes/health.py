@@ -69,95 +69,6 @@ def _http_json(url: str, headers: Optional[dict[str, str]] = None, timeout: floa
     return json.loads(body.decode("utf-8"))
 
 
-async def _check_gemini() -> ServiceStatusRow:
-    model = settings.gemini_vision_model
-    if not settings.gemini_api_key:
-        return ServiceStatusRow(
-            id="gemini_vision",
-            label="Gemini Vision",
-            status="Not configured",
-            message="Gemini API key is not configured.",
-            model=model,
-        )
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={settings.gemini_api_key}"
-    try:
-        payload = await asyncio.to_thread(_http_json, url, None, 2.0)
-        models = payload.get("models", []) if isinstance(payload, dict) else []
-        names = {
-            str(item.get("name", "")).split("/")[-1]
-            for item in models
-            if isinstance(item, dict)
-        }
-        if names and model not in names:
-            return ServiceStatusRow(
-                id="gemini_vision",
-                label="Gemini Vision",
-                status="Unavailable",
-                message="Configured Gemini model was not found in model listing.",
-                model=model,
-            )
-        return ServiceStatusRow(
-            id="gemini_vision",
-            label="Gemini Vision",
-            status="Available",
-            message="Authenticated model listing succeeded.",
-            model=model,
-        )
-    except Exception as exc:
-        return ServiceStatusRow(
-            id="gemini_vision",
-            label="Gemini Vision",
-            status="Unavailable",
-            message=_safe_unavailable_message("Gemini Vision", exc),
-            model=model,
-        )
-
-
-async def _check_openrouter() -> ServiceStatusRow:
-    primary_model = settings.openrouter_vision_model
-    fallback_model = settings.openrouter_vision_fallback_model
-    if not settings.openrouter_api_key:
-        return ServiceStatusRow(
-            id="openrouter_vision",
-            label="OpenRouter Vision fallback",
-            status="Not configured",
-            message="OpenRouter API key is not configured.",
-            model=f"{primary_model} / {fallback_model}",
-        )
-
-    url = f"{settings.openrouter_api_base_url.rstrip('/')}/models"
-    headers = {"Authorization": "Bearer " + settings.openrouter_api_key}
-    try:
-        payload = await asyncio.to_thread(_http_json, url, headers, 2.0)
-        rows = payload.get("data", []) if isinstance(payload, dict) else []
-        ids = {str(item.get("id", "")) for item in rows if isinstance(item, dict)}
-        configured = [m for m in (primary_model, fallback_model) if m]
-        if ids and configured and not any(model in ids for model in configured):
-            return ServiceStatusRow(
-                id="openrouter_vision",
-                label="OpenRouter Vision fallback",
-                status="Unavailable",
-                message="Configured OpenRouter vision model was not found in model listing.",
-                model=f"{primary_model} / {fallback_model}",
-            )
-        return ServiceStatusRow(
-            id="openrouter_vision",
-            label="OpenRouter Vision fallback",
-            status="Available",
-            message="Authenticated model listing succeeded.",
-            model=f"{primary_model} / {fallback_model}",
-        )
-    except Exception as exc:
-        return ServiceStatusRow(
-            id="openrouter_vision",
-            label="OpenRouter Vision fallback",
-            status="Unavailable",
-            message=_safe_unavailable_message("OpenRouter", exc),
-            model=f"{primary_model} / {fallback_model}",
-        )
-
-
 async def _check_zoo() -> ServiceStatusRow:
     token = (settings.zoo_api_token or "").strip()
     if not token:
@@ -238,8 +149,6 @@ async def collect_service_statuses() -> list[ServiceStatusRow]:
         message="Backend API is responding.",
     )
     checks = await asyncio.gather(
-        _check_gemini(),
-        _check_openrouter(),
         _check_zoo(),
         _check_persistence(),
     )

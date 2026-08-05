@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from abc import ABC, abstractmethod
@@ -26,6 +27,8 @@ from app.services.geometry_generator import (
     render_mesh_svg,
 )
 
+
+logger = logging.getLogger(__name__)
 
 def current_iso_timestamp() -> str:
     """Generate ISO-8601 UTC timestamp string."""
@@ -52,6 +55,7 @@ class MockEngineProvider(EngineProvider):
         """Process job through staged progress steps based on mock scenario."""
 
         scenario = job.mock_scenario
+        logger.info("generation stage=zoo_execution_started at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
 
         # Stage 1: VALIDATING
         job.current_stage = GenerationStage.VALIDATING
@@ -75,6 +79,7 @@ class MockEngineProvider(EngineProvider):
         # Stage 2: COMPILING
         job.current_stage = GenerationStage.COMPILING
         job.progress_percent = 30
+        logger.info("generation stage=validation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         # Check for early cancellation request
@@ -89,6 +94,7 @@ class MockEngineProvider(EngineProvider):
         # Stage 3: EXECUTING
         job.current_stage = GenerationStage.EXECUTING
         job.progress_percent = 60
+        logger.info("generation stage=kcl_compilation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         if scenario == MockScenario.TIMEOUT:
@@ -105,6 +111,7 @@ class MockEngineProvider(EngineProvider):
         # Stage 4: RENDERING
         job.current_stage = GenerationStage.RENDERING
         job.progress_percent = 85
+        logger.info("generation stage=zoo_execution_completed at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         if scenario == MockScenario.MALFORMED_RESPONSE:
@@ -195,6 +202,7 @@ class ZooEngineProvider(EngineProvider):
             return await MockEngineProvider().execute_generation(job, kcl_code)
 
         token = settings.zoo_api_token
+        logger.info("generation stage=zoo_execution_started at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
         timeout_val = settings.generation_timeout_seconds or 30.0
 
         # Stage 1: VALIDATING
@@ -290,6 +298,7 @@ class ZooEngineProvider(EngineProvider):
         # Stage 2: COMPILING
         job.current_stage = GenerationStage.COMPILING
         job.progress_percent = 30
+        logger.info("generation stage=validation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         if job.status == JobStatus.CANCEL_REQUESTED:
@@ -303,6 +312,7 @@ class ZooEngineProvider(EngineProvider):
         # Stage 3: EXECUTING
         job.current_stage = GenerationStage.EXECUTING
         job.progress_percent = 60
+        logger.info("generation stage=kcl_compilation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         import hashlib

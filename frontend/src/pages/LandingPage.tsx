@@ -28,16 +28,12 @@ interface LandingPageProps {
 
 const REQUIRED_SERVICE_IDS = [
   'backend',
-  'gemini_vision',
-  'openrouter_vision',
   'zoo_engine',
   'persistence',
 ];
 
 const SERVICE_LABELS: Record<string, string> = {
   backend: 'InterfaceForge backend',
-  gemini_vision: 'Gemini Vision',
-  openrouter_vision: 'OpenRouter Vision fallback',
   zoo_engine: 'Zoo Authentication',
   persistence: 'Project persistence/storage',
 };

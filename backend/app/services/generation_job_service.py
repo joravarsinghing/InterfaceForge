@@ -1,6 +1,7 @@
 """Generation job service managing execution lifecycle and recovery per ADR-005."""
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
@@ -22,6 +23,14 @@ def current_iso_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+logger = logging.getLogger(__name__)
+RESTART_ERROR_ID = "IF-JOB-RESTARTED"
+RESTART_ERROR_MESSAGE = (
+    "Generation was interrupted because the backend restarted. "
+    "Your last successful model is still available. Please try again."
+)
+
+
 class GenerationJobService:
     """Service managing generation jobs, staged progress, and recovery."""
 
@@ -30,10 +39,57 @@ class GenerationJobService:
 
     def __init__(self, project_service: Optional[ProjectService] = None) -> None:
         self.project_service = project_service or ProjectService()
+        self._jobs: Dict[str, GenerationJob] = {}
+
+    def _all_persisted_jobs(self) -> Dict[str, GenerationJob]:
+        jobs = {job.job_id: job for job in self.project_service.repository.list_generation_jobs()}
+        jobs.update(self._jobs)
+        return jobs
+
+    def _save_job(self, job: GenerationJob) -> GenerationJob:
+        self._jobs[job.job_id] = job
+        self.project_service.repository.save_generation_job(job)
+        return job
+
+    def recover_abandoned_jobs(self) -> int:
+        """Fail transient jobs left behind by a backend restart."""
+        recovered = 0
+        for job in self._all_persisted_jobs().values():
+            if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCEL_REQUESTED):
+                continue
+            project = self.project_service.get_project(job.project_id, None)
+            if not project:
+                continue
+            job.status = JobStatus.FAILED
+            job.error_id = RESTART_ERROR_ID
+            job.error_message = RESTART_ERROR_MESSAGE
+            job.recovery_steps = ["Retry model generation when the backend is available."]
+            job.completed_at = current_iso_timestamp()
+            job.updated_at = job.completed_at
+            target_rev = next(
+                (rev for rev in project.model_revisions if rev.model_revision == job.model_revision),
+                None,
+            )
+            if target_rev:
+                target_rev.status = ModelRevisionStatus.FAILED
+                target_rev.warnings.append(RESTART_ERROR_MESSAGE)
+            if project.last_known_good_model_revision is not None:
+                project.current_model_revision = project.last_known_good_model_revision
+            project.state = WorkflowState.GENERATION_FAILED
+            self.project_service.repository.save(project)
+            self._save_job(job)
+            recovered += 1
+            logger.warning(
+                "generation stage=recovered_on_startup at=%s job_id=%s project_id=%s",
+                current_iso_timestamp(),
+                job.job_id,
+                job.project_id,
+            )
+        return recovered
 
     def get_active_job_for_project(self, project_id: str) -> Optional[GenerationJob]:
         """Return currently active generation job for a project if one exists."""
-        for job in self._jobs.values():
+        for job in self._all_persisted_jobs().values():
             if job.project_id == project_id and job.status in (
                 JobStatus.QUEUED,
                 JobStatus.RUNNING,
@@ -49,7 +105,8 @@ class GenerationJobService:
         # Verify project access
         self.project_service.get_project(project_id, project_token)
 
-        if job_id not in self._jobs:
+        job = self._jobs.get(job_id) or self.project_service.repository.get_generation_job(job_id)
+        if job is None:
             raise APIError(
                 error_id="IF-JOB-404",
                 message=f"Generation job '{job_id}' not found.",
@@ -57,7 +114,6 @@ class GenerationJobService:
                 recovery_steps=["Check the job ID or start a new generation job."],
             )
 
-        job = self._jobs[job_id]
         if job.project_id != project_id:
             raise APIError(
                 error_id="IF-JOB-400",
@@ -103,6 +159,7 @@ class GenerationJobService:
                 ],
             )
 
+        logger.info("generation stage=validation_complete at=%s project_id=%s", current_iso_timestamp(), project_id)
         compile_result = self.project_service.compile_kcl(project_id, project_token)
         if not compile_result.success or not compile_result.kcl_code:
             compiler_issue = compile_result.errors[0] if compile_result.errors else None
@@ -123,6 +180,8 @@ class GenerationJobService:
                     else ["Fix design schema parameters and re-compile KCL."]
                 ),
             )
+
+        logger.info("generation stage=kcl_compilation_complete at=%s project_id=%s", current_iso_timestamp(), project_id)
 
         # 4. Preserve last-known-good model revision per ADR-005
         # If current model is CURRENT, preserve its revision as last known good
@@ -155,7 +214,8 @@ class GenerationJobService:
             mock_scenario=mock_scenario,
             kcl_code_snippet=compile_result.preview_snippet or compile_result.kcl_code[:200],
         )
-        self._jobs[job_id] = job
+        self._save_job(job)
+        logger.info("generation stage=accepted at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
 
         # 6. Execute job via active EngineProvider
         engine = get_engine_provider(
@@ -164,6 +224,7 @@ class GenerationJobService:
             else str(project.provider_mode)
         )
         job.status = JobStatus.RUNNING
+        self._save_job(job)
         try:
             executed_job = await engine.execute_generation(
                 job, compile_result.kcl_code, project=project
@@ -177,7 +238,7 @@ class GenerationJobService:
             executed_job.recovery_steps = ["Retry model generation."]
             executed_job.completed_at = current_iso_timestamp()
             executed_job.updated_at = executed_job.completed_at
-        self._jobs[job_id] = executed_job
+        self._save_job(executed_job)
 
         # 7. Finalize project state based on job execution result (ADR-005)
         fresh_project = self.project_service.get_project(project_id, project_token)
@@ -267,7 +328,7 @@ class GenerationJobService:
         )
         job.mock_scenario = MockScenario.CANCELLATION
         cancelled_job = await engine.execute_generation(job, "")
-        self._jobs[job_id] = cancelled_job
+        self._save_job(cancelled_job)
 
         # Restore last known good model state
         target_rev = next(

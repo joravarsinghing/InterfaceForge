@@ -84,6 +84,14 @@ const mockRunningJob: GenerationJob = {
   progress_percent: 42,
   preview_metadata: undefined,
 };
+const mockRecoveredJob: GenerationJob = {
+  ...mockRunningJob,
+  status: 'failed',
+  error_id: 'IF-JOB-RESTARTED',
+  error_message: 'Generation was interrupted because the backend restarted. Your last successful model is still available. Please try again.',
+  recovery_steps: ['Retry model generation when the backend is available.'],
+};
+
 const mockFailedJob: GenerationJob = {
   job_id: 'job_fail_123',
   project_id: 'proj-test-s55',
@@ -122,6 +130,40 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
 
     expect(screen.getByRole('button', { name: /Start 3D Generation/i })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: /Proceed to Review & Export/i })).toBeDisabled();
+  });
+
+  it('shows Regenerate 3D Model when a prior revision is stale', async () => {
+    vi.spyOn(api, 'fetchKclReadiness').mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+
+    const staleProject: Project = {
+      ...mockProject,
+      state: 'model_stale',
+      current_model_revision: 1,
+      last_known_good_model_revision: 1,
+      model_revisions: [{
+        model_revision: 1,
+        schema_revision: 1,
+        status: 'stale',
+        exports: {},
+        warnings: [],
+        generated_at: '2026-07-23T12:00:00Z',
+      }],
+    };
+
+    render(
+      <BrowserRouter>
+        <ModelGenerationPage project={staleProject} />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Regenerate 3D Model' })).not.toBeDisabled();
+    });
   });
 
   it('hides mock controls in live mode', async () => {
@@ -330,4 +372,34 @@ describe('ModelGenerationPage Component (Stage S5.5)', () => {
 
     expect(api.retryGeneration).toHaveBeenCalledWith('proj-test-s55', 'job_fail_123', 'tok_test', 'success');
   });
+  it('exits progress polling and shows restart recovery', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(api, "fetchKclReadiness").mockResolvedValue({
+      is_valid: true,
+      blocking_errors: [],
+      warnings: [],
+      recommended_values: {},
+    });
+    vi.spyOn(api, "fetchActiveGeneration").mockResolvedValue(mockRunningJob);
+    vi.spyOn(api, "fetchGenerationStatus").mockResolvedValue(mockRecoveredJob);
+
+    try {
+      render(
+        <BrowserRouter>
+          <ModelGenerationPage project={mockProject} />
+        </BrowserRouter>
+      );
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
+        await Promise.resolve();
+      });
+      expect(screen.getByText(/Generation Failure Notice \[IF-JOB-RESTARTED\]/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Retry Generation/i })).toBeInTheDocument();
+      expect(screen.queryByText(/Zoo Engine generation progress/i)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });

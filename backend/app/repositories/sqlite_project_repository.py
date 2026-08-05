@@ -54,7 +54,61 @@ class SQLiteProjectRepository:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS generation_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    data_json TEXT NOT NULL
+                )
+                """
+            )
             conn.commit()
+
+    def save_generation_job(self, job) -> None:
+        """Persist a generation job without changing the canonical project schema."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO generation_jobs (job_id, project_id, status, updated_at, data_json)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    project_id = excluded.project_id,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    data_json = excluded.data_json
+                """,
+                (
+                    job.job_id,
+                    job.project_id,
+                    job.status.value if hasattr(job.status, "value") else str(job.status),
+                    job.updated_at,
+                    job.model_dump_json(),
+                ),
+            )
+            conn.commit()
+
+    def get_generation_job(self, job_id: str):
+        """Fetch a persisted generation job by ID."""
+        from app.models.generation import GenerationJob
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT data_json FROM generation_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        return GenerationJob.model_validate(json.loads(row["data_json"])) if row else None
+
+    def list_generation_jobs(self):
+        """List persisted generation jobs in update order."""
+        from app.models.generation import GenerationJob
+
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT data_json FROM generation_jobs ORDER BY updated_at DESC"
+            ).fetchall()
+        return [GenerationJob.model_validate(json.loads(row["data_json"])) for row in rows]
 
     def save(self, project: Project) -> Project:
         """Create or update a project record in SQLite database."""
