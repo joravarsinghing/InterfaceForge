@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import io
 import math
 import os
 import re
@@ -206,6 +207,112 @@ class ExportResult(BaseModel):
 
 
 
+
+
+def inspect_stl_bounded(file_bytes: bytes) -> Dict[str, Any]:
+    """Inspect live Zoo STL output without retaining vertices or edge topology.
+
+    This is intentionally a bounded geometric sanity check, not exhaustive
+    closed-manifold validation. The strict offline validator remains available.
+    """
+    empty = {"is_valid": False, "facet_count": 0, "bounding_box": None,
+             "dimensions_mm": None, "volume": 0.0, "error": ""}
+    if not file_bytes:
+        empty["error"] = "Empty STL file (0 bytes)."
+        return empty
+    if len(file_bytes) > settings.max_live_stl_bytes:
+        empty["error"] = "STL payload exceeds the configured live safety limit."
+        return empty
+
+    view = memoryview(file_bytes)
+    facet_count = 0
+    min_x = min_y = min_z = float("inf")
+    max_x = max_y = max_z = float("-inf")
+    volume = 0.0
+    vertex_count = 0
+    triangle: list[tuple[float, float, float]] = []
+    is_ascii = bytes(view[:512]).lstrip().lower().startswith(b"solid")
+
+    def add_triangle(vertices: list[tuple[float, float, float]]) -> None:
+        nonlocal min_x, min_y, min_z, max_x, max_y, max_z, volume
+        for x, y, z in vertices:
+            if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+                raise ValueError("STL contains non-finite vertex coordinates.")
+            min_x, max_x = min(min_x, x), max(max_x, x)
+            min_y, max_y = min(min_y, y), max(max_y, y)
+            min_z, max_z = min(min_z, z), max(max_z, z)
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = vertices
+        volume += ((ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx)
+                    + az * (bx * cy - by * cx)) / 6.0)
+
+    try:
+        if not is_ascii and len(view) >= 84:
+            facet_count = struct.unpack_from("<I", view, 80)[0]
+            if facet_count == 0:
+                empty["error"] = "Binary STL header specifies 0 facets."
+                return empty
+            if facet_count > settings.max_live_stl_facets:
+                empty["facet_count"] = facet_count
+                empty["error"] = "STL facet count exceeds the configured live safety limit."
+                return empty
+            expected_size = 84 + facet_count * 50
+            if len(view) != expected_size:
+                empty["facet_count"] = facet_count
+                empty["error"] = f"Binary STL size mismatch (expected {expected_size} bytes, got {len(view)})."
+                return empty
+            for index in range(facet_count):
+                values = struct.unpack_from("<12fH", view, 84 + index * 50)
+                add_triangle([(values[3], values[4], values[5]),
+                              (values[6], values[7], values[8]),
+                              (values[9], values[10], values[11])])
+        else:
+            for raw_line in io.BytesIO(view):
+                line = raw_line.decode("ascii", errors="ignore").strip()
+                lower = line.lower()
+                if lower.startswith("facet "):
+                    facet_count += 1
+                    if facet_count > settings.max_live_stl_facets:
+                        empty["facet_count"] = facet_count
+                        empty["error"] = "STL facet count exceeds the configured live safety limit."
+                        return empty
+                elif lower.startswith("vertex "):
+                    fields = line.split()
+                    if len(fields) != 4:
+                        raise ValueError("ASCII STL vertex line is malformed.")
+                    triangle.append((float(fields[1]), float(fields[2]), float(fields[3])))
+                    vertex_count += 1
+                    if len(triangle) == 3:
+                        add_triangle(triangle)
+                        triangle.clear()
+            if facet_count == 0 or vertex_count != facet_count * 3 or triangle:
+                empty["facet_count"] = facet_count
+                empty["error"] = "ASCII STL is empty or malformed."
+                return empty
+    except (struct.error, ValueError, OverflowError) as exc:
+        empty["facet_count"] = facet_count
+        empty["error"] = str(exc)
+        return empty
+
+    dx, dy, dz = max_x - min_x, max_y - min_y, max_z - min_z
+    if not all(math.isfinite(value) for value in (dx, dy, dz, volume)):
+        empty["facet_count"] = facet_count
+        empty["error"] = "STL geometry contains non-finite values."
+        return empty
+    if dx <= 0 or dy <= 0 or dz <= 0:
+        empty["facet_count"] = facet_count
+        empty["bounding_box"] = (min_x, max_x, min_y, max_y, min_z, max_z)
+        empty["dimensions_mm"] = (dx, dy, dz)
+        empty["error"] = "STL geometry has a zero dimension."
+        return empty
+    if abs(volume) <= 1e-6:
+        empty["facet_count"] = facet_count
+        empty["error"] = "STL mesh has zero volume."
+        return empty
+    return {"is_valid": True, "facet_count": facet_count,
+            "bounding_box": (round(min_x, 3), round(max_x, 3), round(min_y, 3),
+                             round(max_y, 3), round(min_z, 3), round(max_z, 3)),
+            "dimensions_mm": (round(dx, 3), round(dy, 3), round(dz, 3)),
+            "volume": abs(volume), "error": ""}
 
 
 def parse_and_validate_stl(file_bytes: bytes) -> Dict[str, Any]:

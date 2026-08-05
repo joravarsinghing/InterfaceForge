@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     zoo_api_token: str = ""
     zoo_api_base_url: str = "https://api.zoo.dev"
     generation_timeout_seconds: float = 30.0
+    # Conservative defaults leave room below Render's 512 MB service limit.
+    max_live_stl_bytes: int = 32 * 1024 * 1024
+    max_live_stl_facets: int = 500_000
 
     # Vision Analysis Provider Configuration per ADR-003, ADR-009, and S7.1
     analysis_provider: str = "opencv"

@@ -1,144 +1,131 @@
-import asyncio
-import os
-import signal
-import sys
-import types
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from app.models.generation import GenerationJob, JobStatus
-from app.services.engine_provider import (
-    _execute_zoo_sdk_isolated,
-    _signal_name,
-    _zoo_sdk_worker,
-)
-from app.services.generation_job_service import GenerationJobService
+from app.services import engine_provider
+from app.services.engine_provider import ZooEngineProvider
+from app.services.export_provider import inspect_stl_bounded
+from app.services import export_provider
+from tests.test_zoo_native_kcl_export import create_valid_binary_stl_box
 
 
-class _Connection:
-    def __init__(self, value=None):
-        self.value = value
-        self.closed = False
-
-    def send(self, value):
-        self.value = value
-
-    def poll(self, *_args):
-        return self.value is not None
-
-    def recv(self):
-        value = self.value
-        self.value = None
-        return value
-
-    def close(self):
-        self.closed = True
-
-
-class _Process:
-    def __init__(self, response=None, exitcode=0, alive=False):
-        self.response = response
-        self.exitcode = exitcode
-        self._alive = alive
-        self.terminated = False
-        self.joined = False
-
-    def start(self):
-        self._alive = self._alive
-
-    def daemon(self, *_args):
-        return None
-
-    def is_alive(self):
-        return self._alive
-
-    def join(self, *_args):
-        self.joined = True
-
-    def terminate(self):
-        self.terminated = True
-        self._alive = False
-
-    def kill(self):
-        self.terminated = True
-        self._alive = False
-
-
-class _Context:
-    def __init__(self, process):
-        self.process = process
-
-    def Pipe(self, duplex=False):
-        assert duplex is False
-        parent = _Connection(self.process.response)
-        child = _Connection()
-        return parent, child
-
-    def Process(self, **kwargs):
-        return self.process
-
-
-@pytest.mark.asyncio
-async def test_isolated_success_reads_child_response_before_join():
-    process = _Process(response={"kind": "success", "stl_bytes": b"solid stl"})
-    with patch("app.services.engine_provider.multiprocessing.get_context", return_value=_Context(process)):
-        outcome, response = await _execute_zoo_sdk_isolated("cube(20)", 1.0)
-
-    assert outcome == "response"
-    assert response["stl_bytes"] == b"solid stl"
-    assert process.joined is True
-    assert process.terminated is False
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("exitcode", "expected_signal"),
-    [(1, None), (-signal.SIGSEGV, "SIGSEGV")],
-)
-async def test_isolated_abnormal_exit_is_classified(exitcode, expected_signal):
-    process = _Process(exitcode=exitcode)
-    with patch("app.services.engine_provider.multiprocessing.get_context", return_value=_Context(process)):
-        outcome, details = await _execute_zoo_sdk_isolated("cube(20)", 1.0)
-
-    assert outcome == "abnormal_exit"
-    assert details["exit_code"] == exitcode
-    assert details["signal"] == expected_signal
-
-
-@pytest.mark.asyncio
-async def test_isolated_timeout_terminates_and_joins_child():
-    process = _Process(alive=True)
-    with patch("app.services.engine_provider.multiprocessing.get_context", return_value=_Context(process)):
-        outcome, details = await _execute_zoo_sdk_isolated("cube(20)", 0.01)
-
-    assert outcome == "timeout"
-    assert details["error_id"] == "IF-ZOO-WORKER-TIMEOUT"
-    assert process.terminated is True
-
-
-def test_zoo_worker_returns_stl_bytes_without_logging_source_or_token(monkeypatch):
-    class ExportFormat:
-        Stl = "stl"
-
-    async def execute(_source, _format):
-        return [types.SimpleNamespace(contents=[1, 2, 3])]
-
-    fake_kcl = types.SimpleNamespace(
-        FileExportFormat=ExportFormat,
+def fake_kcl(execute):
+    return SimpleNamespace(
+        FileExportFormat=SimpleNamespace(Stl="stl"),
         execute_code_and_export=execute,
     )
-    monkeypatch.setitem(sys.modules, "kcl", fake_kcl)
-    monkeypatch.setenv("ZOO_API_TOKEN", "secret-token")
-    response = _Connection()
-
-    _zoo_sdk_worker("secret-source", "Stl", response)
-
-    assert response.value == {"kind": "success", "stl_bytes": b"\x01\x02\x03"}
-    assert "secret-token" not in repr(response.value)
-    assert "secret-source" not in repr(response.value)
 
 
-def test_signal_name():
-    assert _signal_name(-signal.SIGSEGV) == "SIGSEGV"
-    assert _signal_name(1) is None
+def make_job():
+    return GenerationJob(job_id="job_direct", project_id="project_direct", model_revision=1)
+
+
+@pytest.mark.asyncio
+async def test_live_zoo_executes_directly_and_persists_executing_checkpoint(monkeypatch):
+    checkpoints = []
+
+    async def execute(_code, _format):
+        assert checkpoints[-1] == ("zoo_sdk_execute_export_started", 60)
+        return [SimpleNamespace(contents=create_valid_binary_stl_box())]
+
+    monkeypatch.setitem(__import__("sys").modules, "kcl", fake_kcl(execute))
+    monkeypatch.setattr(engine_provider.settings, "zoo_api_token", "token")
+    monkeypatch.setattr(engine_provider.settings, "max_live_stl_bytes", 10 * 1024 * 1024)
+    job = make_job()
+    job.set_operation_callback(lambda op: checkpoints.append((op, job.progress_percent)))
+
+    result = await ZooEngineProvider().execute_generation(job, "cube(20)")
+
+    assert result.status == JobStatus.SUCCEEDED
+    assert ("zoo_sdk_execute_export_started", 60) in checkpoints
+    assert "zoo_sdk_execute_export_completed" in [item[0] for item in checkpoints]
+    assert "zoo_response_received" in [item[0] for item in checkpoints]
+
+
+@pytest.mark.asyncio
+async def test_live_zoo_sdk_exception_fails_without_process_isolation(monkeypatch):
+    async def execute(_code, _format):
+        raise RuntimeError("native failure")
+
+    monkeypatch.setitem(__import__("sys").modules, "kcl", fake_kcl(execute))
+    monkeypatch.setattr(engine_provider.settings, "zoo_api_token", "token")
+    result = await ZooEngineProvider().execute_generation(make_job(), "cube(20)")
+    assert result.status == JobStatus.FAILED
+    assert result.error_id == "IF-ENG-001"
+
+
+@pytest.mark.asyncio
+async def test_live_zoo_sdk_timeout_fails(monkeypatch):
+    async def execute(_code, _format):
+        await __import__("asyncio").sleep(0.05)
+
+    monkeypatch.setitem(__import__("sys").modules, "kcl", fake_kcl(execute))
+    monkeypatch.setattr(engine_provider.settings, "zoo_api_token", "token")
+    monkeypatch.setattr(engine_provider.settings, "generation_timeout_seconds", 0.001)
+    result = await ZooEngineProvider().execute_generation(make_job(), "cube(20)")
+    assert result.status == JobStatus.FAILED
+    assert result.error_id == "IF-ZOO-SDK-TIMEOUT"
+
+
+def test_engine_provider_has_no_multiprocessing_worker():
+    source = open(engine_provider.__file__, encoding="utf-8").read()
+    assert "multiprocessing" not in source
+    assert "_zoo_sdk_worker" not in source
+    assert "_execute_zoo_sdk_isolated" not in source
+
+
+def test_bounded_binary_stl_inspection_rejects_truncated_and_zero_facet():
+    valid = create_valid_binary_stl_box()
+    assert inspect_stl_bounded(valid[:-1])["is_valid"] is False
+    zero = valid[:80] + (0).to_bytes(4, "little")
+    assert inspect_stl_bounded(zero)["is_valid"] is False
+
+
+def test_bounded_binary_stl_rejects_nonfinite_and_zero_volume():
+    valid = bytearray(create_valid_binary_stl_box())
+    import struct
+    struct.pack_into("<f", valid, 84 + 12, float("nan"))
+    assert inspect_stl_bounded(bytes(valid))["is_valid"] is False
+    flat = bytearray(create_valid_binary_stl_box())
+    for offset in range(84, len(flat), 50):
+        for vertex in (12, 24, 36):
+            struct.pack_into("<f", flat, offset + vertex + 8, 0.0)
+    assert inspect_stl_bounded(bytes(flat))["is_valid"] is False
+
+
+def test_bounded_binary_stl_respects_facet_limit(monkeypatch):
+    monkeypatch.setattr(export_provider.settings, "max_live_stl_facets", 1)
+    result = inspect_stl_bounded(create_valid_binary_stl_box())
+    assert result["is_valid"] is False
+    assert "facet count" in result["error"]
+
+
+def test_bounded_binary_inspection_allocations_do_not_scale_with_vertex_storage():
+    import tracemalloc
+    import struct
+
+    facets = 10_000
+    payload = bytearray(b"bounded".ljust(80, b"\0")) + bytearray(struct.pack("<I", facets))
+    triangle = struct.pack("<12fH", 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0)
+    payload.extend(triangle * facets)
+    tracemalloc.start()
+    result = inspect_stl_bounded(bytes(payload))
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert result["facet_count"] == facets
+    assert peak < 2 * 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_oversized_live_payload_fails_gracefully(monkeypatch):
+    async def execute(_code, _format):
+        return [SimpleNamespace(contents=create_valid_binary_stl_box())]
+
+    monkeypatch.setitem(__import__("sys").modules, "kcl", fake_kcl(execute))
+    monkeypatch.setattr(engine_provider.settings, "zoo_api_token", "token")
+    monkeypatch.setattr(engine_provider.settings, "max_live_stl_bytes", 1)
+    result = await ZooEngineProvider().execute_generation(make_job(), "cube(20)")
+    assert result.status == JobStatus.FAILED
+    assert result.error_id == "IF-ZOO-STL-LIMIT"

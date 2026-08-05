@@ -1,10 +1,9 @@
 """EngineProvider abstraction and deterministic MockEngineProvider per ADR-006."""
 
 import asyncio
+import base64
 import json
 import logging
-import multiprocessing
-import signal
 import re
 import uuid
 from abc import ABC, abstractmethod
@@ -31,115 +30,6 @@ from app.services.geometry_generator import (
 
 
 logger = logging.getLogger(__name__)
-
-def _zoo_sdk_worker(kcl_code: str, export_format: str, response_conn) -> None:
-    """Run the native Zoo KCL SDK outside the Uvicorn process."""
-    try:
-        import os
-
-        token = os.environ.get("ZOO_API_TOKEN", "")
-        if not token:
-            response_conn.send({"kind": "error", "error_id": "IF-ZOO-401", "message": "Zoo token is not configured."})
-            return
-        os.environ["ZOO_API_TOKEN"] = token
-
-        async def _execute() -> None:
-            import base64
-            import kcl  # type: ignore[import-not-found]
-
-            files = await kcl.execute_code_and_export(
-                kcl_code,
-                getattr(kcl.FileExportFormat, export_format),
-            )
-            if not files:
-                raise RuntimeError("Zoo SDK returned no export files.")
-            payload = getattr(files[0], "contents", None)
-            if isinstance(payload, str):
-                stl_bytes = base64.b64decode(payload)
-            elif isinstance(payload, list):
-                stl_bytes = bytes(payload)
-            elif isinstance(payload, bytes):
-                stl_bytes = payload
-            else:
-                raise RuntimeError("Zoo SDK returned an unsupported export payload.")
-            response_conn.send({"kind": "success", "stl_bytes": stl_bytes})
-
-        asyncio.run(_execute())
-    except BaseException as exc:
-        # Native SDK errors may contain credentials or source fragments.
-        try:
-            response_conn.send({
-                "kind": "error",
-                "error_id": "IF-ZOO-SDK-EXCEPTION",
-                "message": f"Zoo SDK execution failed ({type(exc).__name__}).",
-            })
-        except (BrokenPipeError, EOFError, OSError):
-            pass
-    finally:
-        response_conn.close()
-
-
-def _signal_name(exit_code: int | None) -> str | None:
-    """Return a stable signal name for POSIX-style abnormal exits."""
-    if exit_code is None or exit_code >= 0:
-        return None
-    try:
-        return signal.Signals(-exit_code).name
-    except ValueError:
-        return f"SIG{-exit_code}"
-
-
-async def _execute_zoo_sdk_isolated(
-    kcl_code: str, timeout_seconds: float
-) -> tuple[str, object]:
-    """Execute the native SDK in a spawn child and classify its termination."""
-    context = multiprocessing.get_context("spawn")
-    parent_conn, child_conn = context.Pipe(duplex=False)
-    process = context.Process(target=_zoo_sdk_worker, args=(kcl_code, "Stl", child_conn))
-    process.daemon = True
-    process.start()
-    child_conn.close()
-    try:
-        deadline = asyncio.get_running_loop().time() + timeout_seconds
-        response = None
-        while process.is_alive():
-            if parent_conn.poll():
-                response = parent_conn.recv()
-                break
-            if asyncio.get_running_loop().time() >= deadline:
-                process.terminate()
-                await asyncio.to_thread(process.join, max(1.0, min(timeout_seconds, 5.0)))
-                if process.is_alive():
-                    process.kill()
-                    await asyncio.to_thread(process.join, 1.0)
-                return "timeout", {"error_id": "IF-ZOO-WORKER-TIMEOUT"}
-            await asyncio.sleep(0.02)
-
-        if response is not None:
-            await asyncio.to_thread(process.join, max(0.0, deadline - asyncio.get_running_loop().time()))
-            if process.is_alive():
-                process.terminate()
-                await asyncio.to_thread(process.join, 1.0)
-            return "response", response
-
-        if process.exitcode != 0:
-            return "abnormal_exit", {
-                "error_id": "IF-ZOO-WORKER-ABNORMAL-EXIT",
-                "exit_code": process.exitcode,
-                "signal": _signal_name(process.exitcode),
-            }
-        if parent_conn.poll():
-            response = parent_conn.recv()
-            await asyncio.to_thread(process.join, 0)
-            return "response", response
-        return "abnormal_exit", {
-            "error_id": "IF-ZOO-WORKER-ABNORMAL-EXIT",
-            "exit_code": process.exitcode,
-            "signal": _signal_name(process.exitcode),
-        }
-    finally:
-        parent_conn.close()
-
 
 def current_iso_timestamp() -> str:
     """Generate ISO-8601 UTC timestamp string."""
@@ -364,9 +254,8 @@ class ZooEngineProvider(EngineProvider):
             job.completed_at = current_iso_timestamp()
             return job
 
-        # Execute the exact compiled bytes through the supported zoo-kcl runtime.
-        record_job_operation(job, "zoo_worker_started")
-        record_job_operation(job, "zoo_sdk_execute_export_started")
+        # Execute directly in the Uvicorn process to keep Render memory bounded.
+        record_job_operation(job, "zoo_sdk_execute_export_started", GenerationStage.EXECUTING, 60)
         import hashlib
         import os
 
@@ -374,64 +263,46 @@ class ZooEngineProvider(EngineProvider):
         previous_token = os.environ.get("ZOO_API_TOKEN")
         os.environ["ZOO_API_TOKEN"] = token
         try:
-            outcome, payload = await _execute_zoo_sdk_isolated(kcl_code, timeout_val)
-            if outcome == "timeout":
-                record_job_operation(job, "zoo_worker_timeout")
-                job.status = JobStatus.FAILED
-                job.error_id = "IF-ZOO-WORKER-TIMEOUT"
-                job.error_message = (
-                    f"Zoo SDK worker timed out after {timeout_val} seconds and was terminated."
-                )
-                job.recovery_steps = [
-                    "Retry model generation.",
-                    "If the timeout repeats, simplify the transition profiles or contact the administrator.",
-                ]
-                job.completed_at = current_iso_timestamp()
-                return job
+            import kcl  # type: ignore[import-not-found]
 
-            if outcome == "abnormal_exit":
-                details = payload if isinstance(payload, dict) else {}
-                record_job_operation(job, "zoo_worker_abnormal_exit")
-                exit_code = details.get("exit_code")
-                signal_name = details.get("signal")
-                termination = (
-                    f"signal {signal_name}" if signal_name else f"exit code {exit_code}"
-                )
-                job.status = JobStatus.FAILED
-                job.error_id = "IF-ZOO-WORKER-ABNORMAL-EXIT"
-                job.error_message = (
-                    f"Zoo SDK worker terminated abnormally ({termination}). "
-                    "The Uvicorn process remained isolated from the native failure."
-                )
-                job.recovery_steps = [
-                    "Retry model generation.",
-                    "If the failure repeats, inspect the Zoo SDK/runtime deployment and worker logs.",
-                ]
-                job.completed_at = current_iso_timestamp()
-                return job
-
-            response = payload if isinstance(payload, dict) else {}
-            record_job_operation(job, "zoo_worker_response_received")
+            files = await asyncio.wait_for(
+                kcl.execute_code_and_export(kcl_code, kcl.FileExportFormat.Stl),
+                timeout=timeout_val,
+            )
             record_job_operation(job, "zoo_sdk_execute_export_completed")
-            if response.get("kind") != "success":
-                job.status = JobStatus.FAILED
-                job.error_id = str(response.get("error_id") or "IF-ZOO-SDK-ERROR")
-                job.error_message = str(
-                    response.get("message") or "Zoo SDK execution failed in the isolated worker."
-                )
-                job.recovery_steps = ["Retry model generation."]
-                job.completed_at = current_iso_timestamp()
-                return job
-
             record_job_operation(job, "zoo_response_received")
             record_job_operation(job, "zoo_execution_completed")
-            stl_bytes = response.get("stl_bytes")
-            if not isinstance(stl_bytes, bytes) or not stl_bytes:
+            if not files:
+                raise RuntimeError("Zoo SDK returned no export files.")
+            payload = getattr(files[0], "contents", None)
+            if isinstance(payload, str):
+                stl_bytes = base64.b64decode(payload)
+            elif isinstance(payload, bytes):
+                stl_bytes = payload
+            elif isinstance(payload, (bytearray, memoryview, list)):
+                stl_bytes = bytes(payload)
+            else:
+                raise RuntimeError("Zoo SDK returned an unsupported export payload.")
+            if not stl_bytes:
                 raise RuntimeError("Zoo SDK returned an invalid STL payload.")
+            if len(stl_bytes) > settings.max_live_stl_bytes:
+                job.status = JobStatus.FAILED
+                job.error_id = "IF-ZOO-STL-LIMIT"
+                job.error_message = "Zoo SDK returned an STL export larger than the configured safety limit."
+                job.recovery_steps = ["Simplify the model and retry generation.", "Contact the administrator if the export should be larger."]
+                job.completed_at = current_iso_timestamp()
+                return job
+            # Persist the single returned payload before retaining inspection metadata.
+            os.makedirs("artifacts", exist_ok=True)
+            artifact_path = os.path.join("artifacts", f"zoo_kcl_generation_{job.job_id}.stl")
+            record_job_operation(job, "stl_artifact_persistence_started")
+            with open(artifact_path, "wb") as artifact_file:
+                artifact_file.write(stl_bytes)
+            record_job_operation(job, "stl_artifact_persistence_completed")
             log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
-            from app.services.export_provider import parse_and_validate_stl
+            from app.services.export_provider import inspect_stl_bounded
 
-            validation = parse_and_validate_stl(stl_bytes)
+            validation = inspect_stl_bounded(stl_bytes)
             if not validation["is_valid"] or not validation["dimensions_mm"]:
                 raise RuntimeError("Zoo KCL STL validation failed.")
             dx, dy, dz = validation["dimensions_mm"]
@@ -440,7 +311,7 @@ class ZooEngineProvider(EngineProvider):
             job.preview_metadata = PreviewMetadata(
                 preview_svg=f"zoo-kcl://{job.kcl_hash[:16]}",
                 bounding_box=BoundingBox(x_mm=dx, y_mm=dy, z_mm=dz),
-                volume_cm3=0.0,
+                volume_cm3=validation["volume"] / 1000.0,
                 facet_count=validation["facet_count"],
                 render_timestamp=current_iso_timestamp(),
                 is_mock=False,
@@ -448,10 +319,18 @@ class ZooEngineProvider(EngineProvider):
             record_job_operation(job, "preview_generation_completed")
             record_job_operation(job, "model_result_processing_completed")
             record_job_operation(job, "model_finalization_started", GenerationStage.FINALIZING, 100)
+            del stl_bytes, payload, files
             job.status = JobStatus.SUCCEEDED
             job.zoo_model_id = f"zoo-kcl-{job.kcl_hash[:16]}"
             job.completed_at = current_iso_timestamp()
             job.updated_at = job.completed_at
+            return job
+        except asyncio.TimeoutError:
+            job.status = JobStatus.FAILED
+            job.error_id = "IF-ZOO-SDK-TIMEOUT"
+            job.error_message = f"Zoo SDK execution timed out after {timeout_val} seconds."
+            job.recovery_steps = ["Retry model generation.", "Simplify the transition profiles if the timeout repeats."]
+            job.completed_at = current_iso_timestamp()
             return job
         except Exception:
             job.status = JobStatus.FAILED
