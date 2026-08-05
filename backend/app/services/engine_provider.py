@@ -35,6 +35,17 @@ def current_iso_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def log_generation_stage(stage: str, job_id: str, project_id: str) -> None:
+    """Write a safe, structured generation diagnostic without payload data."""
+    logger.info(
+        "generation stage=%s timestamp=%s job_id=%s project_id=%s",
+        stage,
+        current_iso_timestamp(),
+        job_id,
+        project_id,
+    )
+
+
 class EngineProvider(ABC):
     """Abstract Base Class for 3D Geometry Execution Engines per ADR-006."""
 
@@ -55,7 +66,7 @@ class MockEngineProvider(EngineProvider):
         """Process job through staged progress steps based on mock scenario."""
 
         scenario = job.mock_scenario
-        logger.info("generation stage=zoo_execution_started at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("zoo_execution_started", job.job_id, job.project_id)
 
         # Stage 1: VALIDATING
         job.current_stage = GenerationStage.VALIDATING
@@ -79,7 +90,7 @@ class MockEngineProvider(EngineProvider):
         # Stage 2: COMPILING
         job.current_stage = GenerationStage.COMPILING
         job.progress_percent = 30
-        logger.info("generation stage=validation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("validation_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         # Check for early cancellation request
@@ -94,7 +105,7 @@ class MockEngineProvider(EngineProvider):
         # Stage 3: EXECUTING
         job.current_stage = GenerationStage.EXECUTING
         job.progress_percent = 60
-        logger.info("generation stage=kcl_compilation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("kcl_compile_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         if scenario == MockScenario.TIMEOUT:
@@ -111,7 +122,7 @@ class MockEngineProvider(EngineProvider):
         # Stage 4: RENDERING
         job.current_stage = GenerationStage.RENDERING
         job.progress_percent = 85
-        logger.info("generation stage=zoo_execution_completed at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         if scenario == MockScenario.MALFORMED_RESPONSE:
@@ -202,7 +213,7 @@ class ZooEngineProvider(EngineProvider):
             return await MockEngineProvider().execute_generation(job, kcl_code)
 
         token = settings.zoo_api_token
-        logger.info("generation stage=zoo_execution_started at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("zoo_execution_started", job.job_id, job.project_id)
         timeout_val = settings.generation_timeout_seconds or 30.0
 
         # Stage 1: VALIDATING
@@ -259,6 +270,7 @@ class ZooEngineProvider(EngineProvider):
                 stl_bytes = payload
             else:
                 raise RuntimeError("Zoo KCL execution returned an unsupported STL payload.")
+            log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
             validation = parse_and_validate_stl(stl_bytes)
             if not validation["is_valid"] or not validation["dimensions_mm"]:
                 raise RuntimeError(f"Zoo KCL STL validation failed: {validation['error']}")
@@ -298,7 +310,7 @@ class ZooEngineProvider(EngineProvider):
         # Stage 2: COMPILING
         job.current_stage = GenerationStage.COMPILING
         job.progress_percent = 30
-        logger.info("generation stage=validation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("validation_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         if job.status == JobStatus.CANCEL_REQUESTED:
@@ -312,7 +324,7 @@ class ZooEngineProvider(EngineProvider):
         # Stage 3: EXECUTING
         job.current_stage = GenerationStage.EXECUTING
         job.progress_percent = 60
-        logger.info("generation stage=kcl_compilation_complete at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("kcl_compile_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
         import hashlib
@@ -396,6 +408,8 @@ class ZooEngineProvider(EngineProvider):
                     return snap_resp
 
             await asyncio.wait_for(_run_ws_execution(), timeout=timeout_val)
+
+            log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
 
             # Stage 5: FINALIZING
             job.current_stage = GenerationStage.FINALIZING

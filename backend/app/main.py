@@ -1,5 +1,8 @@
 """FastAPI Application Entry Point and Factory."""
 
+import faulthandler
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,6 +15,8 @@ from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestIDMiddleware
 from app.repositories.sqlite_project_repository import SQLiteProjectRepository
 from app.services.generation_job_service import GenerationJobService
+
+faulthandler.enable(file=sys.stderr)
 
 
 def create_app() -> FastAPI:

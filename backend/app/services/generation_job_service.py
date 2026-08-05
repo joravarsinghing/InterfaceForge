@@ -31,6 +31,17 @@ RESTART_ERROR_MESSAGE = (
 )
 
 
+def log_generation_stage(stage: str, job_id: str, project_id: str) -> None:
+    """Write a safe, structured generation diagnostic without payload data."""
+    logger.info(
+        "generation stage=%s timestamp=%s job_id=%s project_id=%s",
+        stage,
+        current_iso_timestamp(),
+        job_id,
+        project_id,
+    )
+
+
 class GenerationJobService:
     """Service managing generation jobs, staged progress, and recovery."""
 
@@ -132,6 +143,8 @@ class GenerationJobService:
 
         # 1. Verify project exists & token is valid
         project = self.project_service.get_project(project_id, project_token)
+        job_id = f"job_{uuid.uuid4().hex[:12]}"
+        log_generation_stage("persisted_project_loaded", job_id, project_id)
 
         # 2. Duplicate active-job prevention per project
         active_job = self.get_active_job_for_project(project_id)
@@ -159,8 +172,11 @@ class GenerationJobService:
                 ],
             )
 
-        logger.info("generation stage=validation_complete at=%s project_id=%s", current_iso_timestamp(), project_id)
+        log_generation_stage("validation_completed", job_id, project_id)
+        log_generation_stage("loft_plan_load_or_build_started", job_id, project_id)
+        log_generation_stage("kcl_compile_started", job_id, project_id)
         compile_result = self.project_service.compile_kcl(project_id, project_token)
+        log_generation_stage("loft_plan_load_or_build_completed", job_id, project_id)
         if not compile_result.success or not compile_result.kcl_code:
             compiler_issue = compile_result.errors[0] if compile_result.errors else None
             raise APIError(
@@ -181,7 +197,7 @@ class GenerationJobService:
                 ),
             )
 
-        logger.info("generation stage=kcl_compilation_complete at=%s project_id=%s", current_iso_timestamp(), project_id)
+        log_generation_stage("kcl_compile_completed", job_id, project_id)
 
         # 4. Preserve last-known-good model revision per ADR-005
         # If current model is CURRENT, preserve its revision as last known good
@@ -203,7 +219,6 @@ class GenerationJobService:
         self.project_service.repository.save(project)
 
         # 5. Create GenerationJob
-        job_id = f"job_{uuid.uuid4().hex[:12]}"
         job = GenerationJob(
             job_id=job_id,
             project_id=project_id,
@@ -215,7 +230,7 @@ class GenerationJobService:
             kcl_code_snippet=compile_result.preview_snippet or compile_result.kcl_code[:200],
         )
         self._save_job(job)
-        logger.info("generation stage=accepted at=%s job_id=%s project_id=%s", current_iso_timestamp(), job.job_id, job.project_id)
+        log_generation_stage("generation_job_loaded", job.job_id, job.project_id)
 
         # 6. Execute job via active EngineProvider
         engine = get_engine_provider(
@@ -239,6 +254,11 @@ class GenerationJobService:
             executed_job.completed_at = current_iso_timestamp()
             executed_job.updated_at = executed_job.completed_at
         self._save_job(executed_job)
+        log_generation_stage(
+            ("job_marked_completed" if executed_job.status == JobStatus.SUCCEEDED else "job_marked_failed"),
+            executed_job.job_id,
+            executed_job.project_id,
+        )
 
         # 7. Finalize project state based on job execution result (ADR-005)
         fresh_project = self.project_service.get_project(project_id, project_token)
@@ -280,7 +300,13 @@ class GenerationJobService:
                 fresh_project.current_model_revision = None
                 fresh_project.state = WorkflowState.GENERATION_FAILED
 
+        log_generation_stage(
+            "preview_export_persistence_started", executed_job.job_id, project_id
+        )
         self.project_service.repository.save(fresh_project)
+        log_generation_stage(
+            "preview_export_persistence_completed", executed_job.job_id, project_id
+        )
         return executed_job
     async def start_generation_job_background(
         self,
@@ -299,6 +325,9 @@ class GenerationJobService:
         await asyncio.sleep(0)
         active_job = self.get_active_job_for_project(project_id)
         if active_job is not None:
+            log_generation_stage(
+                "background_task_started", active_job.job_id, active_job.project_id
+            )
             return active_job
         return await task
 
