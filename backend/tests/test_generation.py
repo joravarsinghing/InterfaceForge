@@ -279,3 +279,60 @@ async def test_start_endpoint_returns_201_and_background_job_progresses(
             await asyncio.sleep(0)
 
     assert status_response.json()["data"]["status"] == JobStatus.SUCCEEDED.value
+
+@pytest.mark.asyncio
+async def test_generation_diagnostics_persist_through_success(approved_project, caplog):
+    caplog.set_level("INFO")
+    service = GenerationJobService()
+    result = await service.start_generation_job(
+        approved_project.project_id,
+        project_token=approved_project.project_token,
+    )
+
+    persisted = service.project_service.repository.get_generation_job(result.job_id)
+    assert persisted is not None
+    assert persisted.status == JobStatus.SUCCEEDED
+    assert persisted.last_operation == "task_completed"
+    assert persisted.last_operation_at is not None
+    for operation in (
+        "task_created",
+        "job_persisted",
+        "project_loaded",
+        "loft_plan_loaded_or_built",
+        "kcl_compile_started",
+        "kcl_compile_completed",
+        "task_started",
+        "zoo_execution_started",
+        "zoo_response_received",
+        "preview_generation_started",
+        "preview_generation_completed",
+        "artifact_persistence_started",
+        "artifact_persistence_completed",
+        "project_finalization_started",
+        "project_finalization_completed",
+        "job_succeeded",
+        "task_completed",
+    ):
+        assert f"stage={operation}" in caplog.text
+    assert "secret" not in caplog.text.lower()
+    assert "kcl_code" not in caplog.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_generation_diagnostics_end_with_job_failed_on_provider_failure(approved_project):
+    class FailingEngine:
+        async def execute_generation(self, _job, _kcl_code, project=None):
+            raise RuntimeError("provider failure")
+
+    service = GenerationJobService()
+    with patch("app.services.generation_job_service.get_engine_provider", return_value=FailingEngine()):
+        result = await service.start_generation_job(
+            approved_project.project_id,
+            project_token=approved_project.project_token,
+        )
+
+    persisted = service.project_service.repository.get_generation_job(result.job_id)
+    assert persisted is not None
+    assert persisted.status == JobStatus.FAILED
+    assert persisted.last_operation == "job_failed"
+    assert persisted.last_operation_at is not None

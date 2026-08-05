@@ -2,9 +2,9 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import Callable, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 def current_iso_timestamp() -> str:
@@ -72,6 +72,8 @@ class GenerationJobRequest(BaseModel):
 class GenerationJob(BaseModel):
     """Generation job execution state tracking object."""
 
+    _operation_callback: Optional[Callable[[str], None]] = PrivateAttr(default=None)
+
     job_id: str
     project_id: str
     model_revision: int
@@ -86,6 +88,19 @@ class GenerationJob(BaseModel):
     kcl_code_snippet: Optional[str] = None
     zoo_model_id: Optional[str] = None
     kcl_hash: Optional[str] = None
+    last_operation: Optional[str] = None
+    last_operation_at: Optional[str] = None
     created_at: str = Field(default_factory=current_iso_timestamp)
     updated_at: str = Field(default_factory=current_iso_timestamp)
     completed_at: Optional[str] = None
+
+    def set_operation_callback(self, callback: Callable[[str], None]) -> None:
+        """Attach a non-persisted callback for durable operation checkpoints."""
+        self._operation_callback = callback
+
+    def record_operation(self, operation: str) -> None:
+        """Update diagnostic fields and notify the owning service to persist them."""
+        self.last_operation = operation
+        self.last_operation_at = current_iso_timestamp()
+        if self._operation_callback is not None:
+            self._operation_callback(operation)

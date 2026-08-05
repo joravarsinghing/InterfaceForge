@@ -64,6 +64,40 @@ class GenerationJobService:
         self.project_service.repository.save_generation_job(job)
         return job
 
+    def _flush_diagnostic_logs(self) -> None:
+        """Flush configured handlers after a durable generation checkpoint."""
+        handlers = list(logger.handlers) + list(logging.getLogger().handlers)
+        seen: set[int] = set()
+        for handler in handlers:
+            if id(handler) in seen:
+                continue
+            seen.add(id(handler))
+            try:
+                handler.flush()
+            except Exception:
+                continue
+
+    def _record_operation(self, job: GenerationJob, operation: str) -> None:
+        """Persist and emit one safe diagnostic operation checkpoint."""
+        job.last_operation = operation
+        job.last_operation_at = current_iso_timestamp()
+        job.updated_at = job.last_operation_at
+        self._save_job(job)
+        logger.info(
+            "generation stage=%s timestamp=%s job_id=%s project_id=%s "
+            "last_operation=%s progress=%s current_stage=%s",
+            operation,
+            job.last_operation_at,
+            job.job_id,
+            job.project_id,
+            job.last_operation,
+            job.progress_percent,
+            job.current_stage.value if hasattr(job.current_stage, "value") else job.current_stage,
+        )
+        self._flush_diagnostic_logs()
+
+    def _bind_operation_callback(self, job: GenerationJob) -> None:
+        job.set_operation_callback(lambda operation: self._record_operation(job, operation))
     def _log_background_task_result(
         self, project_id: str, task: asyncio.Task[GenerationJob]
     ) -> None:
@@ -120,11 +154,16 @@ class GenerationJobService:
             self._save_job(job)
             recovered += 1
             logger.warning(
-                "generation stage=recovered_on_startup at=%s job_id=%s project_id=%s",
+                "generation stage=recovered_on_startup timestamp=%s job_id=%s project_id=%s "
+                "last_operation=%s progress=%s current_stage=%s",
                 current_iso_timestamp(),
                 job.job_id,
                 job.project_id,
+                job.last_operation,
+                job.progress_percent,
+                job.current_stage.value if hasattr(job.current_stage, "value") else job.current_stage,
             )
+            self._flush_diagnostic_logs()
         return recovered
 
     def get_active_job_for_project(self, project_id: str) -> Optional[GenerationJob]:
@@ -258,8 +297,13 @@ class GenerationJobService:
             mock_scenario=mock_scenario,
             kcl_code_snippet=compile_result.preview_snippet or compile_result.kcl_code[:200],
         )
-        self._save_job(job)
-        log_generation_stage("generation_job_loaded", job.job_id, job.project_id)
+        self._bind_operation_callback(job)
+        job.record_operation("task_created")
+        job.record_operation("job_persisted")
+        job.record_operation("project_loaded")
+        job.record_operation("loft_plan_loaded_or_built")
+        job.record_operation("kcl_compile_started")
+        job.record_operation("kcl_compile_completed")
 
         # 6. Execute job via active EngineProvider
         engine = get_engine_provider(
@@ -268,7 +312,9 @@ class GenerationJobService:
             else str(project.provider_mode)
         )
         job.status = JobStatus.RUNNING
+        job.progress_percent = 0
         self._save_job(job)
+        job.record_operation("task_started")
         try:
             executed_job = await engine.execute_generation(
                 job, compile_result.kcl_code, project=project
@@ -283,6 +329,7 @@ class GenerationJobService:
             executed_job.completed_at = current_iso_timestamp()
             executed_job.updated_at = executed_job.completed_at
         self._save_job(executed_job)
+        executed_job.record_operation("job_succeeded" if executed_job.status == JobStatus.SUCCEEDED else "job_failed")
         log_generation_stage(
             ("job_marked_completed" if executed_job.status == JobStatus.SUCCEEDED else "job_marked_failed"),
             executed_job.job_id,
@@ -290,6 +337,7 @@ class GenerationJobService:
         )
 
         # 7. Finalize project state based on job execution result (ADR-005)
+        executed_job.record_operation("project_finalization_started")
         fresh_project = self.project_service.get_project(project_id, project_token)
         target_rev = next(
             (r for r in fresh_project.model_revisions if r.model_revision == next_rev_num),
@@ -329,13 +377,13 @@ class GenerationJobService:
                 fresh_project.current_model_revision = None
                 fresh_project.state = WorkflowState.GENERATION_FAILED
 
-        log_generation_stage(
-            "preview_export_persistence_started", executed_job.job_id, project_id
-        )
+        executed_job.record_operation("artifact_persistence_started")
         self.project_service.repository.save(fresh_project)
-        log_generation_stage(
-            "preview_export_persistence_completed", executed_job.job_id, project_id
-        )
+        executed_job.record_operation("artifact_persistence_completed")
+        executed_job.record_operation("project_finalization_completed")
+        executed_job.record_operation("task_completed")
+        if executed_job.status != JobStatus.SUCCEEDED:
+            executed_job.record_operation("job_failed")
         return executed_job
     async def _run_background_generation(
         self,
@@ -367,6 +415,7 @@ class GenerationJobService:
         job.recovery_steps = ["Retry model generation."]
         job.completed_at = current_iso_timestamp()
         job.updated_at = job.completed_at
+        job.record_operation("job_failed")
         self._save_job(job)
         try:
             project = self.project_service.get_project(project_id, None)

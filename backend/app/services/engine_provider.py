@@ -46,6 +46,19 @@ def log_generation_stage(stage: str, job_id: str, project_id: str) -> None:
     )
 
 
+def record_job_operation(
+    job: GenerationJob,
+    operation: str,
+    stage: GenerationStage | None = None,
+    progress: int | None = None,
+) -> None:
+    """Update a job checkpoint while preserving provider behavior."""
+    if stage is not None:
+        job.current_stage = stage
+    if progress is not None:
+        job.progress_percent = progress
+    job.record_operation(operation)
+
 class EngineProvider(ABC):
     """Abstract Base Class for 3D Geometry Execution Engines per ADR-006."""
 
@@ -69,8 +82,7 @@ class MockEngineProvider(EngineProvider):
         log_generation_stage("zoo_execution_started", job.job_id, job.project_id)
 
         # Stage 1: VALIDATING
-        job.current_stage = GenerationStage.VALIDATING
-        job.progress_percent = 10
+        record_job_operation(job, "zoo_execution_started", GenerationStage.VALIDATING, 10)
         job.updated_at = current_iso_timestamp()
 
         if scenario == MockScenario.ENGINE_VALIDATION_FAILURE:
@@ -88,8 +100,7 @@ class MockEngineProvider(EngineProvider):
             return job
 
         # Stage 2: COMPILING
-        job.current_stage = GenerationStage.COMPILING
-        job.progress_percent = 30
+        record_job_operation(job, "validation_completed", GenerationStage.COMPILING, 30)
         log_generation_stage("validation_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
@@ -103,8 +114,7 @@ class MockEngineProvider(EngineProvider):
             return job
 
         # Stage 3: EXECUTING
-        job.current_stage = GenerationStage.EXECUTING
-        job.progress_percent = 60
+        record_job_operation(job, "kcl_compile_completed", GenerationStage.EXECUTING, 60)
         log_generation_stage("kcl_compile_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
@@ -120,8 +130,9 @@ class MockEngineProvider(EngineProvider):
             return job
 
         # Stage 4: RENDERING
-        job.current_stage = GenerationStage.RENDERING
-        job.progress_percent = 85
+        record_job_operation(job, "model_result_processing_started", GenerationStage.RENDERING, 85)
+        record_job_operation(job, "zoo_execution_completed")
+        record_job_operation(job, "zoo_response_received")
         log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
@@ -153,8 +164,7 @@ class MockEngineProvider(EngineProvider):
             return job
 
         # Stage 5: FINALIZING
-        job.current_stage = GenerationStage.FINALIZING
-        job.progress_percent = 100
+        record_job_operation(job, "model_finalization_started", GenerationStage.FINALIZING, 100)
         job.status = JobStatus.SUCCEEDED
         job.updated_at = current_iso_timestamp()
         job.completed_at = current_iso_timestamp()
@@ -168,6 +178,7 @@ class MockEngineProvider(EngineProvider):
         job.zoo_model_id = f"mock_model_{job.job_id[:8]}"
 
         if project is None:
+            record_job_operation(job, "preview_generation_started")
             job.preview_metadata = PreviewMetadata(
                 preview_svg="3D preview unavailable in offline mode.",
                 is_mock=True,
@@ -175,6 +186,7 @@ class MockEngineProvider(EngineProvider):
         else:
             obj_content = generate_adapter_obj(project)
             min_x, max_x, min_y, max_y, min_z, max_z = mesh_bounds(obj_content)
+            record_job_operation(job, "preview_generation_started")
             job.preview_metadata = PreviewMetadata(
                 preview_svg=render_mesh_svg(obj_content, job.job_id),
                 bounding_box=BoundingBox(
@@ -187,6 +199,8 @@ class MockEngineProvider(EngineProvider):
                 render_timestamp=current_iso_timestamp(),
                 is_mock=True,
             )
+        record_job_operation(job, "preview_generation_completed")
+        record_job_operation(job, "model_result_processing_completed")
 
         return job
 
@@ -217,8 +231,7 @@ class ZooEngineProvider(EngineProvider):
         timeout_val = settings.generation_timeout_seconds or 30.0
 
         # Stage 1: VALIDATING
-        job.current_stage = GenerationStage.VALIDATING
-        job.progress_percent = 10
+        record_job_operation(job, "zoo_execution_started", GenerationStage.VALIDATING, 10)
         job.updated_at = current_iso_timestamp()
 
         if not token:
@@ -241,8 +254,7 @@ class ZooEngineProvider(EngineProvider):
             return job
 
         # Execute the exact compiled bytes through the supported zoo-kcl runtime.
-        job.current_stage = GenerationStage.EXECUTING
-        job.progress_percent = 60
+        record_job_operation(job, "kcl_compile_completed", GenerationStage.EXECUTING, 60)
         job.updated_at = current_iso_timestamp()
         import base64
         import hashlib
@@ -259,6 +271,8 @@ class ZooEngineProvider(EngineProvider):
                 kcl.execute_code_and_export(kcl_code, kcl.FileExportFormat.Stl),
                 timeout=timeout_val,
             )
+            record_job_operation(job, "zoo_response_received")
+            record_job_operation(job, "zoo_execution_completed")
             if not files:
                 raise RuntimeError("Zoo KCL execution returned no STL files.")
             payload = getattr(files[0], "contents", None)
@@ -275,8 +289,8 @@ class ZooEngineProvider(EngineProvider):
             if not validation["is_valid"] or not validation["dimensions_mm"]:
                 raise RuntimeError(f"Zoo KCL STL validation failed: {validation['error']}")
             dx, dy, dz = validation["dimensions_mm"]
-            job.current_stage = GenerationStage.RENDERING
-            job.progress_percent = 85
+            record_job_operation(job, "model_result_processing_started", GenerationStage.RENDERING, 85)
+            record_job_operation(job, "preview_generation_started")
             job.preview_metadata = PreviewMetadata(
                 preview_svg=f"zoo-kcl://{job.kcl_hash[:16]}",
                 bounding_box=BoundingBox(x_mm=dx, y_mm=dy, z_mm=dz),
@@ -285,8 +299,9 @@ class ZooEngineProvider(EngineProvider):
                 render_timestamp=current_iso_timestamp(),
                 is_mock=False,
             )
-            job.current_stage = GenerationStage.FINALIZING
-            job.progress_percent = 100
+            record_job_operation(job, "preview_generation_completed")
+            record_job_operation(job, "model_result_processing_completed")
+            record_job_operation(job, "model_finalization_started", GenerationStage.FINALIZING, 100)
             job.status = JobStatus.SUCCEEDED
             job.zoo_model_id = f"zoo-kcl-{job.kcl_hash[:16]}"
             job.completed_at = current_iso_timestamp()
@@ -308,8 +323,7 @@ class ZooEngineProvider(EngineProvider):
                 os.environ["ZOO_API_TOKEN"] = previous_token
 
         # Stage 2: COMPILING
-        job.current_stage = GenerationStage.COMPILING
-        job.progress_percent = 30
+        record_job_operation(job, "validation_completed", GenerationStage.COMPILING, 30)
         log_generation_stage("validation_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
@@ -322,8 +336,7 @@ class ZooEngineProvider(EngineProvider):
             return job
 
         # Stage 3: EXECUTING
-        job.current_stage = GenerationStage.EXECUTING
-        job.progress_percent = 60
+        record_job_operation(job, "kcl_compile_completed", GenerationStage.EXECUTING, 60)
         log_generation_stage("kcl_compile_completed", job.job_id, job.project_id)
         job.updated_at = current_iso_timestamp()
 
@@ -340,6 +353,7 @@ class ZooEngineProvider(EngineProvider):
 
             async def _run_ws_execution() -> dict:
                 async with websockets.connect(ws_url, additional_headers=headers) as ws:
+                    record_job_operation(job, "zoo_connection_established")
 
                     async def send_cmd(cmd_dict: dict) -> dict:
                         cmd_id = str(uuid.uuid4())
@@ -400,8 +414,7 @@ class ZooEngineProvider(EngineProvider):
                     await send_cmd({"type": "start_path"})
 
                     # Stage 4: RENDERING
-                    job.current_stage = GenerationStage.RENDERING
-                    job.progress_percent = 85
+                    record_job_operation(job, "model_result_processing_started", GenerationStage.RENDERING, 85)
                     job.updated_at = current_iso_timestamp()
 
                     snap_resp = await send_cmd({"type": "take_snapshot", "format": "png"})
@@ -409,11 +422,13 @@ class ZooEngineProvider(EngineProvider):
 
             await asyncio.wait_for(_run_ws_execution(), timeout=timeout_val)
 
+            record_job_operation(job, "zoo_response_received")
+            record_job_operation(job, "zoo_execution_completed")
+
             log_generation_stage("zoo_execution_completed", job.job_id, job.project_id)
 
             # Stage 5: FINALIZING
-            job.current_stage = GenerationStage.FINALIZING
-            job.progress_percent = 100
+            record_job_operation(job, "model_finalization_started", GenerationStage.FINALIZING, 100)
             job.status = JobStatus.SUCCEEDED
             job.updated_at = current_iso_timestamp()
             job.completed_at = current_iso_timestamp()
@@ -423,6 +438,7 @@ class ZooEngineProvider(EngineProvider):
             job.zoo_model_id = sess_id
 
             svg_preview = "Zoo Engine preview is returned by the live provider."
+            record_job_operation(job, "preview_generation_started")
             job.preview_metadata = PreviewMetadata(
                 preview_svg=svg_preview,
                 bounding_box=BoundingBox(x_mm=60.0, y_mm=60.0, z_mm=50.0),
@@ -431,6 +447,8 @@ class ZooEngineProvider(EngineProvider):
                 render_timestamp=current_iso_timestamp(),
                 is_mock=False,
             )
+            record_job_operation(job, "preview_generation_completed")
+            record_job_operation(job, "model_result_processing_completed")
             return job
 
         except asyncio.TimeoutError:

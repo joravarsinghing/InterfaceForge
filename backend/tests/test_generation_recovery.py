@@ -156,3 +156,25 @@ async def test_new_generation_can_start_after_recovery():
     assert new_job.status == JobStatus.SUCCEEDED
     assert generation.get_active_job_for_project(project.project_id) is None
 
+
+
+def test_startup_recovery_preserves_last_operation_and_logs_it(caplog):
+    service, project, job = seed_abandoned_job(GenerationStage.EXECUTING)
+    job.last_operation = "zoo_execution_started"
+    job.last_operation_at = "2026-08-05T00:00:00+00:00"
+    job.progress_percent = 60
+    service.repository.save_generation_job(job)
+    caplog.set_level("WARNING")
+
+    assert GenerationJobService(project_service=service).recover_abandoned_jobs() == 1
+
+    recovered = service.repository.get_generation_job(job.job_id)
+    assert recovered is not None
+    assert recovered.status == JobStatus.FAILED
+    assert recovered.last_operation == "zoo_execution_started"
+    assert recovered.last_operation_at == "2026-08-05T00:00:00+00:00"
+    assert recovered.progress_percent == 60
+    assert recovered.current_stage == GenerationStage.EXECUTING
+    assert "last_operation=zoo_execution_started" in caplog.text
+    assert "progress=60" in caplog.text
+    assert "current_stage=executing" in caplog.text
