@@ -88,11 +88,13 @@ The user:
 ## Watch the workflow
 
 <div align="center">
+  <a href="https://youtu.be/DTEwl9ofGLk" style="display:inline-block; width:74%;">
+    <img src="assets/vid_thumbnail.png" alt="Watch the InterfaceForge demonstration" style="width:100%; display:block;" />
+  </a>
 
-### [Watch the InterfaceForge demonstration](https://youtu.be/DTEwl9ofGLk)
+  **Click the preview above to watch the full Makeathon demo.**
 
-The video is unlisted and accessible to anyone with the link.
-
+  The video is unlisted and accessible to anyone with the link.
 </div>
 
 ---
