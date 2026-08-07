@@ -87,6 +87,8 @@ The user:
 
 ## Watch the workflow
 
+https://github.com/user-attachments/assets/f07af147-2498-4d1d-b80c-5304d742b7c0
+
 <div align="center">
   <a href="https://youtu.be/DTEwl9ofGLk" style="display:inline-block; width:74%;">
     <img src="assets/vid_thumbnail.png" alt="Watch the InterfaceForge demonstration" style="width:100%; display:block;" />
